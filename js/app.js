@@ -232,8 +232,10 @@
 
   /** Actualiza el récord de racha y desbloquea los logros nuevos. */
   function syncProgressState() {
+    // Mismo criterio que topStreak(): los malos hábitos no entran en el
+    // récord general, van en su propio bloque.
     const best = S.getHabits().reduce(function (max, h) {
-      return Math.max(max, St.bestStreak(h, today));
+      return St.isAvoid(h) ? max : Math.max(max, St.bestStreak(h, today));
     }, 0);
     S.setBestStreak(best);
 
@@ -298,12 +300,91 @@
       return;
     }
 
+    // Con ratón o dedo, el paso ya lo ha dado onStepperPointerDown. Aquí solo
+    // debe entrar el teclado, que activa el botón con un click de detail 0.
+    if (action === 'plus' || action === 'minus') {
+      if (e.detail !== 0) return;
+      applyStep(btn);
+      return;
+    }
+
     withScoring(habit, currentDate, function () {
       if (action === 'check') S.toggleCheck(habit.id, currentDate);
-      else if (action === 'plus') S.addQuantity(habit.id, currentDate, habit.target.step);
-      else if (action === 'minus') S.addQuantity(habit.id, currentDate, -habit.target.step);
       else if (action === 'slot') S.toggleSlot(habit.id, currentDate, btn.dataset.slot);
     });
+  }
+
+  /* ── Pulsación mantenida en + y − ─────────────────────────
+     Un toque suma un paso. Mantener pulsado repite, con un margen previo
+     para no disparar la repetición en un toque normal.
+     Se usan eventos de puntero, que cubren ratón y táctil por un solo
+     camino; el teclado sigue llegando por 'click', que no genera
+     pointerdown. ──────────────────────────────────────────── */
+
+  const HOLD_DELAY = 500;   // margen antes de empezar a repetir
+  const HOLD_RATE = 100;    // un paso cada 100 ms mientras se aguanta
+
+  let holdTimer = null;
+  let holdInterval = null;
+  let holdButton = null;
+
+  /** Corta la repetición y deja los temporizadores a cero. */
+  function stopHold() {
+    if (holdTimer !== null) { clearTimeout(holdTimer); holdTimer = null; }
+    if (holdInterval !== null) { clearInterval(holdInterval); holdInterval = null; }
+    if (holdButton) {
+      holdButton.classList.remove('is-holding', 'is-repeating');
+      holdButton = null;
+    }
+  }
+
+  /**
+   * Aplica un paso del stepper. Devuelve false cuando ya no tiene sentido
+   * seguir: el hábito ha desaparecido o restar ya no baja de 0.
+   */
+  function applyStep(btn) {
+    const card = btn.closest('.habit-card');
+    const habit = card && S.getHabit(card.dataset.id);
+    if (!habit || habit.type !== 'quantity') return false;
+
+    const suma = btn.dataset.action === 'plus';
+    if (!suma && !(Number(S.getLog(habit.id, currentDate)) || 0)) return false;
+
+    withScoring(habit, currentDate, function () {
+      S.addQuantity(habit.id, currentDate, suma ? habit.target.step : -habit.target.step);
+    });
+    return true;
+  }
+
+  function onStepperPointerDown(e) {
+    if (e.button) return;                       // solo el botón principal
+
+    const btn = e.target.closest('[data-action="plus"], [data-action="minus"]');
+    if (!btn) return;
+
+    stopHold();
+
+    // El paso inmediato: mantener pulsado es un atajo, no un requisito.
+    if (!applyStep(btn)) return;
+
+    holdButton = btn;
+    btn.classList.add('is-holding');
+
+    // Capturar el puntero evita que un dedo que se mueve un milímetro
+    // corte la repetición.
+    if (btn.setPointerCapture) {
+      try { btn.setPointerCapture(e.pointerId); } catch (err) { /* da igual */ }
+    }
+
+    holdTimer = setTimeout(function () {
+      holdTimer = null;
+      btn.classList.add('is-repeating');
+
+      holdInterval = setInterval(function () {
+        // Si la tarjeta se ha repintado entera, este nodo ya no existe.
+        if (!btn.isConnected || !applyStep(btn)) stopHold();
+      }, HOLD_RATE);
+    }, HOLD_DELAY);
   }
 
   /** Valor escrito a mano: sustituye el total del día, no lo suma. */
@@ -951,6 +1032,18 @@
 
     // Tarjetas (delegación: un listener para toda la lista)
     els.habitList.addEventListener('click', onHabitListClick);
+
+    // Mantener pulsado en + y −. La suelta se escucha en window y no en el
+    // botón: así un puntero que se levanta fuera también para el intervalo.
+    els.habitList.addEventListener('pointerdown', onStepperPointerDown);
+    window.addEventListener('pointerup', stopHold);
+    window.addEventListener('pointercancel', stopHold);
+    // Redes de seguridad: cambiar de pestaña o de ventana no debe dejar un
+    // setInterval sumando de fondo.
+    window.addEventListener('blur', stopHold);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) stopHold();
+    });
 
     // El valor manual se guarda solo mientras escribes: no depende de que
     // pulses Enter ni de que salgas del campo.

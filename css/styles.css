@@ -479,7 +479,13 @@ svg { display: block; }
 }
 
 /* ── 7. TARJETAS DE HÁBITO ─────────────────────────────────── */
-.habit-list { display: grid; gap: var(--sp-3); }
+/* Dos tarjetas por fila también en el móvil. El gap se abre en pantallas
+   grandes, donde hay sitio de sobra. */
+.habit-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
+}
 
 .habit-card {
   position: relative;
@@ -648,6 +654,49 @@ button.habit-card__icon:active { transform: scale(.94); }
 .check-btn[aria-pressed="true"] svg { stroke-dashoffset: 0; }
 .check-btn[aria-pressed="true"]:active { transform: scale(.9); }
 
+/* ── Tarjeta de hábito en móvil ───────────────────────────
+   A ~165px no caben icono, nombre y control en una fila. Se reordena en
+   dos: arriba icono y nombre, abajo el control alineado a la derecha.
+   El control va en su propia fila de altura automática y la de arriba se
+   queda el sobrante, así los controles de una misma fila quedan a la
+   misma altura aunque un nombre ocupe dos líneas. ─────────────────── */
+@media (max-width: 767.98px) {
+  .habit-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
+    grid-template-areas: "icon body" "control control";
+    align-items: start;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-3) var(--sp-3) calc(var(--sp-3) + 2px);
+  }
+  .habit-card__icon { grid-area: icon; width: 34px; height: 34px; font-size: var(--fs-md); }
+  .habit-card__body { grid-area: body; }
+
+  .check-btn,
+  .stepper,
+  .slip-btn,
+  .habit-card .habit-card__amount { grid-area: control; justify-self: end; }
+
+  .habit-card__name { font-size: var(--fs-sm); }
+  /* Truncar a una línea dejaba "Pantallas an…". Con tres caben los nombres
+     largos de verdad, y la fila solo crece cuando hace falta. */
+  .habit-card__name,
+  .habit-card__link {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+  }
+
+  .check-btn { width: 34px; height: 34px; }
+  .check-btn svg { width: 17px; height: 17px; }
+  .stepper__btn { width: 34px; height: 34px; font-size: var(--fs-md); }
+  .slip-btn { min-height: 34px; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
+  .habit-card .habit-card__amount { width: 4.75rem; min-height: 34px; }
+  .slot { padding: 4px var(--sp-2); }
+}
+
 /* Stepper para hábitos por cantidad */
 .stepper { display: flex; gap: var(--sp-2); }
 .stepper__btn {
@@ -664,12 +713,25 @@ button.habit-card__icon:active { transform: scale(.94); }
   font-size: var(--fs-lg);
   font-weight: 650;
   line-height: 1;
+  /* Se puede mantener pulsado: sin esto el táctil espera al doble toque
+     antes de reaccionar, y el dedo acaba seleccionando el glifo. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
   transition: background var(--dur) var(--ease), transform 120ms var(--ease);
 }
 .stepper__btn:hover {
   background: color-mix(in srgb, var(--habit-color, var(--accent)) 34%, transparent);
 }
-.stepper__btn:active { transform: scale(.9); }
+.stepper__btn:active,
+.stepper__btn.is-holding { transform: scale(.9); }
+/* Mientras se repite, el botón se enciende: deja claro que sigue actuando
+   aunque el dedo no se mueva. */
+.stepper__btn.is-repeating {
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 52%, transparent);
+  border-color: var(--habit-color, var(--accent));
+}
 /* El "+" sigue siendo la acción principal, pero se distingue por el relleno
    más sólido, no por ser el único legible. */
 .stepper__btn--add {
@@ -1518,7 +1580,31 @@ button.week-cell:disabled:hover { transform: none; }
 }
 .streak-item__open:hover { background: var(--surface-3); }
 .streak-item__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.streak-item__days { color: var(--streak); font-weight: 650; }
+
+/* Antes ponía "8 limpio · récord 8" en una línea y no se entendía qué era
+   cada número. Ahora van apilados: arriba lo que llevas, abajo el récord,
+   con la unidad escrita y distinta jerarquía. */
+.streak-item__stats {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  text-align: right;
+  white-space: nowrap;
+}
+.streak-item__now {
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  color: var(--streak);
+  font-variant-numeric: tabular-nums;
+}
+.streak-item__now--clean { color: var(--frost); }
+.streak-item__now b { font-size: var(--fs-md); }
+.streak-item__best {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 
 .ach-grid {
   display: grid;
@@ -1919,7 +2005,7 @@ button.week-cell:disabled:hover { transform: none; }
 /* Tablet ─ 768px */
 @media (min-width: 768px) {
   .app-main { padding: var(--sp-5) var(--sp-5) var(--sp-6); }
-  .habit-list { grid-template-columns: repeat(2, 1fr); }
+  .habit-list { grid-template-columns: repeat(2, 1fr); gap: var(--sp-3); }
   .stat-grid { grid-template-columns: repeat(4, 1fr); }
   .view__title { font-size: var(--fs-2xl); }
 

@@ -200,10 +200,14 @@ HT.stats = (function () {
     return best;
   }
 
-  /** La racha viva más larga entre todos los hábitos. */
+  /**
+   * La racha viva más larga. Los malos hábitos quedan fuera: tienen su
+   * propio bloque de días limpio, y colarlos aquí haría que la ficha
+   * "Racha actual" enseñase un número que no viene de nada que hayas hecho.
+   */
   function topStreak(todayKey) {
     return S.getHabits().reduce(function (max, h) {
-      return Math.max(max, currentStreak(h, todayKey));
+      return isAvoid(h) ? max : Math.max(max, currentStreak(h, todayKey));
     }, 0);
   }
 

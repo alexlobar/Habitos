@@ -1224,6 +1224,46 @@ HT.ui = (function () {
   }
 
   /**
+   * Una fila de racha. La usan los dos bloques —hábitos normales y los que
+   * se quieren dejar— para que el formato no se bifurque en dos sitios.
+   * `clean` solo cambia las palabras: "3 días" frente a "3 días limpio".
+   */
+  function streakRow(row, clean) {
+    const dias = function (n) { return n === 1 ? ' día' : ' días'; };
+    const actual = row.current + dias(row.current) + (clean ? ' limpio' : '');
+
+    const item = el('li', { class: 'streak-item' });
+    const btn = el('button', {
+      type: 'button',
+      class: 'streak-item__open',
+      'data-id': row.habit.id,
+      'aria-label': 'Ver ' + row.habit.name + ': ' + actual +
+                    ', récord ' + row.best + dias(row.best)
+    });
+
+    btn.appendChild(el('span', { 'aria-hidden': 'true', text: row.habit.icon }));
+    btn.appendChild(el('span', { class: 'streak-item__name', text: row.habit.name }));
+
+    const stats = el('span', { class: 'streak-item__stats', 'aria-hidden': 'true' });
+
+    const now = el('span', {
+      class: 'streak-item__now' + (clean ? ' streak-item__now--clean' : '')
+    });
+    now.appendChild(el('b', { text: String(row.current) }));
+    now.appendChild(document.createTextNode(dias(row.current) + (clean ? ' limpio' : '')));
+    stats.appendChild(now);
+
+    stats.appendChild(el('span', {
+      class: 'streak-item__best',
+      text: 'récord ' + row.best + dias(row.best)
+    }));
+
+    btn.appendChild(stats);
+    item.appendChild(btn);
+    return item;
+  }
+
+  /**
    * Malos hábitos: su propio bloque, con los días limpio. Fuera de los
    * porcentajes y fuera de la lista de rachas normal.
    */
@@ -1240,26 +1280,7 @@ HT.ui = (function () {
         return { habit: h, current: St.currentStreak(h, dateKey), best: St.bestStreak(h, dateKey) };
       })
       .sort(function (a, b) { return b.current - a.current || b.best - a.best; })
-      .forEach(function (row) {
-        const item = el('li', { class: 'streak-item' });
-        const btn = el('button', {
-          type: 'button',
-          class: 'streak-item__open',
-          'data-id': row.habit.id,
-          'aria-label': 'Ver ' + row.habit.name + ': ' + row.current +
-                        ' días limpio, récord ' + row.best
-        });
-
-        btn.appendChild(el('span', { 'aria-hidden': 'true', text: row.habit.icon }));
-        btn.appendChild(el('span', { class: 'streak-item__name', text: row.habit.name }));
-        btn.appendChild(el('span', {
-          class: 'streak-item__days',
-          text: row.current + ' limpio · récord ' + row.best
-        }));
-
-        item.appendChild(btn);
-        frag.appendChild(item);
-      });
+      .forEach(function (row) { frag.appendChild(streakRow(row, true)); });
 
     els.avoidList.textContent = '';
     els.avoidList.appendChild(frag);
@@ -1287,26 +1308,7 @@ HT.ui = (function () {
 
     rows
       .sort(function (a, b) { return b.current - a.current || b.best - a.best; })
-      .forEach(function (row) {
-        const item = el('li', { class: 'streak-item' });
-        const btn = el('button', {
-          type: 'button',
-          class: 'streak-item__open',
-          'data-id': row.habit.id,
-          'aria-label': 'Ver ' + row.habit.name + ': racha actual ' + row.current +
-                        ' días, récord ' + row.best + ' días'
-        });
-
-        btn.appendChild(el('span', { 'aria-hidden': 'true', text: row.habit.icon }));
-        btn.appendChild(el('span', { class: 'streak-item__name', text: row.habit.name }));
-        btn.appendChild(el('span', {
-          class: 'streak-item__days',
-          text: row.current + ' · récord ' + row.best
-        }));
-
-        item.appendChild(btn);
-        frag.appendChild(item);
-      });
+      .forEach(function (row) { frag.appendChild(streakRow(row, false)); });
 
     els.streakList.textContent = '';
     els.streakList.appendChild(frag);
