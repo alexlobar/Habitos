@@ -100,19 +100,32 @@ HT.store = (function () {
   function defaultState() {
     const today = U.todayKey();
     const habits = [
-      mkHabit({ name: 'Ejercicio', icon: '🏃', color: '#3ddc97',
-                type: 'quantity', target: { amount: 30, unit: 'min', step: 10 } }, today),
-      mkHabit({ name: 'Dormir 8 horas', icon: '😴', color: '#38bdf8',
+      // El total de pasos se escribe a mano (entry: 'manual'): nadie va a
+      // pulsar "+" mil veces, el dato lo da el móvil de una pieza.
+      mkHabit({ name: '10k pasos', icon: '🚶', color: '#3ddc97',
+                type: 'quantity',
+                target: { amount: 10000, unit: 'pasos', step: 1000, entry: 'manual' } }, today),
+      mkHabit({ name: 'Estiramientos', icon: '🤸', color: '#22d3ee',
                 type: 'check' }, today),
-      mkHabit({ name: 'Leer', icon: '📖', color: '#e879f9',
+      mkHabit({ name: 'Lectura', icon: '📖', color: '#e879f9',
                 type: 'quantity', target: { amount: 20, unit: 'min', step: 5 } }, today),
-      mkHabit({ name: 'Meditar', icon: '🧘', color: '#a78bfa',
-                type: 'schedule', slots: ['morning', 'night'] }, today),
+      mkHabit({ name: 'Japonés', icon: '🗾', color: '#fb7185',
+                type: 'check' }, today),
+      mkHabit({ name: 'Ajedrez', icon: '♟️', color: '#a78bfa',
+                type: 'check' }, today),
+      mkHabit({ name: 'Meditar', icon: '🧘', color: '#38bdf8',
+                type: 'check' }, today),
+      // Una sola franja: sigue siendo una casilla, pero la tarjeta dice
+      // "Noche" en lugar de un check mudo.
       mkHabit({ name: 'Planificar el día', icon: '🗒️', color: '#ffb454',
-                type: 'check', activeDays: [1, 2, 3, 4, 5] }, today),
-      mkHabit({ name: 'Foco profundo', icon: '🎯', color: '#fb7185',
-                type: 'quantity', target: { amount: 90, unit: 'min', step: 15 },
-                activeDays: [1, 2, 3, 4, 5] }, today)
+                type: 'schedule', slots: ['night'] }, today),
+      // El único que no es diario: 0 = domingo, sea cual sea el inicio de semana.
+      mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b',
+                type: 'check', activeDays: [0] }, today),
+      mkHabit({ name: 'Sin pantallas antes de dormir', icon: '📵', color: '#94a3b8',
+                type: 'check' }, today),
+      mkHabit({ name: 'Dormir 7-9 horas', icon: '😴', color: '#818cf8',
+                type: 'check' }, today)
     ];
 
     const training = mkHabit({ name: 'Entrenar', icon: '💪', color: '#f472b6', type: 'check' }, today);
@@ -132,7 +145,9 @@ HT.store = (function () {
       sessions: {},
       workout: { lastRoutineId: null, linkedHabitId: training.id },
       game: {
-        points: 0, achievements: [], bestStreak: 0, habitsCreated: habits.length,
+        // Arranca a 0 a propósito: el logro "Coleccionista" premia crear
+        // hábitos, y los de partida los regala la app, no los creas tú.
+        points: 0, achievements: [], bestStreak: 0, habitsCreated: 0,
         freezes: 1, freezeMonth: today.slice(0, 7)
       }
     };
@@ -356,7 +371,9 @@ HT.store = (function () {
           ? g.achievements.filter(function (a) { return typeof a === 'string'; })
           : [],
         bestStreak: Math.max(0, Math.floor(Number(g.bestStreak) || 0)),
-        habitsCreated: Math.max(habits.length, Math.floor(Number(g.habitsCreated) || 0)),
+        // Contador propio, no derivado de habits.length: cuenta los que ha
+        // creado el usuario, que es lo que mide "Coleccionista".
+        habitsCreated: Math.max(0, Math.floor(Number(g.habitsCreated) || 0)),
         freezes: U.clamp(Math.floor(Number(g.freezes) || 0), 0, MAX_FREEZES),
         freezeMonth: /^\d{4}-\d{2}$/.test(g.freezeMonth) ? g.freezeMonth : today.slice(0, 7)
       }
