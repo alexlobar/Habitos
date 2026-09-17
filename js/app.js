@@ -1,0 +1,1138 @@
+/* ============================================================
+   app.js — Arranque y orquestación: conecta los eventos del
+   usuario con el store, reparte puntos, programa recordatorios
+   y exporta datos. Es el único módulo que conoce a los demás.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const U = HT.utils;
+  const S = HT.store;
+  const St = HT.stats;
+  const UI = HT.ui;
+
+  let today = U.todayKey();
+  let currentDate = today;                       // el día que se está viendo
+  let viewPeriod = U.startOfMonth(new Date());   // mes o año del calendario
+  let calScale = 'month';
+  let weekAnchor = today;                        // cualquier día de la semana mostrada
+  let habitId = null;                            // hábito abierto en la ficha
+  let habitMonth = U.startOfMonth(new Date());
+  let reminderTimers = [];
+
+  /* ── Repintado coalescido ─────────────────────────────────
+     Un solo clic puede disparar varios eventos del store
+     (log + puntos + logro). Se acumulan y se pinta una vez por
+     frame, y solo la parte afectada. ───────────────────────── */
+
+  const dirty = {
+    all: false, header: false, progress: false, week: false, workout: false,
+    extras: false, habit: false, cards: {}
+  };
+  let frame = null;
+
+  function scheduleFlush() {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(flush);
+  }
+
+  function flush() {
+    frame = null;
+
+    if (dirty.all) {
+      renderAll();
+    } else {
+      Object.keys(dirty.cards).forEach(function (id) { UI.updateCard(id, currentDate); });
+      if (dirty.header) UI.renderHeader(currentDate, today);
+      if (dirty.extras) UI.renderDayExtras(currentDate);
+      // Semana, progreso y ficha son caros: solo se recalculan si están a la vista.
+      if (dirty.week) renderWeekIfOpen();
+      if (dirty.workout) renderExercisesIfOpen();
+      if (dirty.progress && !UI.els.views.progress.hidden) UI.renderProgress(currentDate, viewPeriod, calScale);
+      if (dirty.habit) renderHabitIfOpen();
+    }
+
+    dirty.all = false;
+    dirty.header = false;
+    dirty.progress = false;
+    dirty.week = false;
+    dirty.workout = false;
+    dirty.extras = false;
+    dirty.habit = false;
+    dirty.cards = {};
+  }
+
+  function renderAll() {
+    UI.renderHeader(currentDate, today);
+    UI.renderHabitList(currentDate);
+    UI.renderDayExtras(currentDate);
+    UI.renderSettings();
+    renderWeekIfOpen();
+    renderExercisesIfOpen();
+    if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate, viewPeriod, calScale);
+    renderHabitIfOpen();
+  }
+
+  function renderExercisesIfOpen() {
+    if (UI.els.views.exercises.hidden) return;
+    UI.renderExercises(currentDate, S.routineForDate(currentDate), currentDate === today);
+    if (!UI.els.workoutManager.hidden) UI.renderRoutineTable();
+  }
+
+  /** Los 7 días de la semana que contiene `weekAnchor`. */
+  function weekDates() {
+    const first = U.startOfWeek(U.fromKey(weekAnchor), S.getSettings().weekStart);
+    const out = [];
+    for (let i = 0; i < 7; i++) out.push(U.toKey(U.addDays(first, i)));
+    return out;
+  }
+
+  function renderWeekIfOpen() {
+    if (UI.els.views.week.hidden) return;
+    UI.renderWeek(weekDates(), today);
+  }
+
+  function renderHabitIfOpen() {
+    if (UI.els.views.habit.hidden || !habitId) return;
+
+    const habit = S.getHabit(habitId);
+    if (!habit) { closeHabit(); return; }        // lo han borrado desde el modal
+    UI.renderHabitView(habit, habitMonth, today);
+  }
+
+  function onStoreEvent(event, payload) {
+    switch (event) {
+      case 'log:change':
+        dirty.cards[payload.habitId] = true;
+        dirty.header = true;
+        dirty.progress = true;
+        dirty.week = true;
+        dirty.extras = true;
+        dirty.habit = true;
+        break;
+      case 'note:change':
+        dirty.extras = true;
+        dirty.progress = true;
+        break;
+      case 'session:change':
+      case 'workout:change':
+        dirty.workout = true;
+        break;
+      case 'game:points':
+      case 'game:achievement':
+      case 'game:streak':
+        dirty.header = true;
+        dirty.progress = true;
+        break;
+      case 'error':
+        UI.toast('No se pudieron guardar los cambios. ¿Sin espacio en el navegador?',
+                 { type: 'error', icon: '⚠️' });
+        break;
+      default:
+        // habit:*, settings, freeze y reemplazos tocan demasiadas cosas.
+        dirty.all = true;
+    }
+    scheduleFlush();
+  }
+
+  /* ── XP, niveles y logros ─────────────────────────────────
+     La XP se otorga y se retira de forma simétrica: si desmarcas
+     un hábito o quitas una serie, la pierdes. Así el total nunca
+     se infla repitiendo una acción, y volver a abrir una pantalla
+     no paga nada porque no cambia ningún estado. ───────────── */
+
+  /**
+   * Único punto por el que entra XP en la app. Que todo pase por aquí es
+   * lo que permite detectar la subida de nivel una sola vez, sin depender
+   * de quién reparta ni de qué pantalla esté abierta.
+   */
+  function grantXp(amount) {
+    const delta = Math.floor(Number(amount) || 0);
+    if (!delta) return false;
+
+    const before = S.getGame().points;
+    S.addPoints(delta);
+    const after = S.getGame().points;
+
+    if (!St.leveledUp(before, after)) return false;
+    onLevelUp(St.levelInfo(after));
+    return true;
+  }
+
+  /* La presentación va aparte de la detección: cambiar la celebración no
+     toca la regla de cuándo se ha subido de nivel.
+     Para conectar una recompensa nueva basta con llamar a grantXp() con el
+     valor de la tabla — por ejemplo grantXp(St.XP.goal) al cumplir un
+     objetivo, cuando esa acción exista. */
+  function onLevelUp(info) {
+    UI.showLevelUp(info.level, info.rank.name);
+  }
+
+  function withScoring(habit, dateKey, mutate) {
+    const beforeDone = St.isComplete(habit, S.getLog(habit.id, dateKey));
+    const beforePerfect = St.dayStats(dateKey).perfect;
+
+    mutate();
+
+    const afterDone = St.isComplete(habit, S.getLog(habit.id, dateKey));
+    const afterPerfect = St.dayStats(dateKey).perfect;
+
+    let delta = 0;
+    if (afterDone !== beforeDone) delta += (afterDone ? 1 : -1) * St.POINTS_PER_HABIT;
+    if (afterPerfect !== beforePerfect) delta += (afterPerfect ? 1 : -1) * St.POINTS_PERFECT_DAY;
+    if (delta) grantXp(delta);
+
+    const effects = S.getSettings().effects;
+
+    if (afterDone && !beforeDone) {
+      UI.pulse(habit.id);
+      if (effects) UI.buzz(25);
+
+      const streak = St.currentStreak(habit, today);
+      if (streak >= 3) {
+        UI.toast('¡' + streak + ' días seguidos con ' + habit.name + '!',
+                 { type: 'success', icon: '🔥' });
+      }
+    }
+
+    if (afterPerfect && !beforePerfect) {
+      UI.toast('Día perfecto. Todos los hábitos cumplidos.', { type: 'success', icon: '⭐' });
+      if (effects) { UI.celebrate(); UI.buzz([40, 60, 40]); }
+    }
+
+    syncProgressState();
+  }
+
+  /** Actualiza el récord de racha y desbloquea los logros nuevos. */
+  function syncProgressState() {
+    const best = S.getHabits().reduce(function (max, h) {
+      return Math.max(max, St.bestStreak(h, today));
+    }, 0);
+    S.setBestStreak(best);
+
+    St.earnedAchievements(today).forEach(function (id) {
+      if (S.unlockAchievement(id)) {
+        const ach = St.achievementById(id);
+        UI.toast('Logro desbloqueado: ' + ach.name, { type: 'achievement', icon: ach.icon });
+      }
+    });
+  }
+
+  /* ── Navegación entre días ────────────────────────────────── */
+
+  function goToDate(key) {
+    if (key > today) return;      // no se registra en el futuro
+    currentDate = key;
+    dirty.all = true;
+    scheduleFlush();
+  }
+
+  function stepDay(delta) {
+    goToDate(U.addDaysKey(currentDate, delta));
+  }
+
+  /* ── Acciones sobre las tarjetas ──────────────────────────── */
+
+  function onHabitListClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+
+    const card = btn.closest('.habit-card');
+    if (!card) return;
+
+    const habit = S.getHabit(card.dataset.id);
+    if (!habit) return;
+
+    const action = btn.dataset.action;
+
+    if (action === 'detail') { openHabit(habit.id); return; }
+
+    withScoring(habit, currentDate, function () {
+      if (action === 'check') S.toggleCheck(habit.id, currentDate);
+      else if (action === 'plus') S.addQuantity(habit.id, currentDate, habit.target.step);
+      else if (action === 'minus') S.addQuantity(habit.id, currentDate, -habit.target.step);
+      else if (action === 'slot') S.toggleSlot(habit.id, currentDate, btn.dataset.slot);
+    });
+  }
+
+  /** Valor escrito a mano: sustituye el total del día, no lo suma. */
+  function applyAmount(input) {
+    const card = input.closest('.habit-card');
+    const habit = card && S.getHabit(card.dataset.id);
+    if (!habit) return;
+
+    const value = Number(input.value);
+    if (input.value !== '' && (!isFinite(value) || value < 0)) {
+      UI.toast('Escribe un número válido.', { type: 'error', icon: '⚠️' });
+      input.value = Number(S.getLog(habit.id, currentDate)) || '';
+      return;
+    }
+
+    withScoring(habit, currentDate, function () {
+      S.setLog(habit.id, currentDate, input.value === '' ? null : value);
+    });
+  }
+
+  /* ── Ejercicios ───────────────────────────────────────────── */
+
+  /** Foto del avance del entreno de un día, para comparar antes/después. */
+  function workoutSnapshot(dateKey) {
+    const exercises = S.getExercises(S.routineForDate(dateKey));
+    const summary = St.sessionSummary(dateKey, exercises);
+    const session = S.getSession(dateKey);
+
+    return {
+      complete: summary.complete,
+      all: summary.total > 0 && summary.complete === summary.total,
+      done: !!(session && session.done)
+    };
+  }
+
+  /**
+   * Misma contabilidad que withScoring(), pero para el entreno: compara el
+   * estado antes y después de la acción y paga solo la diferencia. Un
+   * ejercicio ya completado no vuelve a dar XP por añadirle otra serie, y
+   * quitar la serie que lo completó devuelve exactamente lo que dio.
+   */
+  function withWorkoutScoring(dateKey, mutate) {
+    const before = workoutSnapshot(dateKey);
+    mutate();
+    const after = workoutSnapshot(dateKey);
+
+    let delta = (after.complete - before.complete) * St.XP.exercise;
+    if (after.all !== before.all) delta += (after.all ? 1 : -1) * St.XP.allExercises;
+    if (after.done !== before.done) delta += (after.done ? 1 : -1) * St.XP.workout;
+
+    if (delta) grantXp(delta);
+    return after;
+  }
+
+  function showExercises() {
+    UI.setView('exercises');
+    renderExercisesIfOpen();
+  }
+
+  function onExerciseListClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+
+    const row = btn.closest('.exercise');
+    if (!row) return;
+
+    const exerciseId = row.dataset.id;
+
+    if (btn.dataset.action === 'remove-set') {
+      withWorkoutScoring(currentDate, function () {
+        S.removeSet(currentDate, exerciseId, Number(btn.dataset.index));
+      });
+      return;
+    }
+
+    if (btn.dataset.action === 'add-set') {
+      const input = row.querySelector('[data-action="set-value"]');
+      const value = Math.floor(Number(input && input.value));
+
+      if (!isFinite(value) || value <= 0) {
+        UI.toast('Escribe cuántas repeticiones o segundos has hecho.', { type: 'error', icon: '⚠️' });
+        return;
+      }
+
+      let added = null;
+      withWorkoutScoring(currentDate, function () {
+        added = S.addSet(currentDate, exerciseId, value);
+      });
+
+      if (!added) {
+        UI.toast('No se pudo añadir la serie.', { type: 'error', icon: '⚠️' });
+        return;
+      }
+
+      const exercise = S.getExercise(exerciseId);
+      if (S.getSettings().effects) UI.buzz(20);
+
+      if (exercise && St.exerciseDone(exercise, S.getSets(currentDate, exerciseId))) {
+        UI.toast(exercise.name + ' completado.', { type: 'success', icon: '✓' });
+      }
+    }
+  }
+
+  /**
+   * Cerrar el entreno marca el hábito enlazado, así que pasa por el mismo
+   * reparto de puntos que cualquier otro hábito: una sola contabilidad.
+   */
+  function toggleSession() {
+    const session = S.getSession(currentDate);
+    const wasDone = !!(session && session.done);
+    const routineId = S.routineForDate(currentDate);
+    const summary = St.sessionSummary(currentDate, S.getExercises(routineId));
+
+    if (!wasDone && !summary.sets) {
+      UI.toast('Apunta al menos una serie antes de cerrar el entreno.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    const linked = S.getWorkout().linkedHabitId;
+    const habit = linked && S.getHabit(linked);
+
+    // Cerrar el entreno da su XP propia; el hábito enlazado sigue pasando
+    // por withScoring(), así que cada cosa se cobra una sola vez.
+    withWorkoutScoring(currentDate, function () {
+      if (!wasDone && !S.getSession(currentDate)) S.setSessionRoutine(currentDate, routineId);
+
+      S.setSessionDone(currentDate, !wasDone);
+
+      if (habit) {
+        withScoring(habit, currentDate, function () {
+          S.setLog(habit.id, currentDate, wasDone ? null : true);
+        });
+      }
+    });
+
+    if (wasDone) {
+      UI.toast('Entreno reabierto.');
+    } else {
+      UI.toast('Entreno cerrado: ' + summary.sets + ' series.', { type: 'success', icon: '💪' });
+      if (!habit && S.getSettings().effects) UI.celebrate();
+    }
+  }
+
+  function onRoutineTableClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+
+    const id = btn.dataset.id;
+
+    if (btn.dataset.action === 'edit-exercise') {
+      const exercise = S.getExercise(id);
+      if (exercise) UI.openExerciseModal(exercise);
+      return;
+    }
+
+    if (btn.dataset.action === 'rename-routine') {
+      const routine = S.getRoutine(id);
+      if (!routine) return;
+      const name = window.prompt('Nuevo nombre de la rutina:', routine.name);
+      if (name && name.trim()) S.renameRoutine(id, name);
+      return;
+    }
+
+    if (btn.dataset.action === 'delete-routine') {
+      const routine = S.getRoutine(id);
+      if (!routine) return;
+
+      const count = S.getExercises(id).length;
+      const warning = count
+        ? '¿Eliminar la rutina "' + routine.name + '" y sus ' + count + ' ejercicios? Se perderá su histórico de series.'
+        : '¿Eliminar la rutina "' + routine.name + '"?';
+
+      if (!window.confirm(warning)) return;
+      S.deleteRoutine(id);
+      UI.toast('Rutina eliminada.', { icon: '🗑️' });
+    }
+  }
+
+  function onExerciseFormSubmit(e) {
+    e.preventDefault();
+    const data = UI.readExerciseForm();
+    if (!data) return;
+
+    const editing = UI.els.exerciseForm.dataset.editing;
+
+    if (editing) {
+      // Cambiar el número de series puede dar por completado (o no) un
+      // ejercicio del día: pasa por la misma contabilidad que las series.
+      withWorkoutScoring(currentDate, function () {
+        S.updateExercise(editing, data);
+      });
+      UI.toast('Ejercicio actualizado.', { type: 'success', icon: '✓' });
+    } else if (S.addExercise(data)) {
+      UI.toast('Ejercicio añadido.', { type: 'success', icon: '✓' });
+    } else {
+      UI.toast('Necesitas una rutina antes de añadir ejercicios.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    UI.closeExerciseModal();
+  }
+
+  function onDeleteExercise() {
+    const id = UI.els.exerciseForm.dataset.editing;
+    const exercise = S.getExercise(id);
+    if (!exercise) return;
+
+    if (!window.confirm('¿Eliminar "' + exercise.name + '"? Se borrarán también sus series registradas.')) return;
+
+    S.deleteExercise(id);
+    UI.closeExerciseModal();
+    UI.toast('Ejercicio eliminado.', { icon: '🗑️' });
+  }
+
+  function newRoutine() {
+    const name = window.prompt('Nombre de la rutina nueva:', '');
+    if (!name || !name.trim()) return;
+    S.addRoutine(name);
+    UI.toast('Rutina creada. Se alterna al final de la rotación.', { type: 'success', icon: '✓' });
+  }
+
+  /* ── Ficha de un hábito ───────────────────────────────────── */
+
+  function openHabit(id) {
+    habitId = id;
+    habitMonth = U.startOfMonth(U.fromKey(currentDate));
+    UI.setView('habit');
+    renderHabitIfOpen();
+    window.scrollTo(0, 0);
+  }
+
+  function closeHabit() {
+    habitId = null;
+    UI.setView('today');
+  }
+
+  function toggleArchive() {
+    const habit = S.getHabit(habitId);
+    if (!habit) return;
+
+    const wasArchived = habit.archived;
+    S.setArchived(habit.id, !wasArchived);
+
+    if (wasArchived) {
+      UI.toast('"' + habit.name + '" vuelve a estar activo.', { type: 'success', icon: '↩' });
+      renderHabitIfOpen();
+    } else {
+      UI.toast('"' + habit.name + '" archivado. Su histórico se conserva.', { icon: '🗄️' });
+      closeHabit();
+    }
+  }
+
+  /* ── Comodines de racha ───────────────────────────────────── */
+
+  function toggleFreeze() {
+    if (S.isFrozen(currentDate)) {
+      S.unfreezeDay(currentDate);
+      UI.toast('Día descongelado. Recuperas el comodín.');
+    } else if (S.freezeDay(currentDate)) {
+      UI.toast('Día congelado: no romperá ninguna racha.', { type: 'success', icon: '🧊' });
+    } else {
+      UI.toast('No te quedan comodines. Recuperas uno cada mes.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+    syncProgressState();
+  }
+
+  /* ── Modal de hábito ──────────────────────────────────────── */
+
+  function onFormSubmit(e) {
+    e.preventDefault();
+    const data = UI.readForm();
+    if (!data) return;
+
+    const editingId = UI.els.habitForm.dataset.editing;
+
+    if (editingId) {
+      const previous = S.getHabit(editingId);
+      S.updateHabit(editingId, data);
+      UI.toast(
+        previous && previous.type !== data.type
+          ? 'Hábito actualizado. Su histórico se ha reiniciado por el cambio de tipo.'
+          : 'Hábito actualizado.',
+        { type: 'success', icon: '✓' }
+      );
+    } else {
+      S.addHabit(data);
+      UI.toast('Hábito creado.', { type: 'success', icon: '✓' });
+    }
+
+    UI.closeModal();
+    scheduleReminders();
+    syncProgressState();
+  }
+
+  /** Borrado con red: pide confirmación y deja 7 segundos para deshacerlo. */
+  function confirmDelete(id) {
+    const habit = S.getHabit(id);
+    if (!habit) return;
+
+    if (!window.confirm('¿Eliminar "' + habit.name + '"? Se borrará también todo su histórico.')) return;
+
+    const snapshot = S.deleteHabit(id);
+    UI.closeModal();
+    if (habitId === id) closeHabit();
+    scheduleReminders();
+
+    UI.toast('"' + habit.name + '" eliminado.', {
+      icon: '🗑️',
+      action: {
+        label: 'Deshacer',
+        onClick: function () {
+          if (S.restoreHabit(snapshot)) {
+            scheduleReminders();
+            UI.toast('Hábito restaurado con su histórico.', { type: 'success', icon: '↩' });
+          }
+        }
+      }
+    });
+  }
+
+  /** Atrapa el foco dentro del modal mientras está abierto. */
+  function onModalKeydown(e) {
+    if (e.key === 'Escape') { UI.closeModal(); return; }
+    if (e.key !== 'Tab') return;
+
+    const focusables = U.$$(
+      'button:not([hidden]):not(:disabled), [href], input:not(:disabled), select, textarea, [tabindex]:not([tabindex="-1"])',
+      UI.els.habitModal
+    ).filter(function (n) { return n.offsetParent !== null; });
+
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+
+  /* ── Recordatorios ────────────────────────────────────────
+     Sin service worker no hay notificaciones con la pestaña
+     cerrada: se programan timers para los avisos que quedan
+     hoy y se reprograman al cambiar de día. ───────────────── */
+
+  function clearReminders() {
+    reminderTimers.forEach(clearTimeout);
+    reminderTimers = [];
+  }
+
+  function scheduleReminders() {
+    clearReminders();
+
+    if (!S.getSettings().notificationsEnabled) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const now = new Date();
+
+    S.getHabitsForDate(today).forEach(function (habit) {
+      if (!habit.reminder.enabled) return;
+
+      const parts = habit.reminder.time.split(':');
+      const when = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                            Number(parts[0]), Number(parts[1]), 0, 0);
+      const delay = when - now;
+      if (delay <= 0) return;
+
+      reminderTimers.push(setTimeout(function () {
+        // Si para entonces ya está hecho, no molestamos.
+        if (St.isComplete(habit, S.getLog(habit.id, U.todayKey()))) return;
+        try {
+          new Notification(habit.icon + '  ' + habit.name, {
+            body: 'Aún no lo has marcado hoy.',
+            tag: 'habit-' + habit.id
+          });
+        } catch (err) {
+          console.warn('No se pudo notificar:', err);
+        }
+      }, delay));
+    });
+  }
+
+  function toggleNotifications() {
+    if (S.getSettings().notificationsEnabled) {
+      S.setSettings({ notificationsEnabled: false });
+      clearReminders();
+      UI.toast('Recordatorios desactivados.');
+      return;
+    }
+
+    if (!('Notification' in window)) {
+      UI.toast('Este navegador no admite notificaciones.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    Notification.requestPermission().then(function (permission) {
+      if (permission !== 'granted') {
+        UI.renderSettings();
+        UI.toast('Permiso denegado. Actívalo en los ajustes del navegador.',
+                 { type: 'error', icon: '⚠️' });
+        return;
+      }
+      S.setSettings({ notificationsEnabled: true });
+      scheduleReminders();
+      UI.toast('Recordatorios activados.', { type: 'success', icon: '🔔' });
+    });
+  }
+
+  /* ── Exportación e importación ────────────────────────────── */
+
+  function download(filename, content, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function exportJson() {
+    download('habitos-' + today + '.json',
+             JSON.stringify(S.getState(), null, 2),
+             'application/json');
+    UI.toast('Copia exportada en JSON.', { type: 'success', icon: '↓' });
+  }
+
+  function csvCell(value) {
+    const s = String(value === null || value === undefined ? '' : value);
+    return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function exportCsv() {
+    const rows = [];
+
+    S.getHabits(true).forEach(function (habit) {
+      const logs = S.getHabitLogs(habit.id);
+
+      Object.keys(logs).sort().forEach(function (dateKey) {
+        const value = logs[dateKey];
+        let shown;
+        let goal;
+
+        if (habit.type === 'check') {
+          shown = 'sí';
+          goal = '';
+        } else if (habit.type === 'quantity') {
+          shown = value + ' ' + habit.target.unit;
+          goal = habit.target.amount + ' ' + habit.target.unit;
+        } else {
+          shown = Object.keys(value).map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
+          goal = habit.slots.map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
+        }
+
+        rows.push([
+          dateKey, habit.name, habit.type, shown, goal,
+          St.isComplete(habit, value) ? 'sí' : 'no'
+        ]);
+      });
+    });
+
+    rows.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
+    rows.unshift(['fecha', 'habito', 'tipo', 'valor', 'meta', 'completado']);
+
+    const csv = rows.map(function (r) { return r.map(csvCell).join(';'); }).join('\r\n');
+
+    // BOM + separador ';': así Excel en español abre el archivo con los
+    // acentos correctos y cada campo en su columna.
+    download('habitos-' + today + '.csv', '﻿' + csv, 'text/csv;charset=utf-8');
+    UI.toast('Datos exportados en CSV.', { type: 'success', icon: '↓' });
+  }
+
+  function importJson() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+
+    input.addEventListener('change', function () {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        let parsed;
+        try {
+          parsed = JSON.parse(reader.result);
+        } catch (err) {
+          UI.toast('El archivo no es un JSON válido.', { type: 'error', icon: '⚠️' });
+          return;
+        }
+
+        if (!parsed || !Array.isArray(parsed.habits)) {
+          UI.toast('El archivo no parece una copia de Hábitos.', { type: 'error', icon: '⚠️' });
+          return;
+        }
+
+        if (!window.confirm('Esto reemplazará todos tus datos actuales. ¿Continuar?')) return;
+
+        S.replaceState(parsed);
+        UI.applyAccent(S.getSettings().accent);
+        closeHabit();
+        scheduleReminders();
+        UI.toast('Datos importados.', { type: 'success', icon: '↑' });
+      };
+      reader.onerror = function () {
+        UI.toast('No se pudo leer el archivo.', { type: 'error', icon: '⚠️' });
+      };
+      reader.readAsText(file);
+    });
+
+    // Firefox exige que el input esté en el documento para abrir el diálogo.
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  function resetAll() {
+    if (!window.confirm('Se borrarán todos tus hábitos y su histórico. Esta acción no se puede deshacer.\n\n¿Seguro?')) return;
+    S.reset();
+    UI.applyAccent(S.getSettings().accent);
+    currentDate = today;
+    closeHabit();
+    scheduleReminders();
+    UI.toast('Todo restablecido.');
+  }
+
+  /* ── Cambio de día ────────────────────────────────────────
+     La app puede quedarse abierta toda la noche o el portátil
+     suspenderse: se comprueba por temporizador y al volver a
+     la pestaña. ──────────────────────────────────────────── */
+
+  function refreshDate() {
+    const key = U.todayKey();
+    if (key === today) return;
+
+    const wasOnToday = currentDate === today;
+    today = key;
+    if (wasOnToday) currentDate = key;   // si mirabas otro día, ahí te quedas
+
+    weekAnchor = key;
+    viewPeriod = U.startOfMonth(U.fromKey(key));
+    dirty.all = true;
+    scheduleFlush();
+    scheduleReminders();
+  }
+
+  function scheduleMidnight() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    setTimeout(function () {
+      refreshDate();
+      scheduleMidnight();
+    }, next - now);
+  }
+
+  /* ── Enlazado de eventos ──────────────────────────────────── */
+
+  function showProgress() {
+    UI.setView('progress');
+    UI.renderProgress(currentDate, viewPeriod, calScale);
+  }
+
+  function showWeek() {
+    UI.setView('week');
+    renderWeekIfOpen();
+  }
+
+  function stepWeek(delta) {
+    weekAnchor = U.addDaysKey(weekAnchor, delta * 7);
+    renderWeekIfOpen();
+  }
+
+  function stepPeriod(delta) {
+    viewPeriod = calScale === 'year'
+      ? new Date(viewPeriod.getFullYear() + delta, 0, 1)
+      : new Date(viewPeriod.getFullYear(), viewPeriod.getMonth() + delta, 1);
+    UI.renderProgress(currentDate, viewPeriod, calScale);
+  }
+
+  /** Cualquier celda del calendario lleva a ese día en la vista Hoy. */
+  function onCalendarClick(e) {
+    const cell = e.target.closest('[data-date]');
+    if (!cell || cell.disabled) return;
+    goToDate(cell.dataset.date);
+    UI.setView('today');
+    window.scrollTo(0, 0);
+  }
+
+  function bind() {
+    const els = UI.els;
+    const byId = function (id) { return document.getElementById(id); };
+
+    // Navegación de secciones
+    els.navItems.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (btn.dataset.view === 'progress') showProgress();
+        else if (btn.dataset.view === 'week') showWeek();
+        else if (btn.dataset.view === 'exercises') showExercises();
+        else UI.setView(btn.dataset.view);
+      });
+    });
+    els.levelBadge.addEventListener('click', showProgress);
+
+    // Semana
+    byId('prevWeek').addEventListener('click', function () { stepWeek(-1); });
+    byId('nextWeek').addEventListener('click', function () { stepWeek(1); });
+    els.btnThisWeek.addEventListener('click', function () {
+      weekAnchor = today;
+      renderWeekIfOpen();
+    });
+    els.weekGrid.addEventListener('click', onCalendarClick);
+
+    // Ejercicios
+    els.exerciseList.addEventListener('click', onExerciseListClick);
+    els.exerciseList.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.target.dataset.action !== 'set-value') return;
+      e.preventDefault();
+      const add = e.target.closest('.exercise').querySelector('[data-action="add-set"]');
+      if (add) add.click();
+    });
+    els.routinePick.addEventListener('change', function () {
+      S.setSessionRoutine(currentDate, els.routinePick.value);
+    });
+    els.btnFinishSession.addEventListener('click', toggleSession);
+    els.btnManageWorkout.addEventListener('click', function () { UI.toggleWorkoutManager(); });
+    els.routineTable.addEventListener('click', onRoutineTableClick);
+    byId('btnNewExercise').addEventListener('click', function () { UI.openExerciseModal(null); });
+    byId('btnNewRoutine').addEventListener('click', newRoutine);
+
+    els.exerciseForm.addEventListener('submit', onExerciseFormSubmit);
+    els.btnDeleteExercise.addEventListener('click', onDeleteExercise);
+    els.exerciseModal.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closeExerciseModal();
+    });
+    els.exerciseModal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') UI.closeExerciseModal();
+    });
+
+    // Navegación de días
+    els.prevDay.addEventListener('click', function () { stepDay(-1); });
+    els.nextDay.addEventListener('click', function () { stepDay(1); });
+    els.btnToday.addEventListener('click', function () { goToDate(today); });
+
+    // Tarjetas (delegación: un listener para toda la lista)
+    els.habitList.addEventListener('click', onHabitListClick);
+
+    // El valor manual se guarda solo mientras escribes: no depende de que
+    // pulses Enter ni de que salgas del campo.
+    const commitAmount = U.debounce(applyAmount, 500);
+    els.habitList.addEventListener('input', function (e) {
+      if (e.target.dataset.action === 'amount') commitAmount(e.target);
+    });
+    els.habitList.addEventListener('change', function (e) {
+      if (e.target.dataset.action === 'amount') applyAmount(e.target);
+    });
+    els.habitList.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.dataset.action === 'amount') e.target.blur();
+    });
+
+    // Extras del día
+    els.btnFreeze.addEventListener('click', toggleFreeze);
+    const saveNote = U.debounce(function () { S.setNote(currentDate, els.dayNote.value); }, 400);
+    els.dayNote.addEventListener('input', saveNote);
+    els.dayNote.addEventListener('blur', function () { S.setNote(currentDate, els.dayNote.value); });
+
+    // Alta de hábitos
+    byId('btnAddHabit').addEventListener('click', function () { UI.openModal(null); });
+    els.emptyToday.addEventListener('click', function (e) {
+      if (e.target.closest('[data-action="add-habit"]')) UI.openModal(null);
+    });
+
+    // Modal
+    els.habitForm.addEventListener('submit', onFormSubmit);
+    els.habitForm.addEventListener('change', function (e) {
+      if (e.target.name === 'type' || e.target.name === 'entry') UI.syncTypeFields();
+    });
+    els.fReminderSwitch.addEventListener('click', function () {
+      UI.setReminder(!UI.isReminderOn());
+    });
+
+    // Selector de emojis
+    els.btnEmoji.addEventListener('click', function () { UI.toggleEmojiPicker(); });
+    els.emojiPicker.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-emoji]');
+      if (!btn) return;
+      els.habitForm.elements.namedItem('icon').value = btn.dataset.emoji;
+      UI.markSelectedEmoji(btn.dataset.emoji);
+    });
+    document.getElementById('fIcon').addEventListener('input', function (e) {
+      UI.markSelectedEmoji(e.target.value.trim());
+    });
+    els.btnDeleteHabit.addEventListener('click', function () {
+      confirmDelete(els.habitForm.dataset.editing);
+    });
+    els.habitModal.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closeModal();
+    });
+    els.habitModal.addEventListener('keydown', onModalKeydown);
+
+    // Calendario general
+    byId('prevPeriod').addEventListener('click', function () { stepPeriod(-1); });
+    byId('nextPeriod').addEventListener('click', function () { stepPeriod(1); });
+    els.heatmap.addEventListener('click', onCalendarClick);
+    els.yearGrid.addEventListener('click', onCalendarClick);
+
+    U.$$('input[name="calScale"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        calScale = radio.value;
+        viewPeriod = calScale === 'year'
+          ? new Date(viewPeriod.getFullYear(), 0, 1)
+          : U.startOfMonth(U.fromKey(currentDate));
+        UI.renderProgress(currentDate, viewPeriod, calScale);
+      });
+    });
+
+    // Abrir la ficha desde la lista de rachas
+    els.streakList.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-id]');
+      if (btn) openHabit(btn.dataset.id);
+    });
+
+    // Ficha del hábito
+    byId('btnBackFromHabit').addEventListener('click', closeHabit);
+    byId('btnEditFromHabit').addEventListener('click', function () {
+      const habit = S.getHabit(habitId);
+      if (habit) UI.openModal(habit);
+    });
+    els.btnArchiveHabit.addEventListener('click', toggleArchive);
+    byId('btnDeleteFromHabit').addEventListener('click', function () { confirmDelete(habitId); });
+    els.habitHeatmap.addEventListener('click', onCalendarClick);
+
+    byId('hPrevMonth').addEventListener('click', function () {
+      habitMonth = new Date(habitMonth.getFullYear(), habitMonth.getMonth() - 1, 1);
+      renderHabitIfOpen();
+    });
+    byId('hNextMonth').addEventListener('click', function () {
+      habitMonth = new Date(habitMonth.getFullYear(), habitMonth.getMonth() + 1, 1);
+      renderHabitIfOpen();
+    });
+
+    // Ajustes
+    els.setStartWeek.addEventListener('change', function () {
+      S.setSettings({ weekStart: Number(els.setStartWeek.value) });
+    });
+    els.setAccent.addEventListener('input', function () {
+      UI.applyAccent(els.setAccent.value);
+    });
+    els.setAccent.addEventListener('change', function () {
+      S.setSettings({ accent: els.setAccent.value });
+    });
+    els.btnResetAccent.addEventListener('click', function () {
+      S.setSettings({ accent: U.DEFAULT_ACCENT });
+      UI.applyAccent(U.DEFAULT_ACCENT);
+      UI.toast('Color predeterminado restaurado.', { type: 'success', icon: '✓' });
+    });
+    els.setNotifications.addEventListener('click', toggleNotifications);
+    els.setEffects.addEventListener('click', function () {
+      S.setSettings({ effects: !S.getSettings().effects });
+    });
+
+    els.archiveList.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-restore]');
+      if (!btn) return;
+      const habit = S.getHabit(btn.dataset.restore);
+      S.setArchived(btn.dataset.restore, false);
+      if (habit) UI.toast('"' + habit.name + '" restaurado.', { type: 'success', icon: '↩' });
+    });
+
+    byId('btnExportJson').addEventListener('click', exportJson);
+    byId('btnExportCsv').addEventListener('click', exportCsv);
+    byId('btnImport').addEventListener('click', importJson);
+    byId('btnReset').addEventListener('click', resetAll);
+
+    // Cambio de día tras suspender el equipo o dejar la pestaña de fondo
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshDate();
+    });
+    window.addEventListener('focus', refreshDate);
+
+    // La gráfica se dibuja al ancho real, así que hay que rehacerla al redimensionar
+    window.addEventListener('resize', U.debounce(function () {
+      if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate, viewPeriod, calScale);
+    }, 200));
+  }
+
+  /* ── Arranque ─────────────────────────────────────────────── */
+
+  /**
+   * En file:// el origen es "null" y pedir el manifest da un error de CORS que
+   * asusta sin ser nada. Se enlaza solo cuando sirve de algo.
+   */
+  function linkManifest() {
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = 'manifest.json';
+    document.head.appendChild(link);
+  }
+
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    // Un service worker necesita origen seguro: abierto con file:// no aplica.
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
+
+    navigator.serviceWorker.register('sw.js').catch(function (err) {
+      console.warn('Service worker no registrado:', err);
+    });
+  }
+
+  /**
+   * Si el arranque falla, una pantalla muerta parece pérdida de datos. Mejor
+   * decir qué ha pasado, dejar claro que el almacén no se ha tocado y dar el
+   * error listo para copiar.
+   */
+  function showStartupError(err) {
+    const main = document.getElementById('main') || document.body;
+    main.textContent = '';
+
+    const box = document.createElement('div');
+    box.className = 'fatal';
+
+    const title = document.createElement('h1');
+    title.className = 'fatal__title';
+    title.textContent = 'La app no ha podido arrancar';
+
+    const text = document.createElement('p');
+    text.className = 'fatal__text';
+    text.textContent = 'Tus hábitos siguen guardados: este fallo ocurre antes de ' +
+                       'escribir nada. No borres los datos del navegador.';
+
+    const pre = document.createElement('pre');
+    pre.className = 'fatal__detail';
+    pre.textContent = (err && (err.stack || err.message)) || String(err);
+
+    box.appendChild(title);
+    box.appendChild(text);
+    box.appendChild(pre);
+    main.appendChild(box);
+  }
+
+  function boot() {
+    UI.init();
+    S.load();
+    S.subscribe(onStoreEvent);
+
+    UI.applyAccent(S.getSettings().accent);
+    renderAll();
+    bind();
+
+    syncProgressState();
+    scheduleReminders();
+    scheduleMidnight();
+    linkManifest();
+    registerServiceWorker();
+
+    const err = S.getLastError();
+    if (err && err.type === 'corrupt') {
+      UI.toast('Había datos dañados: se empezó de cero y se guardó una copia del original.',
+               { type: 'error', icon: '⚠️' });
+    } else if (err && err.type === 'unavailable') {
+      UI.toast('El navegador bloquea el almacenamiento: los cambios no se guardarán.',
+               { type: 'error', icon: '⚠️' });
+    }
+  }
+
+  function start() {
+    try {
+      boot();
+    } catch (err) {
+      console.error('Fallo al arrancar:', err);
+      showStartupError(err);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();

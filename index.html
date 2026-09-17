@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="description" content="Seguimiento de hábitos personal, offline y sin dependencias.">
+  <title>Hábitos</title>
+  <!-- El manifest lo enlaza app.js solo en http/https: en file:// el origen
+       es "null" y el navegador rechaza la petición con un error de CORS. -->
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+
+  <div class="app-shell">
+
+    <!-- ══ CABECERA ══ -->
+    <header class="app-header">
+      <div class="app-header__top">
+        <div class="brand">
+          <span class="brand__mark" aria-hidden="true">◈</span>
+          <span class="brand__name">Hábitos</span>
+        </div>
+
+        <button type="button" class="level-badge" id="levelBadge"
+                aria-label="Nivel 1, 0 puntos. Ver progreso">
+          <span class="level-badge__ring" id="levelRing" style="--ring-pct:0">
+            <span class="level-badge__num" id="levelNum">1</span>
+          </span>
+          <span class="level-badge__pts"><strong id="pointsValue">0</strong> XP</span>
+        </button>
+      </div>
+
+      <div class="day-summary">
+        <div class="day-summary__row">
+          <div class="day-nav">
+            <button type="button" class="icon-btn" id="prevDay" aria-label="Día anterior">‹</button>
+            <p class="day-summary__date" id="todayLabel">
+              <time id="todayTime" datetime="">—</time>
+            </p>
+            <button type="button" class="icon-btn" id="nextDay" aria-label="Día siguiente">›</button>
+          </div>
+          <p class="day-summary__count"><strong id="doneCount">0</strong>/<span id="totalCount">0</span></p>
+        </div>
+
+        <div class="progress" role="progressbar" aria-labelledby="todayLabel"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="dayProgress">
+          <div class="progress__fill" id="dayProgressFill" style="--pct:0"></div>
+        </div>
+
+        <button type="button" class="day-back" id="btnToday" hidden>Volver a hoy</button>
+      </div>
+    </header>
+
+    <!-- ══ CONTENIDO ══ -->
+    <main class="app-main" id="main">
+
+      <!-- ─── Vista: Hoy ─── -->
+      <section class="view is-active" id="view-today" aria-labelledby="titleToday">
+        <div class="view__head">
+          <h1 class="view__title" id="titleToday">Hoy</h1>
+          <button type="button" class="btn btn--primary" id="btnAddHabit">
+            <span aria-hidden="true">+</span> Nuevo hábito
+          </button>
+        </div>
+
+        <ul class="habit-list" id="habitList" aria-label="Hábitos del día"></ul>
+
+        <div class="empty-state" id="emptyToday" hidden>
+          <p class="empty-state__icon" aria-hidden="true">◇</p>
+          <h2 class="empty-state__title">Sin hábitos todavía</h2>
+          <p class="empty-state__text">Crea el primero y empieza tu racha hoy mismo.</p>
+          <button type="button" class="btn btn--primary" data-action="add-habit">Crear hábito</button>
+        </div>
+
+        <div class="day-actions" id="dayActions" hidden>
+          <button type="button" class="btn btn--ghost" id="btnFreeze">Congelar día</button>
+          <p class="day-actions__hint" id="freezeHint"></p>
+        </div>
+
+        <article class="card note-card">
+          <label class="field__label" for="dayNote">Notas del día</label>
+          <textarea class="input input--area" id="dayNote" rows="3" maxlength="500"
+                    placeholder="¿Cómo ha ido? Qué te ha ayudado, qué te ha frenado…"></textarea>
+        </article>
+      </section>
+
+      <!-- ─── Vista: Semana ─── -->
+      <section class="view" id="view-week" aria-labelledby="titleWeek" hidden>
+        <div class="view__head">
+          <h1 class="view__title" id="titleWeek">Semana</h1>
+          <button type="button" class="btn btn--ghost" id="btnThisWeek" hidden>Esta semana</button>
+        </div>
+
+        <div class="month-nav month-nav--lead">
+          <button type="button" class="icon-btn" id="prevWeek" aria-label="Semana anterior">‹</button>
+          <span class="month-nav__label month-nav__label--wide" id="weekLabel" aria-live="polite">—</span>
+          <button type="button" class="icon-btn" id="nextWeek" aria-label="Semana siguiente">›</button>
+        </div>
+
+        <article class="card">
+          <p class="week-summary" id="weekSummary">—</p>
+          <div class="week-grid" id="weekGrid"></div>
+          <div class="empty-state empty-state--inline" id="emptyWeek" hidden>
+            <p class="empty-state__text">Ningún hábito toca esta semana.</p>
+          </div>
+
+          <ul class="week-legend">
+            <li><span class="week-cell" data-level="4" aria-hidden="true"></span> Cumplido</li>
+            <li><span class="week-cell" data-level="2" aria-hidden="true"></span> A medias</li>
+            <li><span class="week-cell" data-level="0" data-state="pending" aria-hidden="true"></span> Pendiente</li>
+            <li><span class="week-cell" data-level="0" data-state="missed" aria-hidden="true"></span> Sin cumplir</li>
+            <li><span class="week-cell" data-level="0" data-state="frozen" aria-hidden="true"></span> Congelado</li>
+            <li><span class="week-cell" data-level="0" data-state="off" aria-hidden="true"></span> No toca</li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- ─── Vista: Ejercicios ─── -->
+      <section class="view view--stack" id="view-exercises" aria-labelledby="titleExercises" hidden>
+        <div class="view__head">
+          <h1 class="view__title" id="titleExercises">Ejercicios</h1>
+          <button type="button" class="btn" id="btnManageWorkout" aria-expanded="false"
+                  aria-controls="workoutManager">
+            <span>Gestionar</span>
+            <svg class="btn__chevron" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 9.5l6 6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <article class="card" id="sessionCard">
+          <header class="card__head">
+            <div>
+              <p class="session__eyebrow" id="sessionEyebrow">Hoy toca</p>
+              <h2 class="card__title card__title--lg" id="routineName">—</h2>
+            </div>
+            <label class="session__pick">
+              <span class="field__label">Rutina</span>
+              <select class="input input--select" id="routinePick"></select>
+            </label>
+          </header>
+
+          <p class="session__summary" id="sessionSummary">—</p>
+          <ul class="exercise-list" id="exerciseList"></ul>
+
+          <div class="empty-state empty-state--inline" id="emptyWorkout" hidden>
+            <p class="empty-state__text">Esta rutina no tiene ejercicios. Añádelos desde Gestionar.</p>
+          </div>
+
+          <footer class="session__foot">
+            <button type="button" class="btn btn--primary" id="btnFinishSession">Terminar entreno</button>
+            <p class="session__hint" id="sessionHint"></p>
+          </footer>
+        </article>
+
+        <div id="workoutManager" hidden>
+          <article class="card">
+            <header class="card__head">
+              <h2 class="card__title">Tu tabla</h2>
+              <div class="btn-row">
+                <button type="button" class="btn" id="btnNewExercise">Nuevo ejercicio</button>
+                <button type="button" class="btn" id="btnNewRoutine">Nueva rutina</button>
+              </div>
+            </header>
+            <p class="card__text">Las rutinas se alternan en este orden, una por entreno.</p>
+            <div id="routineTable"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ─── Vista: Progreso ─── -->
+      <section class="view" id="view-progress" aria-labelledby="titleProgress" hidden>
+        <div class="view__head">
+          <h1 class="view__title" id="titleProgress">Progreso</h1>
+        </div>
+
+        <div class="progress-grid">
+          <article class="card sys-level" id="levelPanel" aria-labelledby="lvTitle">
+            <h2 class="sys-level__eyebrow" id="lvTitle">Nivel</h2>
+
+            <p class="sys-level__num" id="lvNumber">1</p>
+            <p class="sys-level__rank" id="lvRank">Novato</p>
+
+            <div class="sys-level__bar" id="lvBar" role="progressbar"
+                 aria-labelledby="lvTitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span class="sys-level__fill" id="lvFill" style="--pct:0"></span>
+            </div>
+
+            <p class="sys-level__xp" id="lvXp">0 / 100 XP</p>
+            <p class="sys-level__left" id="lvRemaining">100 XP para subir de nivel</p>
+          </article>
+
+          <ul class="stat-grid" aria-label="Resumen de estadísticas">
+            <li class="stat">
+              <p class="stat__value" id="statWeek">—</p>
+              <p class="stat__label">Esta semana</p>
+              <span class="stat__bar" aria-hidden="true"><span class="stat__bar-fill" id="statWeekBar"></span></span>
+            </li>
+            <li class="stat">
+              <p class="stat__value" id="statMonth">—</p>
+              <p class="stat__label">Este mes</p>
+              <span class="stat__bar" aria-hidden="true"><span class="stat__bar-fill" id="statMonthBar"></span></span>
+            </li>
+            <li class="stat"><p class="stat__value" id="statStreak">—</p><p class="stat__label">Racha actual</p></li>
+            <li class="stat"><p class="stat__value" id="statBest">—</p><p class="stat__label">Mejor racha</p></li>
+          </ul>
+
+          <article class="card" aria-labelledby="heatmapTitle">
+            <header class="card__head">
+              <h2 class="card__title" id="heatmapTitle">Calendario</h2>
+              <div class="seg seg--compact" role="radiogroup" aria-label="Escala del calendario">
+                <label class="seg__opt">
+                  <input type="radio" name="calScale" value="month" checked>
+                  <span>Mes</span>
+                </label>
+                <label class="seg__opt">
+                  <input type="radio" name="calScale" value="year">
+                  <span>Año</span>
+                </label>
+              </div>
+            </header>
+
+            <div class="month-nav">
+              <button type="button" class="icon-btn" id="prevPeriod" aria-label="Periodo anterior">‹</button>
+              <span class="month-nav__label" id="monthLabel" aria-live="polite">—</span>
+              <button type="button" class="icon-btn" id="nextPeriod" aria-label="Periodo siguiente">›</button>
+            </div>
+
+            <div class="heatmap" id="heatmap"></div>
+
+            <div class="year-scroll" id="yearScroll" hidden>
+              <div class="year-grid" id="yearGrid"></div>
+            </div>
+
+            <div class="blank" id="calendarEmpty" hidden>
+              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
+                <rect x="6" y="10" width="36" height="32" rx="4"/>
+                <path d="M15 5v8M33 5v8M6 20h36"/>
+                <path d="M16 29h4M28 29h4M16 36h4M28 36h4"/>
+              </svg>
+              <p class="blank__text" id="calendarEmptyText">Aún no hay datos este mes</p>
+            </div>
+
+            <footer class="heatmap__legend" id="heatmapLegend">
+              <span>Menos</span>
+              <span class="heat" data-level="0"></span>
+              <span class="heat" data-level="1"></span>
+              <span class="heat" data-level="2"></span>
+              <span class="heat" data-level="3"></span>
+              <span class="heat" data-level="4"></span>
+              <span>Más</span>
+            </footer>
+          </article>
+
+          <article class="card" aria-labelledby="chartTitle">
+            <header class="card__head">
+              <h2 class="card__title" id="chartTitle">Evolución</h2>
+            </header>
+            <p class="chart__readout" id="chartReadout" aria-live="polite">—</p>
+            <div class="chart" id="chart"></div>
+
+            <div class="blank" id="chartEmpty" hidden>
+              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
+                <path d="M7 41h34M7 41V9"/>
+                <path d="M14 41V30M23 41V22M32 41V26M41 41V16" stroke-dasharray="3 4"/>
+              </svg>
+              <p class="blank__text">Completa tu primer hábito para ver tu evolución</p>
+            </div>
+
+            <details class="chart__data" id="chartData">
+              <summary>Ver los datos</summary>
+              <div class="table-scroll">
+                <table class="data-table" id="chartTable"></table>
+              </div>
+            </details>
+          </article>
+
+          <article class="card" aria-labelledby="streaksTitle">
+            <header class="card__head"><h2 class="card__title" id="streaksTitle">Rachas por hábito</h2></header>
+            <ul class="streak-list" id="streakList"></ul>
+          </article>
+
+          <article class="card" aria-labelledby="achTitle">
+            <header class="card__head"><h2 class="card__title" id="achTitle">Logros</h2></header>
+            <ul class="ach-grid" id="achievementGrid"></ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- ─── Vista: Ficha de un hábito ─── -->
+      <section class="view view--stack" id="view-habit" aria-labelledby="habitTitle" hidden>
+        <div class="view__head">
+          <button type="button" class="btn btn--ghost" id="btnBackFromHabit">
+            <span aria-hidden="true">‹</span> Volver
+          </button>
+          <div class="head-actions">
+            <button type="button" class="icon-btn" id="btnEditFromHabit" title="Editar" aria-label="Editar hábito">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3.5 20.5l4.3-1 11-11-3.3-3.3-11 11z"/><path d="M13.2 6.6l3.3 3.3"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" id="btnArchiveHabit" title="Archivar" aria-label="Archivar hábito">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4.5" width="18" height="4" rx="1"/><path d="M5 8.5v11h14v-11M10 12.5h4"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn icon-btn--danger" id="btnDeleteFromHabit"
+                    title="Eliminar" aria-label="Eliminar hábito">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6.5h16M10 6.5V4h4v2.5M6.8 6.5l.9 13.5h8.6l.9-13.5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <article class="card habit-hero">
+          <span class="habit-hero__icon" id="habitIcon" aria-hidden="true">✨</span>
+          <div>
+            <h1 class="view__title" id="habitTitle">—</h1>
+            <p class="habit-hero__meta" id="habitMeta">—</p>
+          </div>
+        </article>
+
+        <ul class="stat-grid" aria-label="Estadísticas del hábito">
+          <li class="stat"><p class="stat__value" id="hStreak">—</p><p class="stat__label">Racha actual</p></li>
+          <li class="stat"><p class="stat__value" id="hBest">—</p><p class="stat__label">Récord</p></li>
+          <li class="stat"><p class="stat__value" id="hRate">—</p><p class="stat__label">Últimos 30 días</p></li>
+          <li class="stat"><p class="stat__value" id="hTotal">—</p><p class="stat__label">Veces cumplido</p></li>
+        </ul>
+
+        <article class="card" aria-labelledby="hCalTitle">
+          <header class="card__head">
+            <h2 class="card__title" id="hCalTitle">Su calendario</h2>
+            <div class="month-nav">
+              <button type="button" class="icon-btn" id="hPrevMonth" aria-label="Mes anterior">‹</button>
+              <span class="month-nav__label" id="hMonthLabel" aria-live="polite">—</span>
+              <button type="button" class="icon-btn" id="hNextMonth" aria-label="Mes siguiente">›</button>
+            </div>
+          </header>
+          <div class="heatmap" id="habitHeatmap"></div>
+        </article>
+
+        <article class="card" aria-labelledby="hWeekTitle">
+          <header class="card__head"><h2 class="card__title" id="hWeekTitle">Por día de la semana</h2></header>
+          <ul class="weekbars" id="weekBars"></ul>
+          <p class="card__text card__text--tight" id="weekInsight"></p>
+        </article>
+      </section>
+
+      <!-- ─── Vista: Ajustes ─── -->
+      <section class="view" id="view-settings" aria-labelledby="titleSettings" hidden>
+        <div class="view__head">
+          <h1 class="view__title" id="titleSettings">Ajustes</h1>
+        </div>
+
+        <article class="card">
+          <header class="card__head"><h2 class="card__title">Preferencias</h2></header>
+          <div class="field-row">
+            <label for="setStartWeek">La semana empieza en</label>
+            <select id="setStartWeek" class="input input--select">
+              <option value="1">Lunes</option>
+              <option value="0">Domingo</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setAccent">Color predeterminado</label>
+              <span class="field-row__hint">Personaliza el color principal de la aplicación.</span>
+            </span>
+            <span class="field-row__controls">
+              <button type="button" class="btn btn--ghost" id="btnResetAccent">Restablecer</button>
+              <input type="color" id="setAccent" class="input input--color" value="#4361ee">
+            </span>
+          </div>
+          <div class="field-row">
+            <span id="notifLabel">Recordatorios</span>
+            <button type="button" class="switch" id="setNotifications"
+                    role="switch" aria-checked="false" aria-labelledby="notifLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span id="effectsLabel">Efectos al completar</span>
+            <button type="button" class="switch" id="setEffects"
+                    role="switch" aria-checked="true" aria-labelledby="effectsLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+        </article>
+
+        <article class="card" id="archivedCard" hidden>
+          <header class="card__head"><h2 class="card__title">Hábitos archivados</h2></header>
+          <p class="card__text">No aparecen en Hoy, pero conservan todo su histórico.</p>
+          <ul class="archive-list" id="archiveList"></ul>
+        </article>
+
+        <article class="card">
+          <header class="card__head"><h2 class="card__title">Tus datos</h2></header>
+          <p class="card__text">Todo se guarda en este navegador. Exporta una copia para no perderla.</p>
+          <div class="btn-row">
+            <button type="button" class="btn" id="btnExportJson">Exportar JSON</button>
+            <button type="button" class="btn" id="btnExportCsv">Exportar CSV</button>
+            <button type="button" class="btn" id="btnImport">Importar</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn--danger" id="btnReset">Borrar todo</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <header class="card__head"><h2 class="card__title">Esta instalación</h2></header>
+          <div class="field-row">
+            <span>Versión</span>
+            <span class="build" id="buildVersion">—</span>
+          </div>
+          <div class="field-row">
+            <span>Origen</span>
+            <span class="build" id="buildOrigin">—</span>
+          </div>
+          <div class="field-row">
+            <span>Caché offline</span>
+            <span class="build" id="buildCache">—</span>
+          </div>
+          <p class="card__text card__text--tight" id="buildHint"></p>
+        </article>
+      </section>
+    </main>
+
+    <!-- ══ NAVEGACIÓN ══ -->
+    <nav class="nav" aria-label="Secciones">
+      <button type="button" class="nav__item is-active" data-view="today" aria-current="page">
+        <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/>
+        </svg>
+        <span>Hoy</span>
+      </button>
+      <button type="button" class="nav__item" data-view="week">
+        <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 10h18M9.7 10v10.5M15.3 10v10.5"/>
+        </svg>
+        <span>Semana</span>
+      </button>
+      <button type="button" class="nav__item" data-view="exercises">
+        <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6.5 8v8M3.5 10v4M17.5 8v8M20.5 10v4M6.5 12h11"/>
+        </svg>
+        <span>Ejercicios</span>
+      </button>
+      <button type="button" class="nav__item" data-view="progress">
+        <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+        </svg>
+        <span>Progreso</span>
+      </button>
+      <button type="button" class="nav__item" data-view="settings">
+        <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.2"/>
+          <path d="M12 2.5v2.6M12 18.9v2.6M21.5 12h-2.6M5.1 12H2.5M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8M18.7 18.7l-1.8-1.8M7.1 7.1L5.3 5.3"/>
+        </svg>
+        <span>Ajustes</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ══ MODAL: crear / editar hábito ══ -->
+  <div class="modal" id="habitModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal__head">
+        <h2 class="modal__title" id="modalTitle">Nuevo hábito</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__body" id="habitForm" novalidate>
+        <div class="field">
+          <label class="field__label" for="fName">Nombre</label>
+          <input class="input" type="text" id="fName" name="name" required maxlength="40"
+                 placeholder="Ej. Salir a correr" autocomplete="off">
+          <p class="field__error" id="fNameError" role="alert" hidden></p>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label class="field__label" for="fIcon">Icono</label>
+            <div class="icon-field">
+              <input class="input input--icon" type="text" id="fIcon" name="icon" maxlength="4" value="✨">
+              <button type="button" class="btn" id="btnEmoji"
+                      aria-expanded="false" aria-controls="emojiPicker">Elegir emoji</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field__label" for="fColor">Color</label>
+            <input class="input input--color" type="color" id="fColor" name="color" value="#4361ee">
+          </div>
+        </div>
+
+        <div class="emoji-picker" id="emojiPicker" role="group" aria-label="Iconos sugeridos" hidden></div>
+
+        <fieldset class="field">
+          <legend class="field__label">Tipo de seguimiento</legend>
+          <div class="seg" role="radiogroup" aria-label="Tipo de seguimiento">
+            <label class="seg__opt">
+              <input type="radio" name="type" value="check" checked>
+              <span>Check diario</span>
+            </label>
+            <label class="seg__opt">
+              <input type="radio" name="type" value="quantity">
+              <span>Cantidad</span>
+            </label>
+            <label class="seg__opt">
+              <input type="radio" name="type" value="schedule">
+              <span>Franjas</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="field-grid" id="quantityFields" hidden>
+          <div class="field">
+            <label class="field__label" for="fTarget">Meta diaria</label>
+            <input class="input" type="number" id="fTarget" name="target" min="1" step="1" value="30">
+          </div>
+          <div class="field">
+            <label class="field__label" for="fUnit">Unidad</label>
+            <input class="input" type="text" id="fUnit" name="unit" maxlength="10" value="min">
+          </div>
+          <div class="field" id="stepField">
+            <label class="field__label" for="fStep">Incremento</label>
+            <input class="input" type="number" id="fStep" name="step" min="1" step="1" value="5">
+          </div>
+        </div>
+
+        <fieldset class="field" id="entryFields" hidden>
+          <legend class="field__label">Cómo registrar</legend>
+          <div class="seg" role="radiogroup" aria-label="Cómo registrar el valor">
+            <label class="seg__opt">
+              <input type="radio" name="entry" value="stepper" checked>
+              <span>Botones + y −</span>
+            </label>
+            <label class="seg__opt">
+              <input type="radio" name="entry" value="manual">
+              <span>Escribir el valor</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="field" id="slotFields" hidden>
+          <legend class="field__label">Franjas del día</legend>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="slots" value="morning" checked><span>Mañana</span></label>
+            <label class="chip"><input type="checkbox" name="slots" value="afternoon"><span>Tarde</span></label>
+            <label class="chip"><input type="checkbox" name="slots" value="night" checked><span>Noche</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend class="field__label">Días activos</legend>
+          <div class="chips chips--days" id="dayChips">
+            <label class="chip chip--day"><input type="checkbox" name="days" value="1" checked><span>L</span></label>
+            <label class="chip chip--day"><input type="checkbox" name="days" value="2" checked><span>M</span></label>
+            <label class="chip chip--day"><input type="checkbox" name="days" value="3" checked><span>X</span></label>
+            <label class="chip chip--day"><input type="checkbox" name="days" value="4" checked><span>J</span></label>
+            <label class="chip chip--day"><input type="checkbox" name="days" value="5" checked><span>V</span></label>
+            <label class="chip chip--day"><input type="checkbox" name="days" value="6" checked><span>S</span></label>
+            <label class="chip chip--day"><input type="checkbox" name="days" value="0" checked><span>D</span></label>
+          </div>
+        </fieldset>
+
+        <div class="field">
+          <div class="field-row field-row--tight">
+            <label class="field__label" for="fReminder">Recordatorio</label>
+            <button type="button" class="switch" id="fReminderSwitch" role="switch" aria-checked="false"
+                    aria-label="Activar recordatorio">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <input class="input" type="time" id="fReminder" name="reminderTime" value="08:00" disabled>
+        </div>
+      </form>
+
+      <footer class="modal__foot">
+        <button type="button" class="btn btn--ghost btn--danger" id="btnDeleteHabit" hidden>Eliminar</button>
+        <span class="modal__spacer"></span>
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn btn--primary" form="habitForm" id="btnSaveHabit">Guardar</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: crear / editar ejercicio ══ -->
+  <div class="modal" id="exerciseModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="exModalTitle">
+      <header class="modal__head">
+        <h2 class="modal__title" id="exModalTitle">Nuevo ejercicio</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__body" id="exerciseForm" novalidate>
+        <div class="field">
+          <label class="field__label" for="exName">Nombre</label>
+          <input class="input" type="text" id="exName" name="name" required maxlength="40"
+                 placeholder="Ej. Dominadas" autocomplete="off">
+          <p class="field__error" id="exNameError" role="alert" hidden></p>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="exRoutine">Rutina</label>
+          <select class="input" id="exRoutine" name="routineId"></select>
+        </div>
+
+        <fieldset class="field">
+          <legend class="field__label">Se mide en</legend>
+          <div class="seg" role="radiogroup" aria-label="Unidad del ejercicio">
+            <label class="seg__opt">
+              <input type="radio" name="kind" value="reps" checked>
+              <span>Repeticiones</span>
+            </label>
+            <label class="seg__opt">
+              <input type="radio" name="kind" value="time">
+              <span>Segundos</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="field-grid">
+          <div class="field">
+            <label class="field__label" for="exSets">Series</label>
+            <input class="input" type="number" id="exSets" name="sets" min="1" max="20" step="1" value="3">
+          </div>
+          <div class="field">
+            <label class="field__label" for="exTarget">Objetivo por serie</label>
+            <input class="input" type="number" id="exTarget" name="target" min="1" step="1" value="12">
+          </div>
+        </div>
+      </form>
+
+      <footer class="modal__foot">
+        <button type="button" class="btn btn--ghost btn--danger" id="btnDeleteExercise" hidden>Eliminar</button>
+        <span class="modal__spacer"></span>
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn btn--primary" form="exerciseForm">Guardar</button>
+      </footer>
+    </div>
+  </div>
+
+  <canvas class="confetti" id="confetti" aria-hidden="true" hidden></canvas>
+  <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
