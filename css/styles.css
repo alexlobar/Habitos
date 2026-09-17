@@ -610,6 +610,35 @@ button.habit-card__icon:active { transform: scale(.94); }
   stroke-dashoffset: 24;
   transition: stroke-dashoffset 280ms var(--ease);
 }
+/* Botón de recaída. No es un check: no premia, registra. Por eso va en
+   tono de aviso y sin el verde de "hecho". */
+.slip-btn {
+  flex: none;
+  align-self: center;
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.slip-btn:hover { background: color-mix(in srgb, var(--danger) 24%, transparent); }
+.slip-btn[aria-pressed="true"] {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.habit-card.is-slipped {
+  border-color: color-mix(in srgb, var(--danger) 48%, transparent);
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+.habit-card.is-slipped .habit-card__link { text-decoration: line-through; }
+
 .check-btn:hover { border-color: var(--habit-color, var(--accent)); }
 .check-btn[aria-pressed="true"] {
   border-color: var(--habit-color, var(--accent));
@@ -1379,6 +1408,7 @@ button.week-cell:disabled:hover { transform: none; }
   #view-progress .progress-grid > .card:nth-of-type(3) { animation-delay: 380ms; }
   #view-progress .progress-grid > .card:nth-of-type(4) { animation-delay: 440ms; }
   #view-progress .progress-grid > .card:nth-of-type(5) { animation-delay: 500ms; }
+  #view-progress .progress-grid > .card:nth-of-type(6) { animation-delay: 560ms; }
 }
 @keyframes sys-boot {
   from { opacity: 0; transform: translateY(10px); }
@@ -1601,6 +1631,12 @@ button.week-cell:disabled:hover { transform: none; }
   color: var(--text-muted);
 }
 .field__error { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--danger); }
+.field__hint {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
 
 .field-grid {
   display: grid;

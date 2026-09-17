@@ -203,12 +203,41 @@
     syncProgressState();
   }
 
+  /**
+   * XP por aguantar sin caer. Se calcula sobre la MEJOR racha histórica, que
+   * nunca baja, y se lleva la cuenta de lo ya cobrado: así una recaída no
+   * retira XP ganada y ningún hito se puede cobrar dos veces. Se dispara al
+   * arrancar y tras cada acción, así que un hito que se cumple solo con el
+   * paso de los días también se paga.
+   */
+  function syncAvoidXp() {
+    const debido = S.getHabits(true)
+      .filter(St.isAvoid)
+      .reduce(function (sum, h) {
+        return sum + St.avoidXpFor(St.bestStreak(h, today));
+      }, 0);
+
+    const pagado = S.getGame().avoidXpPaid;
+    if (debido <= pagado) return;
+
+    // Se apunta antes de pagar: si algo fallase, se cobra de menos y no de más.
+    S.setAvoidXpPaid(debido);
+    grantXp(debido - pagado);
+
+    S.getHabits().filter(St.isAvoid).forEach(function (h) {
+      const hito = St.avoidMilestoneAt(St.currentStreak(h, today));
+      if (hito) UI.toast(hito.name + ': ' + h.name, { type: 'achievement', icon: '💧' });
+    });
+  }
+
   /** Actualiza el récord de racha y desbloquea los logros nuevos. */
   function syncProgressState() {
     const best = S.getHabits().reduce(function (max, h) {
       return Math.max(max, St.bestStreak(h, today));
     }, 0);
     S.setBestStreak(best);
+
+    syncAvoidXp();
 
     St.earnedAchievements(today).forEach(function (id) {
       if (S.unlockAchievement(id)) {
@@ -246,6 +275,28 @@
     const action = btn.dataset.action;
 
     if (action === 'detail') { openHabit(habit.id); return; }
+
+    // Un mal hábito no pasa por withScoring: no da XP al cumplirse (el día
+    // ya empieza limpio), la cobra por hitos de racha en syncProgressState().
+    if (action === 'slip') {
+      const caido = S.getLog(habit.id, currentDate) === true;
+      // La racha se mide antes de tocar nada: después de anotar la recaída
+      // ya vale 0 y el mensaje no diría nada.
+      const previa = St.currentStreak(habit, today);
+
+      S.setLog(habit.id, currentDate, caido ? null : true);
+
+      if (caido) {
+        UI.toast('Recaída borrada. Tu racha vuelve a contar.', { type: 'success', icon: '↩' });
+      } else {
+        UI.toast(previa > 1
+          ? 'Anotado. Llevabas ' + previa + ' días limpio: eso no se borra.'
+          : 'Anotado. Mañana se empieza de nuevo.', { icon: '💧' });
+      }
+
+      syncProgressState();
+      return;
+    }
 
     withScoring(habit, currentDate, function () {
       if (action === 'check') S.toggleCheck(habit.id, currentDate);

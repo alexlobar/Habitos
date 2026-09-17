@@ -27,7 +27,7 @@ sustituyó ninguna estadística.
 
 ```
                 NIVEL
-                  2
+                  1
                NOVATO
         ████████░░░░░░░░░░░░░░
             125 / 250 XP
@@ -69,39 +69,48 @@ no obliga a migrar nada y no puede corromper datos de nadie.
 
 Definida en `js/stats.js`:
 
-- `XP_TABLE` — los niveles 1 a 10, escritos a mano.
+- `XP_TABLE` — los niveles 0 a 9, escritos a mano. **El índice del array es el
+  nivel**: se empieza en el 0, no en el 1.
 - `XP_STEP` (50) — el paso de la progresión a partir de ahí.
 
 | Nivel | XP total | Cuesta | Rango |
 |---:|---:|---:|---|
-| 1 | 0 | — | Novato |
-| 2 | 100 | 100 | Novato |
-| 3 | 250 | 150 | Novato |
-| 4 | 450 | 200 | Novato |
-| 5 | 700 | 250 | Novato |
-| 6 | 1.000 | 300 | Novato |
-| 7 | 1.350 | 350 | Novato |
-| 8 | 1.750 | 400 | Novato |
-| 9 | 2.200 | 450 | Novato |
-| 10 | 2.700 | 500 | Aprendiz |
-| 11 | 3.250 | 550 | Aprendiz |
-| 20 | 10.450 | 1.000 | Combatiente |
-| 30 | 23.200 | 1.500 | Élite |
-| 40 | 40.950 | 2.000 | Maestro |
-| 50 | 63.700 | 2.500 | ??? |
+| 0 | 0 | — | Novato |
+| 1 | 100 | 100 | Novato |
+| 2 | 250 | 150 | Novato |
+| 3 | 450 | 200 | Novato |
+| 4 | 700 | 250 | Novato |
+| 5 | 1.000 | 300 | Novato |
+| 6 | 1.350 | 350 | Novato |
+| 7 | 1.750 | 400 | Novato |
+| 8 | 2.200 | 450 | Novato |
+| 9 | 2.700 | 500 | Novato |
+| 10 | 3.250 | 550 | Aprendiz |
+| 11 | 3.850 | 600 | Aprendiz |
+| 20 | 11.500 | 1.050 | Combatiente |
+| 30 | 24.750 | 1.550 | Élite |
+| 40 | 43.000 | 2.050 | Maestro |
+| 50 | 66.250 | 2.550 | ??? |
 
 ### Por qué hay tabla y fórmula a la vez
 
-La columna "cuesta" sube siempre de 50 en 50. Esa regularidad permite que del
-nivel 10 en adelante no haga falta seguir escribiendo filas:
+La columna "cuesta" sube siempre de 50 en 50: llegar al nivel *n* cuesta
+`50·(n+1)`. Esa regularidad permite que del nivel 9 en adelante no haga falta
+seguir escribiendo filas:
 
 ```
-xpForLevel(n) = 25 · n · (n + 1) − 50
+xpForLevel(n) = 25 · n · (n + 3)
 ```
 
 Esa fórmula **reproduce las diez filas de la tabla al dígito**, así que tabla y
 continuación empalman sin escalón. La tabla se conserva porque es la que se lee
 de un vistazo; la fórmula es la que escala.
+
+### Por qué se empieza en 0 y no en 1
+
+Porque el nivel 0 es la casilla de salida: aún no has ganado nada. Y de paso
+cuadra los rangos — antes Novato cubría nueve niveles y todos los demás diez;
+ahora todos cubren diez.
 
 `levelFromXp()` hace el camino inverso: parte de la solución de la ecuación y
 después ajusta con un bucle corto, para que un redondeo de coma flotante nunca
@@ -119,7 +128,7 @@ cuenta: todas piden `levelInfo(xp)` y pintan lo que devuelve.
 
 | Niveles | Rango |
 |---|---|
-| 1 – 9 | Novato |
+| 0 – 9 | Novato |
 | 10 – 19 | Aprendiz |
 | 20 – 29 | Combatiente |
 | 30 – 39 | Élite |
@@ -142,6 +151,20 @@ está ahí para poder colgarle después un color o un título propio.
 | Completar todos los ejercicios del día | +25 | Conectado |
 | Cerrar un entrenamiento | +50 | Conectado |
 | Cumplir un objetivo | +100 | **Pendiente** |
+
+Los malos hábitos (tipo `avoid`) **no dan XP a diario**: su día empieza limpio,
+así que no hay ningún "pasó a cumplido" que premiar. Cobran por aguantar:
+
+| Hito | XP |
+|---|---:|
+| 7 días limpio | +50 |
+| 30 días limpio | +150 |
+| 100 días limpio | +400 |
+
+En `AVOID_MILESTONES`. Se calculan sobre la **mejor racha histórica**, que nunca
+baja, y `game.avoidXpPaid` lleva la cuenta de lo ya cobrado. De ahí salen dos
+garantías: un hito no se puede cobrar dos veces, y una recaída no retira XP que
+ya te habías ganado.
 
 Los valores viven en `XP`, en `js/stats.js`. Los de hábito y día perfecto ya
 existían desde la v1 con esas cifras y se mantienen para que la XP acumulada
@@ -206,10 +229,14 @@ cambiar la celebración no toca la regla de cuándo se ha subido.
 `game.points` ya era un acumulador de experiencia desde la v1, así que se
 reutiliza tal cual: **cero migración, cero riesgo de pérdida**.
 
-Lo que sí cambia es la curva. La anterior daba el nivel 2 a los 50 puntos y la
-actual lo da a los 100, de modo que un usuario que venía de antes puede ver un
-nivel más bajo que el que tenía. **No se pierde XP** — solo se reinterpreta. Se
-decidió esto antes que inventar una conversión que falsease el historial.
+Lo que sí cambia es la curva, y además la numeración empieza en 0. Un usuario
+que venía de antes verá un nivel más bajo que el que tenía: la curva vieja daba
+el nivel 2 a los 50 puntos, y ahora con 50 de XP se sigue en el nivel 0.
+
+**No se pierde XP** — solo se reinterpreta. Se decidió así antes que inventar
+una conversión que falsease el historial. Y como el nivel no se guarda, la
+próxima vez que cambiemos la curva pasará exactamente lo mismo: números
+distintos, mismos datos.
 
 ---
 

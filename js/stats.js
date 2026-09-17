@@ -43,8 +43,18 @@ HT.stats = (function () {
     return habit.activeDays.indexOf(U.fromKey(dateKey).getDay()) >= 0;
   }
 
+  /** ¿Es un hábito que se quiere dejar? Su lógica va al revés. */
+  function isAvoid(habit) {
+    return habit.type === 'avoid';
+  }
+
   /** ¿El valor registrado cumple la meta del hábito? */
   function isComplete(habit, value) {
+    // Un mal hábito se cumple por omisión: el día empieza limpio y solo deja
+    // de estarlo si se registra una recaída. Por eso se mira ANTES del null:
+    // "no hay nada apuntado" es precisamente el caso bueno.
+    if (isAvoid(habit)) return value !== true;
+
     if (value === null || value === undefined) return false;
 
     if (habit.type === 'check') return value === true;
@@ -55,6 +65,7 @@ HT.stats = (function () {
 
   /** Progreso 0–1 del hábito ese día (para barras y heatmap parcial). */
   function progressOf(habit, value) {
+    if (isAvoid(habit)) return value === true ? 0 : 1;
     if (value === null || value === undefined) return 0;
 
     if (habit.type === 'check') return value === true ? 1 : 0;
@@ -80,9 +91,21 @@ HT.stats = (function () {
     return S.isFrozen(dateKey) ? 'skip' : 'missed';
   }
 
+  /* Los hábitos que se hacen y los que se dejan se cuentan por separado.
+     Si los segundos entrasen en los porcentajes, el día empezaría ya con
+     ellos cumplidos y las medias medirían lo que evitas, no lo que haces. */
+
+  function doHabitsFor(dateKey) {
+    return S.getHabitsForDate(dateKey).filter(function (h) { return !isAvoid(h); });
+  }
+
+  function avoidHabitsFor(dateKey) {
+    return S.getHabitsForDate(dateKey).filter(isAvoid);
+  }
+
   /** Resumen de un día: cuántos hábitos tocaban y cuántos se cumplieron. */
   function dayStats(dateKey) {
-    const habits = S.getHabitsForDate(dateKey);
+    const habits = doHabitsFor(dateKey);
     let done = 0;
     let partial = 0;
 
@@ -93,6 +116,11 @@ HT.stats = (function () {
     });
 
     const total = habits.length;
+    const avoid = avoidHabitsFor(dateKey);
+    const slips = avoid.filter(function (h) {
+      return S.getLog(h.id, dateKey) === true;
+    }).length;
+
     return {
       total: total,
       done: done,
@@ -100,7 +128,10 @@ HT.stats = (function () {
       // El heatmap valora el esfuerzo parcial: 20/30 min tiñen la celda.
       ratio: total ? (done + partial) / total : 0,
       perfect: total > 0 && done === total,
-      frozen: S.isFrozen(dateKey)
+      frozen: S.isFrozen(dateKey),
+      // Aparte, y sin entrar en pct, ratio ni perfect.
+      avoidTotal: avoid.length,
+      slips: slips
     };
   }
 
@@ -286,7 +317,9 @@ HT.stats = (function () {
     const last = dateKeys[dateKeys.length - 1];
 
     return S.getHabits()
-      .filter(function (habit) { return habit.createdAt <= last; })
+      // Los de "dejar" no salen en la rejilla: no son un plan que cumplir,
+      // y su fila saldría entera en verde sin haber hecho nada.
+      .filter(function (habit) { return habit.createdAt <= last && !isAvoid(habit); })
       .map(function (habit) {
         const cells = dateKeys.map(function (key) {
           const state = cellState(habit, key, today);
@@ -411,6 +444,14 @@ HT.stats = (function () {
   /** Cuántas veces se ha cumplido en toda su historia. */
   function habitTotal(habit) {
     const logs = S.getHabitLogs(habit.id);
+
+    // En un mal hábito el registro guarda recaídas, no logros: los días
+    // limpios son los que han pasado menos las veces que se cayó.
+    if (isAvoid(habit)) {
+      const span = U.daysBetween(habit.createdAt, U.todayKey()) + 1;
+      return Math.max(0, span - Object.keys(logs).length);
+    }
+
     return Object.keys(logs).filter(function (key) {
       return isComplete(habit, logs[key]);
     }).length;
@@ -466,23 +507,24 @@ HT.stats = (function () {
      basta con tocar XP_TABLE y XP_STEP: ninguna vista calcula niveles
      por su cuenta, todas piden levelInfo(). ────────────────── */
 
-  /** XP total con la que empieza cada nivel, del 1 al 10. */
+  /* XP total con la que empieza cada nivel, del 0 al 9. El índice del array
+     ES el nivel: se empieza en el 0, no en el 1. */
   const XP_TABLE = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700];
 
-  /* Del 10 en adelante sigue la misma progresión: cada nivel cuesta 50·n
-     más de XP que el anterior (100, 150, 200, 250…). La fórmula cerrada
-     25·n·(n+1) − 50 reproduce la tabla exactamente, así que la tabla y la
-     continuación nunca pueden discrepar en el punto de empalme. */
+  /* Del 9 en adelante sigue la misma progresión: subir al nivel n cuesta
+     50·(n+1) de XP (100, 150, 200, 250…). La fórmula cerrada 25·n·(n+3)
+     reproduce la tabla exactamente, así que la tabla y la continuación
+     nunca pueden discrepar en el punto de empalme. */
   const XP_STEP = 50;
 
   const MAX_LEVEL_SCAN = 9999;   // tope para no iterar sin fin con XP absurda
 
-  /** XP total necesaria para alcanzar ese nivel. Nivel 1 → 0. */
+  /** XP total necesaria para alcanzar ese nivel. Nivel 0 → 0. */
   function xpForLevel(level) {
     const n = Math.floor(level);
-    if (n <= 1) return 0;
-    if (n <= XP_TABLE.length) return XP_TABLE[n - 1];
-    return (XP_STEP / 2) * n * (n + 1) - XP_STEP;
+    if (n <= 0) return 0;
+    if (n < XP_TABLE.length) return XP_TABLE[n];
+    return (XP_STEP / 2) * n * (n + 3);
   }
 
   /** Nivel que corresponde a una XP total acumulada. */
@@ -492,12 +534,13 @@ HT.stats = (function () {
     // Inversa de la fórmula, usada solo como punto de partida: el ajuste
     // posterior evita que un redondeo de coma flotante devuelva un nivel
     // que no case con xpForLevel().
-    let level = Math.floor((Math.sqrt(1 + 8 * (XP_STEP + xp) / XP_STEP) - 1) / 2);
-    if (!isFinite(level) || level < 1) level = 1;
+    const base = 1.5 * XP_STEP;
+    let level = Math.floor((Math.sqrt(base * base + 2 * XP_STEP * xp) - base) / XP_STEP);
+    if (!isFinite(level) || level < 0) level = 0;
 
     let guard = 0;
     while (xpForLevel(level + 1) <= xp && guard++ < MAX_LEVEL_SCAN) level++;
-    while (level > 1 && xpForLevel(level) > xp) level--;
+    while (level > 0 && xpForLevel(level) > xp) level--;
     return level;
   }
 
@@ -505,7 +548,7 @@ HT.stats = (function () {
      siempre gana la última cuyo `from` no supera el nivel. El rango
      acompaña al nivel, no lo sustituye. */
   const RANKS = [
-    { id: 'novato',      from: 1,  name: 'Novato' },
+    { id: 'novato',      from: 0,  name: 'Novato' },
     { id: 'aprendiz',    from: 10, name: 'Aprendiz' },
     { id: 'combatiente', from: 20, name: 'Combatiente' },
     { id: 'elite',       from: 30, name: 'Élite' },
@@ -542,6 +585,29 @@ HT.stats = (function () {
       remaining: next - xp,    // XP que falta para subir
       pct: span ? U.clamp(Math.round(((xp - floor) / span) * 100), 0, 100) : 0
     };
+  }
+
+  /* ── XP de los malos hábitos ──────────────────────────────
+     No pagan a diario: el día empieza limpio y premiar "que no pase nada"
+     cada 24 h no significa gran cosa. Pagan por aguantar, en hitos.
+     Se calcula sobre la MEJOR racha histórica, que nunca baja: así lo ya
+     cobrado nunca se puede reclamar dos veces ni retirar. ─────────── */
+  const AVOID_MILESTONES = [
+    { days: 7,   xp: 50,  name: 'Una semana limpio' },
+    { days: 30,  xp: 150, name: 'Un mes limpio' },
+    { days: 100, xp: 400, name: 'Cien días limpio' }
+  ];
+
+  /** XP acumulada que merece una racha limpia de `streak` días. */
+  function avoidXpFor(streak) {
+    return AVOID_MILESTONES.reduce(function (sum, m) {
+      return streak >= m.days ? sum + m.xp : sum;
+    }, 0);
+  }
+
+  /** El hito que se acaba de alcanzar con esa racha, si es justo hoy. */
+  function avoidMilestoneAt(streak) {
+    return AVOID_MILESTONES.filter(function (m) { return m.days === streak; })[0] || null;
   }
 
   /** ¿Este cambio de XP ha supuesto subir de nivel? Regla en un solo sitio. */
@@ -624,6 +690,10 @@ HT.stats = (function () {
 
     xpForLevel: xpForLevel, levelFromXp: levelFromXp,
     rankForLevel: rankForLevel, leveledUp: leveledUp,
+
+    AVOID_MILESTONES: AVOID_MILESTONES,
+    isAvoid: isAvoid, avoidXpFor: avoidXpFor, avoidMilestoneAt: avoidMilestoneAt,
+    doHabitsFor: doHabitsFor, avoidHabitsFor: avoidHabitsFor,
 
     isActiveOn: isActiveOn, isComplete: isComplete, progressOf: progressOf,
     dayStats: dayStats, heatLevel: heatLevel, habitDayLevel: habitDayLevel,

@@ -36,6 +36,10 @@ HT.ui = (function () {
     schedule: {
       label: 'Por franjas del día',
       shapes: [['circle', { cx: 12, cy: 12, r: 8.6 }], ['path', { d: 'M12 7.6V12l3.2 2' }]]
+    },
+    avoid: {
+      label: 'Hábito que quieres dejar',
+      shapes: [['circle', { cx: 12, cy: 12, r: 8.6 }], ['path', { d: 'M6.6 17.4L17.4 6.6' }]]
     }
   };
 
@@ -80,6 +84,7 @@ HT.ui = (function () {
       'statWeek', 'statMonth', 'statStreak', 'statBest',
       'levelPanel', 'lvNumber', 'lvRank', 'lvBar', 'lvFill', 'lvXp', 'lvRemaining',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
+      'avoidCard', 'avoidList',
       'statWeekBar', 'statMonthBar',
       'chart', 'chartTitle', 'chartReadout', 'chartTable', 'chartEmpty', 'chartData',
       'calendarEmpty', 'calendarEmptyText', 'heatmapLegend',
@@ -95,7 +100,7 @@ HT.ui = (function () {
       'setStartWeek', 'setAccent', 'btnResetAccent', 'setNotifications', 'setEffects',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
-      'quantityFields', 'stepField', 'entryFields', 'slotFields',
+      'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
       'fName', 'fNameError', 'fReminder', 'fReminderSwitch'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
@@ -295,6 +300,17 @@ HT.ui = (function () {
       li.appendChild(btn);
     }
 
+    // El mal hábito no se marca cuando lo cumples: se marca cuando caes.
+    if (habit.type === 'avoid') {
+      li.appendChild(el('button', {
+        type: 'button',
+        class: 'slip-btn',
+        'data-action': 'slip',
+        'aria-pressed': 'false',
+        text: 'He caído'
+      }));
+    }
+
     if (habit.type === 'quantity' && habit.target.entry === 'manual') {
       li.appendChild(el('input', {
         type: 'number',
@@ -332,9 +348,15 @@ HT.ui = (function () {
     const streak = St.currentStreak(habit, U.todayKey());
     const ratio = St.progressOf(habit, value);
 
-    li.classList.toggle('is-done', done);
+    const avoid = St.isAvoid(habit);
+    const slipped = avoid && value === true;
+
+    // Un mal hábito limpio no se pinta en verde: estar bien es lo normal,
+    // lo que tiene que saltar a la vista es la recaída.
+    li.classList.toggle('is-done', done && !avoid);
+    li.classList.toggle('is-slipped', slipped);
     // La franja izquierda hace de medidor: sube según el avance del día.
-    li.style.setProperty('--card-pct', Math.round(ratio * 100));
+    li.style.setProperty('--card-pct', avoid ? 0 : Math.round(ratio * 100));
 
     const meta = $('.habit-card__meta', li);
     meta.textContent = '';
@@ -343,8 +365,26 @@ HT.ui = (function () {
     if (streak > 0) {
       const s = el('span', { class: 'streak' });
       s.appendChild(el('span', { 'aria-hidden': 'true', text: '🔥' }));
-      s.appendChild(document.createTextNode(' ' + streak + (streak === 1 ? ' día' : ' días')));
+      s.appendChild(document.createTextNode(
+        ' ' + streak + (streak === 1 ? ' día' : ' días') + (avoid ? ' limpio' : '')
+      ));
       meta.appendChild(s);
+    }
+
+    if (avoid) {
+      const btn = $('.slip-btn', li);
+      btn.textContent = slipped ? 'Hoy caí' : 'He caído';
+      btn.setAttribute('aria-pressed', slipped ? 'true' : 'false');
+      btn.setAttribute('aria-label', slipped
+        ? 'Deshacer la recaída de hoy en ' + habit.name
+        : 'Registrar una recaída en ' + habit.name);
+
+      if (!streak) {
+        meta.appendChild(el('span', {
+          class: 'dot', 'aria-hidden': 'true', text: '·'
+        }));
+        meta.appendChild(el('span', { text: slipped ? 'Mañana se empieza de nuevo' : 'Sin días limpios aún' }));
+      }
     }
 
     if (habit.type === 'quantity') {
@@ -566,6 +606,7 @@ HT.ui = (function () {
     if (!vacio) renderChart(series, scale, periodLabel);
     else els.chartReadout.textContent = 'Sin registros en este periodo.';
     renderStreakList(dateKey);
+    renderAvoidList(dateKey);
     renderAchievements();
   }
 
@@ -1182,8 +1223,50 @@ HT.ui = (function () {
     table.appendChild(body);
   }
 
+  /**
+   * Malos hábitos: su propio bloque, con los días limpio. Fuera de los
+   * porcentajes y fuera de la lista de rachas normal.
+   */
+  function renderAvoidList(dateKey) {
+    const habits = S.getHabits().filter(St.isAvoid);
+
+    els.avoidCard.hidden = habits.length === 0;
+    if (!habits.length) return;
+
+    const frag = document.createDocumentFragment();
+
+    habits
+      .map(function (h) {
+        return { habit: h, current: St.currentStreak(h, dateKey), best: St.bestStreak(h, dateKey) };
+      })
+      .sort(function (a, b) { return b.current - a.current || b.best - a.best; })
+      .forEach(function (row) {
+        const item = el('li', { class: 'streak-item' });
+        const btn = el('button', {
+          type: 'button',
+          class: 'streak-item__open',
+          'data-id': row.habit.id,
+          'aria-label': 'Ver ' + row.habit.name + ': ' + row.current +
+                        ' días limpio, récord ' + row.best
+        });
+
+        btn.appendChild(el('span', { 'aria-hidden': 'true', text: row.habit.icon }));
+        btn.appendChild(el('span', { class: 'streak-item__name', text: row.habit.name }));
+        btn.appendChild(el('span', {
+          class: 'streak-item__days',
+          text: row.current + ' limpio · récord ' + row.best
+        }));
+
+        item.appendChild(btn);
+        frag.appendChild(item);
+      });
+
+    els.avoidList.textContent = '';
+    els.avoidList.appendChild(frag);
+  }
+
   function renderStreakList(dateKey) {
-    const habits = S.getHabits();
+    const habits = S.getHabits().filter(function (h) { return !St.isAvoid(h); });
     const frag = document.createDocumentFragment();
 
     const rows = habits.map(function (h) {
@@ -1537,6 +1620,8 @@ HT.ui = (function () {
     els.quantityFields.hidden = type !== 'quantity';
     els.entryFields.hidden = type !== 'quantity';
     els.slotFields.hidden = type !== 'schedule';
+    // "Dejar" invierte la lógica: conviene decirlo antes de guardar, no después.
+    els.avoidHint.hidden = type !== 'avoid';
 
     // El incremento solo significa algo si se registra con los botones
     els.stepField.hidden = !entry || entry.value !== 'stepper';

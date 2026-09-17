@@ -266,7 +266,7 @@ Una sola clave, `habitTracker.v1`:
     "name": "Leer",
     "icon": "📖",
     "color": "#e879f9",
-    "type": "quantity",                            // "check" | "quantity" | "schedule"
+    "type": "quantity",              // "check" | "quantity" | "schedule" | "avoid"
     // solo quantity · entry: "stepper" (botones + y −) o "manual" (escribir el total)
     "target": { "amount": 20, "unit": "min", "step": 5, "entry": "stepper" },
     "slots": ["morning", "night"],                 // solo schedule
@@ -276,7 +276,10 @@ Una sola clave, `habitTracker.v1`:
     "archived": false
   }],
   "logs": {
-    "h_k3f9": { "2026-09-15": 25 }    // check → true | quantity → número | schedule → {morning:true}
+    // check → true | quantity → número | schedule → {morning:true}
+    // avoid → true, pero aquí true significa RECAÍDA, no logro: el día
+    // sin registro es el día limpio.
+    "h_k3f9": { "2026-09-15": 25 }
   },
   "notes":  { "2026-09-15": "Día raro, pero saqué el rato de leer." },
   "frozen": { "2026-09-12": true },   // días salvados con un comodín

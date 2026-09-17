@@ -28,9 +28,9 @@
         </div>
 
         <button type="button" class="level-badge" id="levelBadge"
-                aria-label="Nivel 1, 0 puntos. Ver progreso">
+                aria-label="Nivel 0, 0 de XP. Ver progreso">
           <span class="level-badge__ring" id="levelRing" style="--ring-pct:0">
-            <span class="level-badge__num" id="levelNum">1</span>
+            <span class="level-badge__num" id="levelNum">0</span>
           </span>
           <span class="level-badge__pts"><strong id="pointsValue">0</strong> XP</span>
         </button>
@@ -184,7 +184,7 @@
           <article class="card sys-level" id="levelPanel" aria-labelledby="lvTitle">
             <h2 class="sys-level__eyebrow" id="lvTitle">Nivel</h2>
 
-            <p class="sys-level__num" id="lvNumber">1</p>
+            <p class="sys-level__num" id="lvNumber">0</p>
             <p class="sys-level__rank" id="lvRank">Novato</p>
 
             <div class="sys-level__bar" id="lvBar" role="progressbar"
@@ -284,6 +284,11 @@
           <article class="card" aria-labelledby="streaksTitle">
             <header class="card__head"><h2 class="card__title" id="streaksTitle">Rachas por hábito</h2></header>
             <ul class="streak-list" id="streakList"></ul>
+          </article>
+
+          <article class="card" id="avoidCard" aria-labelledby="avoidTitle" hidden>
+            <header class="card__head"><h2 class="card__title" id="avoidTitle">Días limpio</h2></header>
+            <ul class="streak-list" id="avoidList"></ul>
           </article>
 
           <article class="card" aria-labelledby="achTitle">
@@ -517,7 +522,15 @@
               <input type="radio" name="type" value="schedule">
               <span>Franjas</span>
             </label>
+            <label class="seg__opt">
+              <input type="radio" name="type" value="avoid">
+              <span>Dejar</span>
+            </label>
           </div>
+          <p class="field__hint" id="avoidHint" hidden>
+            El día empieza limpio: solo marcas cuando recaes. La racha cuenta
+            los días que llevas sin caer, y no entra en el porcentaje del día.
+          </p>
         </fieldset>
 
         <div class="field-grid" id="quantityFields" hidden>

@@ -108,7 +108,7 @@ HT.store = (function () {
       mkHabit({ name: 'Estiramientos', icon: '🤸', color: '#22d3ee',
                 type: 'check' }, today),
       mkHabit({ name: 'Lectura', icon: '📖', color: '#e879f9',
-                type: 'quantity', target: { amount: 20, unit: 'min', step: 5 } }, today),
+                type: 'quantity', target: { amount: 10, unit: 'páginas', step: 1 } }, today),
       mkHabit({ name: 'Japonés', icon: '🗾', color: '#fb7185',
                 type: 'check' }, today),
       mkHabit({ name: 'Ajedrez', icon: '♟️', color: '#a78bfa',
@@ -122,8 +122,10 @@ HT.store = (function () {
       // El único que no es diario: 0 = domingo, sea cual sea el inicio de semana.
       mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b',
                 type: 'check', activeDays: [0] }, today),
-      mkHabit({ name: 'Sin pantallas antes de dormir', icon: '📵', color: '#94a3b8',
-                type: 'check' }, today),
+      // Se nombra por lo que evitas, no por el objetivo: la tarjeta dice
+      // "He caído", y "he caído en Sin pantallas" no se entiende.
+      mkHabit({ name: 'Pantallas antes de dormir', icon: '📵', color: '#94a3b8',
+                type: 'avoid' }, today),
       mkHabit({ name: 'Dormir 7-9 horas', icon: '😴', color: '#818cf8',
                 type: 'check' }, today)
     ];
@@ -148,6 +150,7 @@ HT.store = (function () {
         // Arranca a 0 a propósito: el logro "Coleccionista" premia crear
         // hábitos, y los de partida los regala la app, no los creas tú.
         points: 0, achievements: [], bestStreak: 0, habitsCreated: 0,
+        avoidXpPaid: 0,
         freezes: 1, freezeMonth: today.slice(0, 7)
       }
     };
@@ -171,7 +174,7 @@ HT.store = (function () {
     const name = cleanName(raw.name, '');
     if (!name) return null;
 
-    const type = ['check', 'quantity', 'schedule'].indexOf(raw.type) >= 0 ? raw.type : 'check';
+    const type = ['check', 'quantity', 'schedule', 'avoid'].indexOf(raw.type) >= 0 ? raw.type : 'check';
 
     let target = null;
     if (type === 'quantity') {
@@ -225,7 +228,8 @@ HT.store = (function () {
 
   /** Normaliza el valor de un log según el tipo de hábito. */
   function cleanLogValue(habit, value) {
-    if (habit.type === 'check') return value === true ? true : null;
+    // 'avoid' guarda lo contrario que los demás: true = recaída, no logro.
+    if (habit.type === 'check' || habit.type === 'avoid') return value === true ? true : null;
 
     if (habit.type === 'quantity') {
       const n = Number(value);
@@ -374,6 +378,9 @@ HT.store = (function () {
         // Contador propio, no derivado de habits.length: cuenta los que ha
         // creado el usuario, que es lo que mide "Coleccionista".
         habitsCreated: Math.max(0, Math.floor(Number(g.habitsCreated) || 0)),
+        // XP por hitos de malos hábitos ya cobrada. Ausente en datos
+        // anteriores: empieza a 0 y solo puede subir.
+        avoidXpPaid: Math.max(0, Math.floor(Number(g.avoidXpPaid) || 0)),
         freezes: U.clamp(Math.floor(Number(g.freezes) || 0), 0, MAX_FREEZES),
         freezeMonth: /^\d{4}-\d{2}$/.test(g.freezeMonth) ? g.freezeMonth : today.slice(0, 7)
       }
@@ -891,6 +898,15 @@ HT.store = (function () {
     return true;
   }
 
+  /** Marca hasta dónde se ha cobrado ya la XP de hitos. Nunca baja. */
+  function setAvoidXpPaid(n) {
+    const next = Math.max(0, Math.floor(Number(n) || 0));
+    if (next <= state.game.avoidXpPaid) return state.game.avoidXpPaid;
+    state.game.avoidXpPaid = next;
+    save();
+    return next;
+  }
+
   function setBestStreak(n) {
     if (n <= state.game.bestStreak) return state.game.bestStreak;
     state.game.bestStreak = n;
@@ -937,6 +953,7 @@ HT.store = (function () {
 
     setSettings: setSettings,
     addPoints: addPoints, unlockAchievement: unlockAchievement, setBestStreak: setBestStreak,
+    setAvoidXpPaid: setAvoidXpPaid,
     replaceState: replaceState, reset: reset
   };
 })();
