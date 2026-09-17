@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    ui.js — Todo el DOM vive aquí: render, modal, toasts, efectos.
    Lee del store y de stats, pero nunca escribe: las acciones
    del usuario se delegan a app.js mediante eventos.
@@ -101,6 +101,7 @@ HT.ui = (function () {
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
+      'fCategory', 'limitField', 'fLimit',
       'fName', 'fNameError', 'fReminder', 'fReminderSwitch'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
@@ -120,6 +121,12 @@ HT.ui = (function () {
       settings: $('#view-settings')
     };
     els.navItems = U.$$('.nav__item');
+
+    // Las categorías salen del catálogo, no del HTML: añadir una es tocar
+    // HT.utils.CATEGORIES y nada más.
+    U.CATEGORIES.forEach(function (cat) {
+      els.fCategory.appendChild(el('option', { value: cat.id, text: cat.icon + '  ' + cat.name }));
+    });
 
     buildEmojiPicker();
   }
@@ -237,16 +244,31 @@ HT.ui = (function () {
     return svg;
   }
 
+  /**
+   * La tarjeta se monta una vez con toda su estructura y después solo se
+   * repinta (paintCard). Secciones, de arriba abajo: cabecera con categoría,
+   * nombre y estado; barra de progreso; controles; métricas; mensaje.
+   */
   function buildCard(habit, dateKey) {
+    const avoid = St.isAvoid(habit);
+    const cat = U.categoryById(habit.category);
+
     const li = el('li', {
       class: 'habit-card',
       'data-id': habit.id,
-      'data-type': habit.type
+      'data-type': habit.type,
+      'data-state': 'pending'
     });
     li.style.setProperty('--habit-color', habit.color);
+    // El borde izquierdo lleva el color de la categoría; sin categoría, el
+    // del propio hábito, para que nunca quede un canto muerto.
+    li.style.setProperty('--cat-color', cat ? cat.color : habit.color);
+
+    /* ── Cabecera ── */
+    const head = el('div', { class: 'habit-card__head' });
 
     // El icono abre la ficha del hábito; desde ahí se edita o se archiva.
-    li.appendChild(el('button', {
+    head.appendChild(el('button', {
       type: 'button',
       class: 'habit-card__icon',
       'data-action': 'detail',
@@ -255,20 +277,47 @@ HT.ui = (function () {
       text: habit.icon
     }));
 
+    const titles = el('div', { class: 'habit-card__titles' });
+
     // El nombre abre la ficha igual que el icono: un blanco mucho mayor.
     const title = el('h2', { class: 'habit-card__name' });
     title.appendChild(el('button', {
       type: 'button', class: 'habit-card__link', 'data-action': 'detail', text: habit.name
     }));
+    titles.appendChild(title);
 
-    const body = el('div', { class: 'habit-card__body' });
-    body.appendChild(title);
-    body.appendChild(el('p', { class: 'habit-card__meta' }));
+    const catRow = el('p', { class: 'habit-card__cat' });
+    if (cat) {
+      catRow.appendChild(el('span', { class: 'habit-card__cat-icon', 'aria-hidden': 'true', text: cat.icon }));
+      catRow.appendChild(el('span', { text: cat.name }));
+    } else {
+      catRow.appendChild(el('span', { text: 'Sin categoría' }));
+    }
+    titles.appendChild(catRow);
+    head.appendChild(titles);
 
-    if (habit.type === 'quantity') {
-      const bar = el('div', { class: 'progress progress--sm' });
-      bar.appendChild(el('div', { class: 'progress__fill' }));
-      body.appendChild(bar);
+    head.appendChild(el('span', { class: 'badge' }));
+    li.appendChild(head);
+
+    /* ── Barra de progreso ── */
+    const track = el('div', { class: 'progress progress--sm habit-card__bar' });
+    track.appendChild(el('div', { class: 'progress__fill' }));
+    li.appendChild(track);
+    li.appendChild(el('p', { class: 'habit-card__pct' }));
+
+    /* ── Controles ── */
+    const controls = el('div', { class: 'habit-card__controls' });
+
+    if (habit.type === 'check') {
+      const btn = el('button', {
+        type: 'button',
+        class: 'check-btn',
+        'data-action': 'check',
+        'aria-pressed': 'false',
+        'aria-label': 'Marcar ' + habit.name + ' como hecho'
+      });
+      btn.appendChild(checkIcon());
+      controls.appendChild(btn);
     }
 
     if (habit.type === 'schedule') {
@@ -283,36 +332,11 @@ HT.ui = (function () {
           text: St.SLOT_LABELS[slot]
         }));
       });
-      body.appendChild(group);
-    }
-
-    li.appendChild(body);
-
-    if (habit.type === 'check') {
-      const btn = el('button', {
-        type: 'button',
-        class: 'check-btn',
-        'data-action': 'check',
-        'aria-pressed': 'false',
-        'aria-label': 'Marcar ' + habit.name + ' como hecho'
-      });
-      btn.appendChild(checkIcon());
-      li.appendChild(btn);
-    }
-
-    // El mal hábito no se marca cuando lo cumples: se marca cuando caes.
-    if (habit.type === 'avoid') {
-      li.appendChild(el('button', {
-        type: 'button',
-        class: 'slip-btn',
-        'data-action': 'slip',
-        'aria-pressed': 'false',
-        text: 'He caído'
-      }));
+      controls.appendChild(group);
     }
 
     if (habit.type === 'quantity' && habit.target.entry === 'manual') {
-      li.appendChild(el('input', {
+      controls.appendChild(el('input', {
         type: 'number',
         class: 'input habit-card__amount',
         'data-action': 'amount',
@@ -322,90 +346,97 @@ HT.ui = (function () {
         placeholder: '0',
         'aria-label': habit.name + ': escribe el total en ' + habit.target.unit
       }));
-    } else if (habit.type === 'quantity') {
+    }
+
+    // Stepper de cantidad y de fallos: mismo esqueleto, distinto significado.
+    if ((habit.type === 'quantity' && habit.target.entry !== 'manual') || avoid) {
+      const paso = avoid ? 1 : habit.target.step;
+      const unidad = avoid ? 'fallos' : habit.target.unit;
+
       const stepper = el('div', { class: 'stepper' });
       stepper.appendChild(el('button', {
-        type: 'button', class: 'stepper__btn', 'data-action': 'minus',
-        'aria-label': 'Restar ' + habit.target.step + ' ' + habit.target.unit + ' a ' + habit.name,
+        type: 'button', class: 'round-btn', 'data-action': 'minus',
+        'aria-label': (avoid ? 'Quitar un fallo de ' : 'Restar ' + paso + ' ' + unidad + ' a ') + habit.name,
         text: '−'
       }));
+      stepper.appendChild(el('span', { class: 'habit-card__value' }));
       stepper.appendChild(el('button', {
-        type: 'button', class: 'stepper__btn stepper__btn--add', 'data-action': 'plus',
-        'aria-label': 'Sumar ' + habit.target.step + ' ' + habit.target.unit + ' a ' + habit.name,
-        text: '+'
+        type: 'button',
+        class: 'round-btn ' + (avoid ? 'round-btn--fail' : 'round-btn--add'),
+        'data-action': 'plus',
+        'aria-label': (avoid ? 'Apuntar un fallo en ' : 'Sumar ' + paso + ' ' + unidad + ' a ') + habit.name,
+        text: avoid ? '✗' : '+'
       }));
-      li.appendChild(stepper);
+      controls.appendChild(stepper);
     }
+
+    li.appendChild(controls);
+
+    /* ── Métricas y mensaje ── */
+    li.appendChild(el('ul', { class: 'habit-card__metrics' }));
+    li.appendChild(el('p', { class: 'habit-card__cheer', hidden: true }));
 
     paintCard(li, habit, dateKey);
     return li;
   }
 
+  /** Una métrica de la tira inferior: icono, número y etiqueta accesible. */
+  function metric(icon, text, label, className) {
+    const item = el('li', { class: 'metric' + (className ? ' ' + className : ''), title: label });
+    item.appendChild(el('span', { class: 'metric__icon', 'aria-hidden': 'true', text: icon }));
+    item.appendChild(el('span', { class: 'metric__text', text: text }));
+    item.appendChild(el('span', { class: 'sr-only', text: label }));
+    return item;
+  }
+
+  // Texto del badge por estado. El color lo pone el CSS con data-state.
+  const BADGE = {
+    done: 'Hecho', partial: 'En marcha', pending: 'Pendiente',
+    clean: 'Sin caer', warn: 'Ojo', critical: 'Al límite'
+  };
+
   /** Vuelca el estado del día sobre una tarjeta ya construida. */
   function paintCard(li, habit, dateKey) {
+    const hoy = U.todayKey();
     const value = S.getLog(habit.id, dateKey);
-    const done = St.isComplete(habit, value);
-    const streak = St.currentStreak(habit, U.todayKey());
-    const ratio = St.progressOf(habit, value);
-
     const avoid = St.isAvoid(habit);
-    const slipped = avoid && value === true;
+    const state = St.cardState(habit, dateKey);
+    const ratio = St.progressOf(habit, value);
+    const pct = Math.round(ratio * 100);
 
-    // Un mal hábito limpio no se pinta en verde: estar bien es lo normal,
-    // lo que tiene que saltar a la vista es la recaída.
-    li.classList.toggle('is-done', done && !avoid);
-    li.classList.toggle('is-slipped', slipped);
-    // La franja izquierda hace de medidor: sube según el avance del día.
-    li.style.setProperty('--card-pct', avoid ? 0 : Math.round(ratio * 100));
+    li.dataset.state = state;
+    li.classList.toggle('is-done', state === 'done');
+    li.style.setProperty('--card-pct', pct);
 
-    const meta = $('.habit-card__meta', li);
-    meta.textContent = '';
-    meta.appendChild(typeBadge(habit, 'habit-card__type'));
+    $('.badge', li).textContent = BADGE[state];
+    $('.progress__fill', li).style.setProperty('--pct', pct);
+    $('.habit-card__pct', li).textContent = pct + '%';
 
-    if (streak > 0) {
-      const s = el('span', { class: 'streak' });
-      s.appendChild(el('span', { 'aria-hidden': 'true', text: '🔥' }));
-      s.appendChild(document.createTextNode(
-        ' ' + streak + (streak === 1 ? ' día' : ' días') + (avoid ? ' limpio' : '')
-      ));
-      meta.appendChild(s);
+    /* ── Valor actual / meta ── */
+    const valueNode = $('.habit-card__value', li);
+    if (valueNode) {
+      const fails = St.failsOf(value);
+      const actual = avoid ? fails : (Number(value) || 0);
+      const tope = avoid ? St.limitOf(habit) : habit.target.amount;
+      const unidad = avoid ? '' : ' ' + habit.target.unit;
+
+      valueNode.textContent = '';
+      valueNode.appendChild(el('strong', { text: String(actual) }));
+      valueNode.appendChild(document.createTextNode(' / ' + tope + unidad));
+      valueNode.setAttribute('aria-label', avoid
+        ? fails + ' fallos hoy, límite ' + tope
+        : actual + ' de ' + tope + unidad);
     }
 
-    if (avoid) {
-      const btn = $('.slip-btn', li);
-      btn.textContent = slipped ? 'Hoy caí' : 'He caído';
-      btn.setAttribute('aria-pressed', slipped ? 'true' : 'false');
-      btn.setAttribute('aria-label', slipped
-        ? 'Deshacer la recaída de hoy en ' + habit.name
-        : 'Registrar una recaída en ' + habit.name);
-
-      if (!streak) {
-        meta.appendChild(el('span', {
-          class: 'dot', 'aria-hidden': 'true', text: '·'
-        }));
-        meta.appendChild(el('span', { text: slipped ? 'Mañana se empieza de nuevo' : 'Sin días limpios aún' }));
-      }
-    }
-
-    if (habit.type === 'quantity') {
-      const current = Number(value) || 0;
-      if (streak > 0) meta.appendChild(el('span', { class: 'dot', 'aria-hidden': 'true', text: '·' }));
-      const amount = el('span');
-      amount.appendChild(el('strong', { text: String(current) }));
-      amount.appendChild(document.createTextNode('/' + habit.target.amount + ' ' + habit.target.unit));
-      meta.appendChild(amount);
-
-      $('.progress__fill', li).style.setProperty('--pct', Math.round(St.progressOf(habit, value) * 100));
-
-      // Nunca se pisa lo que el usuario está escribiendo
-      const amountInput = $('.habit-card__amount', li);
-      if (amountInput && document.activeElement !== amountInput) {
-        amountInput.value = current || '';
-      }
+    const amountInput = $('.habit-card__amount', li);
+    // Nunca se pisa lo que el usuario está escribiendo.
+    if (amountInput && document.activeElement !== amountInput) {
+      amountInput.value = (Number(value) || 0) || '';
     }
 
     if (habit.type === 'check') {
       const btn = $('.check-btn', li);
+      const done = state === 'done';
       btn.setAttribute('aria-pressed', done ? 'true' : 'false');
       btn.setAttribute('aria-label', (done ? 'Desmarcar ' : 'Marcar ') + habit.name);
     }
@@ -417,6 +448,55 @@ HT.ui = (function () {
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
     }
+
+    /* ── Métricas ── */
+    const streak = St.currentStreak(habit, hoy);
+    const best = St.bestStreak(habit, hoy);
+    const rate = St.habitRate(habit, hoy, 30);
+
+    const metrics = $('.habit-card__metrics', li);
+    metrics.textContent = '';
+
+    metrics.appendChild(metric('🔥', String(streak),
+      'Racha actual: ' + streak + (streak === 1 ? ' día' : ' días') +
+      (avoid ? ' sin caer' : ' cumpliendo')));
+
+    // El récord solo se enseña si hay algo que superar. Cuando la racha lo
+    // alcanza, deja de ser una meta y pasa a ser la noticia.
+    if (best > streak) {
+      metrics.appendChild(metric('🏆', String(best), 'Récord: ' + best + ' días'));
+    } else if (best > 0 && streak === best) {
+      metrics.appendChild(metric('🏆', '¡récord!', 'Estás en tu mejor racha: ' + best + ' días',
+                                 'metric--record'));
+    }
+
+    metrics.appendChild(metric('📊', rate.total ? rate.pct + '%' : '—',
+      rate.total ? 'Tasa de éxito de los últimos 30 días: ' + rate.pct + '%'
+                 : 'Todavía sin datos de los últimos 30 días'));
+
+    if (avoid) {
+      const semana = St.failsThisWeek(habit, hoy, S.getSettings().weekStart);
+      metrics.appendChild(metric('❌', String(semana),
+        semana + (semana === 1 ? ' fallo' : ' fallos') + ' esta semana',
+        semana ? 'metric--bad' : null));
+    }
+
+    /* ── Mensaje ── */
+    const cheer = $('.habit-card__cheer', li);
+    const texto = cheerFor(habit, state, streak, avoid);
+    cheer.textContent = texto || '';
+    cheer.hidden = !texto;
+  }
+
+  /** El mensaje de ánimo, o null si no toca decir nada. */
+  function cheerFor(habit, state, streak, avoid) {
+    if (avoid) {
+      if (state === 'critical') return '⚠️ Has llegado al límite. Mañana, de cero.';
+      if (state === 'warn') return '💪 Un tropiezo no borra la racha.';
+      return streak > 1 ? '🎉 ¡' + streak + ' días sin caer!' : '🎉 ¡Día sin!';
+    }
+    if (state === 'done') return streak > 1 ? '🎉 ¡' + streak + ' días seguidos!' : '🎉 ¡Hecho!';
+    return null;
   }
 
   /** Reconstruye la lista entera. Solo al añadir, editar, borrar o cambiar de día. */
@@ -1078,6 +1158,16 @@ HT.ui = (function () {
     grad.appendChild(svgEl('stop', { class: 'chart__stop-a', offset: '0' }));
     grad.appendChild(svgEl('stop', { class: 'chart__stop-b', offset: '1' }));
     defs.appendChild(grad);
+
+    // Degradado del relleno bajo la línea: del color de la serie a nada.
+    const area = svgEl('linearGradient', {
+      id: 'chartAreaGrad', gradientUnits: 'userSpaceOnUse',
+      x1: 0, y1: CHART.mt, x2: 0, y2: base
+    });
+    area.appendChild(svgEl('stop', { class: 'chart__area-a', offset: '0' }));
+    area.appendChild(svgEl('stop', { class: 'chart__area-b', offset: '1' }));
+    defs.appendChild(area);
+
     svg.appendChild(defs);
 
     // Rejilla y eje Y, deliberadamente tenues
@@ -1098,27 +1188,69 @@ HT.ui = (function () {
     const slot = plotW / series.length;
     const barW = Math.max(3, Math.min(slot - 2, 30));
 
+    /* Día a día se dibuja como línea: son treinta puntos de una serie
+       continua y lo que interesa es la tendencia. Mes a mes siguen siendo
+       barras, que con doce valores sueltos se comparan mejor. */
+    const asLine = scale !== 'year';
+
+    if (asLine) {
+      const px = function (i) { return CHART.ml + i * slot + slot / 2; };
+      const py = function (p) { return base - (p.pct / 100) * plotH; };
+
+      // Los días sin datos cortan la línea en vez de inventar un 0: se abre
+      // un subtrazo nuevo después de cada hueco.
+      let line = '';
+      let areaPath = '';
+      let open = false;
+
+      series.forEach(function (point, i) {
+        if (!point.hasData) {
+          if (open) areaPath += 'L' + px(i - 1) + ',' + base + 'Z';
+          open = false;
+          return;
+        }
+        const cmd = open ? 'L' : 'M';
+        line += cmd + px(i) + ',' + py(point);
+        areaPath += open ? 'L' + px(i) + ',' + py(point)
+                         : 'M' + px(i) + ',' + base + 'L' + px(i) + ',' + py(point);
+        open = true;
+      });
+      if (open) areaPath += 'L' + px(series.length - 1) + ',' + base + 'Z';
+
+      if (areaPath) svg.appendChild(svgEl('path', { class: 'chart__area', d: areaPath }));
+      if (line) svg.appendChild(svgEl('path', { class: 'chart__line', d: line }));
+
+      series.forEach(function (point, i) {
+        if (!point.hasData) return;
+        svg.appendChild(svgEl('circle', {
+          class: 'chart__dot', cx: px(i), cy: py(point), r: 3, 'data-bar': i
+        }));
+      });
+    }
+
     series.forEach(function (point, i) {
       const x = CHART.ml + i * slot + (slot - barW) / 2;
 
-      // El carril marca los periodos que contaban; su ausencia marca los que no.
-      if (point.hasData) {
-        svg.appendChild(svgEl('rect', {
-          class: 'chart__track', x: x, y: CHART.mt, width: barW, height: plotH, rx: 2
-        }));
+      if (!asLine) {
+        // El carril marca los periodos que contaban; su ausencia marca los que no.
+        if (point.hasData) {
+          svg.appendChild(svgEl('rect', {
+            class: 'chart__track', x: x, y: CHART.mt, width: barW, height: plotH, rx: 2
+          }));
+        }
+
+        if (point.hasData && point.pct > 0) {
+          const y = base - (point.pct / 100) * plotH;
+          svg.appendChild(svgEl('path', {
+            class: 'chart__bar', d: barPath(x, y, barW, base), 'data-bar': i
+          }));
+        }
       }
 
       if (!point.hasData) return;
 
-      if (point.pct > 0) {
-        const y = base - (point.pct / 100) * plotH;
-        svg.appendChild(svgEl('path', {
-          class: 'chart__bar', d: barPath(x, y, barW, base), 'data-bar': i
-        }));
-      }
-
-      // Zona de escucha del ancho del hueco: acertar una barra fina es imposible.
-      // Va encima de todo, así que es ella quien lleva el tooltip nativo.
+      // Zona de escucha del ancho del hueco: acertar un punto fino es
+      // imposible. Va encima de todo, así que lleva el tooltip nativo.
       const hit = svgEl('rect', {
         class: 'chart__hit', x: CHART.ml + i * slot, y: CHART.mt,
         width: slot, height: plotH, 'data-i': i
@@ -1167,7 +1299,10 @@ HT.ui = (function () {
   }
 
   function clearPoint(svg) {
-    U.$$('.chart__bar.is-active', svg).forEach(function (b) { b.classList.remove('is-active'); });
+    U.$$('.is-active', svg).forEach(function (b) {
+      b.classList.remove('is-active');
+      if (b.tagName === 'circle') b.setAttribute('r', 3);
+    });
     els.chartReadout.textContent = els.chartReadout.dataset.summary;
   }
 
@@ -1179,7 +1314,10 @@ HT.ui = (function () {
 
     const i = Number(hit.dataset.i);
     const bar = svg.querySelector('[data-bar="' + i + '"]');
-    if (bar) bar.classList.add('is-active');
+    if (bar) {
+      bar.classList.add('is-active');
+      if (bar.tagName === 'circle') bar.setAttribute('r', 5);
+    }
 
     const point = series[i];
     els.chartReadout.textContent =
@@ -1228,37 +1366,64 @@ HT.ui = (function () {
    * se quieren dejar— para que el formato no se bifurque en dos sitios.
    * `clean` solo cambia las palabras: "3 días" frente a "3 días limpio".
    */
+  const WEEK_DOT_LABEL = { done: 'cumplido', missed: 'sin cumplir', skip: 'no tocaba' };
+
+  /**
+   * Los siete últimos días como puntos. Es lo que convierte la lista en algo
+   * que se lee de un vistazo: no solo cuántos días llevas, también la forma
+   * que ha tenido la semana.
+   */
+  function weekDots(habit, todayKey) {
+    const strip = el('span', { class: 'streak-item__week' });
+    const partes = [];
+
+    U.lastNDays(todayKey, 7).forEach(function (key) {
+      const outcome = St.dayOutcome(habit, key);
+      strip.appendChild(el('i', { class: 'streak-dot', 'data-outcome': outcome }));
+      partes.push(U.formatShort(U.fromKey(key)) + ' ' + WEEK_DOT_LABEL[outcome]);
+    });
+
+    strip.setAttribute('title', partes.join(' · '));
+    return strip;
+  }
+
   function streakRow(row, clean) {
     const dias = function (n) { return n === 1 ? ' día' : ' días'; };
-    const actual = row.current + dias(row.current) + (clean ? ' limpio' : '');
+    const actual = row.current + dias(row.current) + (clean ? ' sin caer' : '');
 
     const item = el('li', { class: 'streak-item' });
     const btn = el('button', {
       type: 'button',
-      class: 'streak-item__open',
+      class: 'streak-item__open' + (clean ? ' streak-item__open--clean' : ''),
       'data-id': row.habit.id,
       'aria-label': 'Ver ' + row.habit.name + ': ' + actual +
                     ', récord ' + row.best + dias(row.best)
     });
+    btn.style.setProperty('--habit-color', row.habit.color);
 
-    btn.appendChild(el('span', { 'aria-hidden': 'true', text: row.habit.icon }));
-    btn.appendChild(el('span', { class: 'streak-item__name', text: row.habit.name }));
-
-    const stats = el('span', { class: 'streak-item__stats', 'aria-hidden': 'true' });
-
-    const now = el('span', {
-      class: 'streak-item__now' + (clean ? ' streak-item__now--clean' : '')
-    });
-    now.appendChild(el('b', { text: String(row.current) }));
-    now.appendChild(document.createTextNode(dias(row.current) + (clean ? ' limpio' : '')));
-    stats.appendChild(now);
-
-    stats.appendChild(el('span', {
-      class: 'streak-item__best',
-      text: 'récord ' + row.best + dias(row.best)
+    btn.appendChild(el('span', {
+      class: 'streak-item__icon', 'aria-hidden': 'true', text: row.habit.icon
     }));
 
-    btn.appendChild(stats);
+    const body = el('span', { class: 'streak-item__body' });
+    body.appendChild(el('span', { class: 'streak-item__name', text: row.habit.name }));
+
+    const under = el('span', { class: 'streak-item__under', 'aria-hidden': 'true' });
+    under.appendChild(weekDots(row.habit, U.todayKey()));
+    if (row.best > 0) {
+      under.appendChild(el('span', { class: 'streak-item__best', text: 'récord ' + row.best }));
+    }
+    body.appendChild(under);
+    btn.appendChild(body);
+
+    const now = el('span', {
+      class: 'streak-item__now' + (clean ? ' streak-item__now--clean' : ''),
+      'aria-hidden': 'true'
+    });
+    now.appendChild(el('b', { text: String(row.current) }));
+    now.appendChild(el('span', { class: 'streak-item__unit', text: dias(row.current).trim() }));
+    btn.appendChild(now);
+
     item.appendChild(btn);
     return item;
   }
@@ -1573,6 +1738,8 @@ HT.ui = (function () {
       field('name').value = habit.name;
       field('icon').value = habit.icon;
       field('color').value = habit.color;
+      els.fCategory.value = habit.category || '';
+      if (habit.type === 'avoid') els.fLimit.value = St.limitOf(habit);
       U.$$('input[name="type"]', form).forEach(function (r) { r.checked = r.value === habit.type; });
 
       if (habit.type === 'quantity') {
@@ -1624,6 +1791,7 @@ HT.ui = (function () {
     els.slotFields.hidden = type !== 'schedule';
     // "Dejar" invierte la lógica: conviene decirlo antes de guardar, no después.
     els.avoidHint.hidden = type !== 'avoid';
+    els.limitField.hidden = type !== 'avoid';
 
     // El incremento solo significa algo si se registra con los botones
     els.stepField.hidden = !entry || entry.value !== 'stepper';
@@ -1668,10 +1836,13 @@ HT.ui = (function () {
       name: name,
       icon: field('icon').value.trim() || '✨',
       color: field('color').value,
+      category: els.fCategory.value || null,
       type: type,
       activeDays: days,
       reminder: { enabled: isReminderOn(), time: field('reminderTime').value || '08:00' }
     };
+
+    if (type === 'avoid') data.limit = Number(els.fLimit.value) || 2;
 
     if (type === 'quantity') {
       const entry = form.querySelector('input[name="entry"]:checked');

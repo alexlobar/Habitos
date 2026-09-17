@@ -11,12 +11,13 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 3;
+  const VERSION = 4;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   const MAX_NOTE = 500;
   const MAX_FREEZES = 3;
   const MAX_SETS = 20;
+  const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
   let state = null;
   let listeners = [];
@@ -32,8 +33,12 @@ HT.store = (function () {
       icon: data.icon || '✨',
       color: data.color || U.DEFAULT_ACCENT,
       type: data.type,
+      category: data.category || null,
       target: data.target || null,
       slots: data.slots || null,
+      // Solo en 'avoid': fallos en un día a partir de los cuales el hábito
+      // se considera crítico.
+      limit: data.limit || null,
       activeDays: data.activeDays || [0, 1, 2, 3, 4, 5, 6],
       reminder: data.reminder || { enabled: false, time: '08:00' },
       createdAt: today,
@@ -97,40 +102,83 @@ HT.store = (function () {
     return { routines: routines, exercises: exercises };
   }
 
+  /* Los dos hábitos a evitar que se añaden a todo el mundo, no solo a las
+     instalaciones nuevas. El límite por defecto es 2: a partir de ahí el
+     día se marca como crítico. Se edita desde el propio hábito. */
+  const AVOID_SEED = [
+    { name: 'Gula', icon: '🍔', color: '#f97316', type: 'avoid', category: 'evitar', limit: 2 },
+    { name: 'Lujo', icon: '💸', color: '#eab308', type: 'avoid', category: 'evitar', limit: 2 }
+  ];
+
+  /* Reparto por nombre de los hábitos que ya existían. Se compara sin
+     tildes ni mayúsculas para que "Japonés" y "japones" caigan igual. */
+  const CATEGORY_BY_NAME = {
+    '10k pasos': 'fisico',
+    'estiramientos': 'fisico',
+    'entrenar': 'fisico',
+    'dormir 7-9 horas': 'fisico',
+    'ejercicio': 'fisico',
+    'meditar': 'mental',
+    'planificar el dia': 'mental',
+    'planificar la semana': 'mental',
+    'pantallas antes de dormir': 'mental',
+    'evitar pantallas antes de dormir': 'mental',
+    'sin pantallas antes de dormir': 'mental',
+    'lectura': 'aprendizaje',
+    'leer': 'aprendizaje',
+    'japones': 'aprendizaje',
+    'ajedrez': 'aprendizaje',
+    'gula': 'evitar',
+    'lujo': 'evitar'
+  };
+
+  function plainName(name) {
+    return String(name || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .trim();
+  }
+
   function defaultState() {
     const today = U.todayKey();
     const habits = [
       // El total de pasos se escribe a mano (entry: 'manual'): nadie va a
       // pulsar "+" mil veces, el dato lo da el móvil de una pieza.
-      mkHabit({ name: '10k pasos', icon: '🚶', color: '#3ddc97',
+      // El total de pasos se escribe a mano (entry: 'manual'): nadie va a
+      // pulsar "+" mil veces, el dato lo da el móvil de una pieza.
+      mkHabit({ name: '10k pasos', icon: '🚶', color: '#3ddc97', category: 'fisico',
                 type: 'quantity',
                 target: { amount: 10000, unit: 'pasos', step: 1000, entry: 'manual' } }, today),
-      mkHabit({ name: 'Estiramientos', icon: '🤸', color: '#22d3ee',
+      mkHabit({ name: 'Estiramientos', icon: '🤸', color: '#22d3ee', category: 'fisico',
                 type: 'check' }, today),
-      mkHabit({ name: 'Lectura', icon: '📖', color: '#e879f9',
+      mkHabit({ name: 'Lectura', icon: '📖', color: '#e879f9', category: 'aprendizaje',
                 type: 'quantity', target: { amount: 10, unit: 'páginas', step: 1 } }, today),
-      mkHabit({ name: 'Japonés', icon: '🗾', color: '#fb7185',
+      mkHabit({ name: 'Japonés', icon: '🗾', color: '#fb7185', category: 'aprendizaje',
                 type: 'check' }, today),
-      mkHabit({ name: 'Ajedrez', icon: '♟️', color: '#a78bfa',
+      mkHabit({ name: 'Ajedrez', icon: '♟️', color: '#a78bfa', category: 'aprendizaje',
                 type: 'check' }, today),
-      mkHabit({ name: 'Meditar', icon: '🧘', color: '#38bdf8',
+      mkHabit({ name: 'Meditar', icon: '🧘', color: '#38bdf8', category: 'mental',
                 type: 'check' }, today),
       // Una sola franja: sigue siendo una casilla, pero la tarjeta dice
       // "Noche" en lugar de un check mudo.
-      mkHabit({ name: 'Planificar el día', icon: '🗒️', color: '#ffb454',
+      mkHabit({ name: 'Planificar el día', icon: '🗒️', color: '#ffb454', category: 'mental',
                 type: 'schedule', slots: ['night'] }, today),
       // El único que no es diario: 0 = domingo, sea cual sea el inicio de semana.
-      mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b',
+      mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b', category: 'mental',
                 type: 'check', activeDays: [0] }, today),
-      // Se nombra por lo que evitas, no por el objetivo: la tarjeta dice
-      // "He caído", y "he caído en Sin pantallas" no se entiende.
+      // Se nombra por lo que evitas, no por el objetivo: los botones apuntan
+      // fallos, y "he fallado en Sin pantallas" no se entiende.
       mkHabit({ name: 'Pantallas antes de dormir', icon: '📵', color: '#94a3b8',
-                type: 'avoid' }, today),
-      mkHabit({ name: 'Dormir 7-9 horas', icon: '😴', color: '#818cf8',
-                type: 'check' }, today)
+                category: 'mental', type: 'avoid', limit: 2 }, today),
+      mkHabit({ name: 'Dormir 7-9 horas', icon: '😴', color: '#818cf8', category: 'fisico',
+                type: 'check' }, today),
+      mkHabit(AVOID_SEED[0], today),
+      mkHabit(AVOID_SEED[1], today)
     ];
 
-    const training = mkHabit({ name: 'Entrenar', icon: '💪', color: '#f472b6', type: 'check' }, today);
+    const training = mkHabit({ name: 'Entrenar', icon: '💪', color: '#f472b6',
+                               category: 'fisico', type: 'check' }, today);
     habits.push(training);
 
     const seed = seedWorkout();
@@ -206,9 +254,18 @@ HT.store = (function () {
 
     const rem = raw.reminder || {};
 
+    // Tope de fallos del día. Solo significa algo en 'avoid'.
+    let limit = null;
+    if (type === 'avoid') {
+      const n = Math.floor(Number(raw.limit));
+      limit = isFinite(n) && n > 0 ? Math.min(n, MAX_FAILS) : 2;
+    }
+
     return {
       id: typeof raw.id === 'string' && raw.id ? raw.id : U.uid('h'),
       name: name,
+      category: U.categoryById(raw.category) ? raw.category : null,
+      limit: limit,
       // No se parte por code point: emojis como 🏔️ son dos unidades y
       // separarlas los degrada al glifo de texto.
       icon: typeof raw.icon === 'string' && raw.icon.trim() ? raw.icon.trim().slice(0, 8) : '✨',
@@ -228,8 +285,16 @@ HT.store = (function () {
 
   /** Normaliza el valor de un log según el tipo de hábito. */
   function cleanLogValue(habit, value) {
-    // 'avoid' guarda lo contrario que los demás: true = recaída, no logro.
-    if (habit.type === 'check' || habit.type === 'avoid') return value === true ? true : null;
+    if (habit.type === 'check') return value === true ? true : null;
+
+    // 'avoid' guarda lo contrario que los demás: el número de fallos del
+    // día, no un logro. El `true` de la versión anterior vale un fallo, así
+    // que los datos viejos se leen solos sin migración aparte.
+    if (habit.type === 'avoid') {
+      if (value === true) return 1;
+      const fails = Math.floor(Number(value));
+      return isFinite(fails) && fails > 0 ? Math.min(fails, MAX_FAILS) : null;
+    }
 
     if (habit.type === 'quantity') {
       const n = Number(value);
@@ -417,6 +482,28 @@ HT.store = (function () {
     }
   }
 
+  /**
+   * Migración a la v4: reparte por categorías lo que ya existía y añade los
+   * dos hábitos a evitar. Solo rellena huecos — una categoría ya elegida a
+   * mano no se pisa, y un hábito que ya exista por nombre no se duplica.
+   */
+  function migrateToCategories() {
+    state.habits.forEach(function (h) {
+      if (h.category) return;
+      // Sin nombre conocido, un hábito a evitar cae en su categoría y el
+      // resto se queda sin clasificar antes que clasificarse mal.
+      h.category = CATEGORY_BY_NAME[plainName(h.name)] ||
+                   (h.type === 'avoid' ? 'evitar' : null);
+    });
+
+    const existentes = state.habits.map(function (h) { return plainName(h.name); });
+
+    AVOID_SEED.forEach(function (seed) {
+      if (existentes.indexOf(plainName(seed.name)) >= 0) return;
+      state.habits.push(mkHabit(seed, U.todayKey()));
+    });
+  }
+
   /* ── Carga y guardado ─────────────────────────────────────── */
 
   function load() {
@@ -447,6 +534,7 @@ HT.store = (function () {
       state = cleanState(parsed);
       refillFreezes();
       if (incoming < 3) migrateToWorkout();
+      if (incoming < 4) migrateToCategories();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);

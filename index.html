@@ -287,7 +287,7 @@
           </article>
 
           <article class="card" id="avoidCard" aria-labelledby="avoidTitle" hidden>
-            <header class="card__head"><h2 class="card__title" id="avoidTitle">Días limpio</h2></header>
+            <header class="card__head"><h2 class="card__title" id="avoidTitle">Días sin</h2></header>
             <ul class="streak-list" id="avoidList"></ul>
           </article>
 
@@ -507,6 +507,13 @@
 
         <div class="emoji-picker" id="emojiPicker" role="group" aria-label="Iconos sugeridos" hidden></div>
 
+        <div class="field">
+          <label class="field__label" for="fCategory">Categoría</label>
+          <select id="fCategory" name="category" class="input input--select">
+            <option value="">Sin categoría</option>
+          </select>
+        </div>
+
         <fieldset class="field">
           <legend class="field__label">Tipo de seguimiento</legend>
           <div class="seg" role="radiogroup" aria-label="Tipo de seguimiento">
@@ -528,10 +535,21 @@
             </label>
           </div>
           <p class="field__hint" id="avoidHint" hidden>
-            El día empieza limpio: solo marcas cuando recaes. La racha cuenta
-            los días que llevas sin caer, y no entra en el porcentaje del día.
+            El día empieza a cero: solo apuntas los fallos con el botón ✗. La
+            racha cuenta los días que llevas sin caer, y no entra en el
+            porcentaje del día.
           </p>
         </fieldset>
+
+        <div class="field" id="limitField" hidden>
+          <label class="field__label" for="fLimit">Fallos que lo ponen en crítico</label>
+          <input type="number" id="fLimit" name="limit" class="input"
+                 min="1" max="99" step="1" value="2" inputmode="numeric">
+          <p class="field__hint">
+            A partir de este número de fallos en un día, la tarjeta se marca
+            en rojo. Con 1, cualquier fallo es crítico.
+          </p>
+        </div>
 
         <div class="field-grid" id="quantityFields" hidden>
           <div class="field">

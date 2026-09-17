@@ -48,12 +48,25 @@ HT.stats = (function () {
     return habit.type === 'avoid';
   }
 
+  /** Fallos apuntados en un día. `true` es el formato viejo y vale 1. */
+  function failsOf(value) {
+    if (value === true) return 1;
+    const n = Number(value);
+    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  /** Tope de fallos de un hábito a evitar antes de considerarlo crítico. */
+  function limitOf(habit) {
+    const n = Math.floor(Number(habit.limit));
+    return isFinite(n) && n > 0 ? n : 2;
+  }
+
   /** ¿El valor registrado cumple la meta del hábito? */
   function isComplete(habit, value) {
     // Un mal hábito se cumple por omisión: el día empieza limpio y solo deja
     // de estarlo si se registra una recaída. Por eso se mira ANTES del null:
     // "no hay nada apuntado" es precisamente el caso bueno.
-    if (isAvoid(habit)) return value !== true;
+    if (isAvoid(habit)) return !failsOf(value);
 
     if (value === null || value === undefined) return false;
 
@@ -65,7 +78,11 @@ HT.stats = (function () {
 
   /** Progreso 0–1 del hábito ese día (para barras y heatmap parcial). */
   function progressOf(habit, value) {
-    if (isAvoid(habit)) return value === true ? 0 : 1;
+    // Barra inversa: llena mientras no haya fallos, y se vacía según se
+    // acerca al límite. Es la lectura contraria a la de un hábito normal.
+    if (isAvoid(habit)) {
+      return U.clamp(1 - failsOf(value) / limitOf(habit), 0, 1);
+    }
     if (value === null || value === undefined) return 0;
 
     if (habit.type === 'check') return value === true ? 1 : 0;
@@ -118,7 +135,7 @@ HT.stats = (function () {
     const total = habits.length;
     const avoid = avoidHabitsFor(dateKey);
     const slips = avoid.filter(function (h) {
-      return S.getLog(h.id, dateKey) === true;
+      return failsOf(S.getLog(h.id, dateKey)) > 0;
     }).length;
 
     return {
@@ -133,6 +150,37 @@ HT.stats = (function () {
       avoidTotal: avoid.length,
       slips: slips
     };
+  }
+
+  /**
+   * El estado con el que se pinta la tarjeta. Lo decide un solo sitio para
+   * que el badge, el fondo y el mensaje no puedan contradecirse.
+   *   positivos → 'done' | 'partial' | 'pending'
+   *   a evitar  → 'clean' | 'warn' | 'critical'
+   */
+  function cardState(habit, dateKey) {
+    const value = S.getLog(habit.id, dateKey);
+
+    if (isAvoid(habit)) {
+      const fails = failsOf(value);
+      if (!fails) return 'clean';
+      return fails >= limitOf(habit) ? 'critical' : 'warn';
+    }
+
+    if (isComplete(habit, value)) return 'done';
+    return progressOf(habit, value) > 0 ? 'partial' : 'pending';
+  }
+
+  /** Fallos sumados desde el primer día de la semana en curso hasta hoy. */
+  function failsThisWeek(habit, todayKey, weekStart) {
+    const today = todayKey || U.todayKey();
+    const first = U.toKey(U.startOfWeek(U.fromKey(today), weekStart));
+
+    let n = 0;
+    daysFromTo(first, today).forEach(function (key) {
+      n += failsOf(S.getLog(habit.id, key));
+    });
+    return n;
   }
 
   /** Los cuatro escalones de la escala "Menos → Más". 0 = nada hecho. */
@@ -696,10 +744,13 @@ HT.stats = (function () {
     rankForLevel: rankForLevel, leveledUp: leveledUp,
 
     AVOID_MILESTONES: AVOID_MILESTONES,
-    isAvoid: isAvoid, avoidXpFor: avoidXpFor, avoidMilestoneAt: avoidMilestoneAt,
+    isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,
+    cardState: cardState, failsThisWeek: failsThisWeek,
+    avoidXpFor: avoidXpFor, avoidMilestoneAt: avoidMilestoneAt,
     doHabitsFor: doHabitsFor, avoidHabitsFor: avoidHabitsFor,
 
     isActiveOn: isActiveOn, isComplete: isComplete, progressOf: progressOf,
+    dayOutcome: dayOutcome,
     dayStats: dayStats, heatLevel: heatLevel, habitDayLevel: habitDayLevel,
     currentStreak: currentStreak, bestStreak: bestStreak, topStreak: topStreak,
     weekRate: weekRate, monthRate: monthRate, rateOver: rateOver, levelInfo: levelInfo,

@@ -278,28 +278,6 @@
 
     if (action === 'detail') { openHabit(habit.id); return; }
 
-    // Un mal hábito no pasa por withScoring: no da XP al cumplirse (el día
-    // ya empieza limpio), la cobra por hitos de racha en syncProgressState().
-    if (action === 'slip') {
-      const caido = S.getLog(habit.id, currentDate) === true;
-      // La racha se mide antes de tocar nada: después de anotar la recaída
-      // ya vale 0 y el mensaje no diría nada.
-      const previa = St.currentStreak(habit, today);
-
-      S.setLog(habit.id, currentDate, caido ? null : true);
-
-      if (caido) {
-        UI.toast('Recaída borrada. Tu racha vuelve a contar.', { type: 'success', icon: '↩' });
-      } else {
-        UI.toast(previa > 1
-          ? 'Anotado. Llevabas ' + previa + ' días limpio: eso no se borra.'
-          : 'Anotado. Mañana se empieza de nuevo.', { icon: '💧' });
-      }
-
-      syncProgressState();
-      return;
-    }
-
     // Con ratón o dedo, el paso ya lo ha dado onStepperPointerDown. Aquí solo
     // debe entrar el teclado, que activa el botón con un click de detail 0.
     if (action === 'plus' || action === 'minus') {
@@ -345,10 +323,28 @@
   function applyStep(btn) {
     const card = btn.closest('.habit-card');
     const habit = card && S.getHabit(card.dataset.id);
-    if (!habit || habit.type !== 'quantity') return false;
+    if (!habit) return false;
 
     const suma = btn.dataset.action === 'plus';
-    if (!suma && !(Number(S.getLog(habit.id, currentDate)) || 0)) return false;
+    const actual = Number(S.getLog(habit.id, currentDate)) || 0;
+    if (!suma && !actual) return false;          // restar de 0 no hace nada
+
+    // En un hábito a evitar, "+" apunta un fallo. No pasa por withScoring:
+    // su XP va por hitos de racha, y restarle 10 por caer se comería XP que
+    // nunca se le dio.
+    if (St.isAvoid(habit)) {
+      const antes = St.currentStreak(habit, today);
+      S.addQuantity(habit.id, currentDate, suma ? 1 : -1);
+
+      if (suma && antes > 1 && !St.failsOf(actual)) {
+        UI.toast('Anotado. Llevabas ' + antes + ' días sin caer: eso no se borra.',
+                 { icon: '💧' });
+      }
+      syncProgressState();
+      return true;
+    }
+
+    if (habit.type !== 'quantity') return false;
 
     withScoring(habit, currentDate, function () {
       S.addQuantity(habit.id, currentDate, suma ? habit.target.step : -habit.target.step);

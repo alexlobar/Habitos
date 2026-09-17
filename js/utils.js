@@ -22,7 +22,7 @@ HT.utils = (function () {
      otro sitio donde aparece es CACHE en sw.js, porque un service worker
      no puede leer este archivo; si se desincronizan, Ajustes lo avisa en
      vez de callarse. ─────────────────────────────────────── */
-  const VERSION = '1.1.2';
+  const VERSION = '1.2.1';
   const BUILD_DATE = '2026-09-17';
 
   /* ── Colores predeterminados ──────────────────────────────
@@ -41,6 +41,21 @@ HT.utils = (function () {
 
   function accentById(id) {
     return ACCENTS.filter(function (a) { return a.id === id; })[0] || null;
+  }
+
+  /* ── Categorías ───────────────────────────────────────────
+     Catálogo único. Un hábito guarda solo el `id`; el nombre, el icono y
+     el color salen de aquí, así que renombrar o recolorear una categoría
+     es tocar una línea y no repasar los datos de nadie. ────── */
+  const CATEGORIES = [
+    { id: 'fisico',      name: 'Salud y bienestar físico',     icon: '🏃', color: '#22c55e' },
+    { id: 'mental',      name: 'Desarrollo personal y mental', icon: '🧠', color: '#8b5cf6' },
+    { id: 'aprendizaje', name: 'Aprendizaje y conocimiento',   icon: '📚', color: '#3b82f6' },
+    { id: 'evitar',      name: 'Hábitos a evitar',             icon: '🚫', color: '#ef4444' }
+  ];
+
+  function categoryById(id) {
+    return CATEGORIES.filter(function (c) { return c.id === id; })[0] || null;
   }
 
   const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
@@ -231,6 +246,7 @@ HT.utils = (function () {
   return {
     version: VERSION, buildLabel: buildLabel,
     ACCENTS: ACCENTS, DEFAULT_ACCENT: DEFAULT_ACCENT, accentById: accentById,
+    CATEGORIES: CATEGORIES, categoryById: categoryById,
     toKey: toKey, fromKey: fromKey, isValidKey: isValidKey, todayKey: todayKey,
     addDays: addDays, addDaysKey: addDaysKey, daysBetween: daysBetween,
     startOfWeek: startOfWeek, startOfMonth: startOfMonth, daysInMonth: daysInMonth,

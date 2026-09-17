@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    HÁBITOS — Hoja de estilos
    1. Tokens · 2. Reset · 3. Layout · 4. Cabecera · 5. Navegación
    6. Vistas · 7. Tarjetas de hábito · 8. Progreso · 9. Formularios
@@ -11,6 +11,9 @@
   --bg:            #0b0d12;
   --bg-elevated:   #101420;
   --surface:       #151a26;
+  /* Fondo de las tarjetas de hábito, algo más azulado que el resto de
+     superficies para que destaquen sobre el fondo de la vista. */
+  --card-bg:       #1a1a2e;
   --surface-2:     #1d2433;
   --surface-3:     #272f42;
   --border:        #2a3244;
@@ -490,36 +493,214 @@ svg { display: block; }
 .habit-card {
   position: relative;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  gap: var(--sp-2);
+  align-content: start;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
+  /* El canto izquierdo lleva el color de la categoría. */
+  border-left: 3px solid var(--cat-color, var(--accent));
   border-radius: var(--radius);
-  background: var(--surface);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: var(--card-bg);
   overflow: hidden;
-  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease),
-              box-shadow var(--dur) var(--ease);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+              transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-/* Franja izquierda: no es decoración, es el medidor de avance del día.
-   ::before es la pista y ::after el relleno, que sube con --card-pct. */
-.habit-card::before {
-  content: "";
+
+/* ── Estados de la tarjeta ────────────────────────────────
+   Un solo atributo manda: data-state, que lo calcula St.cardState(). El
+   fondo, el badge y el borde salen todos de aquí, así que no pueden
+   contradecirse entre sí. ─────────────────────────────────── */
+.habit-card[data-state="done"],
+.habit-card[data-state="clean"] {
+  background: color-mix(in srgb, var(--success) 8%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--success) 34%, transparent);
+}
+.habit-card[data-state="warn"] {
+  border-color: color-mix(in srgb, var(--warning) 38%, transparent);
+}
+.habit-card[data-state="critical"] {
+  background: color-mix(in srgb, var(--danger) 10%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--danger) 52%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .habit-card[data-state="critical"] { animation: card-pulse 2s var(--ease) infinite; }
+}
+@keyframes card-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 34%, transparent); }
+  50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 0%, transparent); }
+}
+
+/* ── Cabecera ── */
+.habit-card__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--sp-2);
+}
+.habit-card__titles { min-width: 0; }
+.habit-card__cat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.habit-card__cat span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.habit-card[data-state="done"] .badge,
+.habit-card[data-state="clean"] .badge {
+  border-color: color-mix(in srgb, var(--success) 55%, transparent);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+.habit-card[data-state="warn"] .badge {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+}
+.habit-card[data-state="critical"] .badge {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
+}
+
+/* ── Barra y porcentaje ── */
+.habit-card__bar { margin-top: 2px; }
+.habit-card__pct {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* En los que se quieren dejar la barra se lee al revés: llena y verde
+   mientras no hay fallos, roja cuando se acerca al tope. */
+.habit-card[data-state="clean"] .progress__fill { background: var(--success); }
+.habit-card[data-state="warn"] .progress__fill { background: var(--warning); }
+.habit-card[data-state="critical"] .progress__fill { background: var(--danger); }
+
+/* ── Controles ── */
+.habit-card__controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-height: 48px;
+}
+.habit-card__value {
+  min-width: 4.5rem;
+  font-size: var(--fs-sm);
+  text-align: center;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.habit-card__value strong { font-size: var(--fs-lg); color: var(--text); }
+
+.round-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border: 1px solid color-mix(in srgb, var(--habit-color, var(--accent)) 55%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 18%, transparent);
+  color: var(--text);
+  font-size: var(--fs-xl);
+  font-weight: 650;
+  line-height: 1;
+  /* Se puede mantener pulsado: sin esto el táctil espera al doble toque
+     antes de reaccionar, y el dedo acaba seleccionando el glifo. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--dur) var(--ease), transform 120ms var(--ease);
+}
+.round-btn:hover { background: color-mix(in srgb, var(--habit-color, var(--accent)) 34%, transparent); }
+.round-btn--add { background: color-mix(in srgb, var(--habit-color, var(--accent)) 32%, transparent); }
+/* El "✗" de los negativos no es la acción deseable: va en rojo para que
+   nadie lo pulse por inercia creyendo que suma algo bueno. */
+.round-btn--fail {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--fs-lg);
+}
+.round-btn--fail:hover { background: color-mix(in srgb, var(--danger) 26%, transparent); }
+.round-btn:active,
+.round-btn.is-holding { transform: scale(.92); }
+.round-btn.is-repeating {
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 52%, transparent);
+  border-color: var(--habit-color, var(--accent));
+}
+.round-btn--fail.is-repeating { background: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+/* ── Métricas ── */
+.habit-card__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.metric__icon { font-size: 11px; }
+.metric--record { color: var(--warning); }
+.metric--bad { color: var(--danger); }
+
+.habit-card__cheer {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--success);
+}
+.habit-card[data-state="warn"] .habit-card__cheer { color: var(--warning); }
+.habit-card[data-state="critical"] .habit-card__cheer { color: var(--danger); }
+
+/* Solo para lectores de pantalla: la etiqueta larga de cada métrica. */
+.sr-only {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: color-mix(in srgb, var(--habit-color, var(--accent)) 22%, transparent);
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
-.habit-card::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 4px;
-  height: calc(var(--card-pct, 0) * 1%);
-  background: var(--habit-color, var(--accent));
-  transition: height 400ms var(--ease);
-}
+
+/* El medidor de avance ya no va en el canto: ahora es la barra de progreso
+   de la tarjeta, y el canto izquierdo lo ocupa el color de la categoría. */
 
 /* Glifo del tipo de hábito, en el mismo sitio en las tres variantes */
 .habit-card__type {
@@ -535,12 +716,8 @@ svg { display: block; }
 }
 .habit-card.is-done .habit-card__type { stroke: var(--success); }
 .habit-card:hover {
-  border-color: var(--border-strong);
   transform: translateY(-2px);
   box-shadow: var(--shadow-2);
-}
-.habit-card.is-done {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--habit-color) 9%, var(--surface)), var(--surface));
 }
 .habit-card.is-done .habit-card__name { color: var(--text-muted); }
 
@@ -616,35 +793,6 @@ button.habit-card__icon:active { transform: scale(.94); }
   stroke-dashoffset: 24;
   transition: stroke-dashoffset 280ms var(--ease);
 }
-/* Botón de recaída. No es un check: no premia, registra. Por eso va en
-   tono de aviso y sin el verde de "hecho". */
-.slip-btn {
-  flex: none;
-  align-self: center;
-  min-height: 40px;
-  padding: 0 var(--sp-3);
-  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-  border-radius: var(--radius-pill);
-  background: var(--danger-soft);
-  color: var(--danger);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-.slip-btn:hover { background: color-mix(in srgb, var(--danger) 24%, transparent); }
-.slip-btn[aria-pressed="true"] {
-  border-color: var(--danger);
-  background: var(--danger);
-  color: #ffffff;
-}
-
-.habit-card.is-slipped {
-  border-color: color-mix(in srgb, var(--danger) 48%, transparent);
-  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
-}
-.habit-card.is-slipped .habit-card__link { text-decoration: line-through; }
-
 .check-btn:hover { border-color: var(--habit-color, var(--accent)); }
 .check-btn[aria-pressed="true"] {
   border-color: var(--habit-color, var(--accent));
@@ -662,20 +810,30 @@ button.habit-card__icon:active { transform: scale(.94); }
    misma altura aunque un nombre ocupe dos líneas. ─────────────────── */
 @media (max-width: 767.98px) {
   .habit-card {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: 1fr auto;
-    grid-template-areas: "icon body" "control control";
-    align-items: start;
-    gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-3) var(--sp-3) calc(var(--sp-3) + 2px);
+    gap: 6px;
+    padding: var(--sp-2) var(--sp-2) var(--sp-3) var(--sp-3);
   }
-  .habit-card__icon { grid-area: icon; width: 34px; height: 34px; font-size: var(--fs-md); }
-  .habit-card__body { grid-area: body; }
+  /* A ~165px no cabe el badge junto al nombre: baja a su propia línea. */
+  .habit-card__head {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "icon titles" "badge badge";
+    row-gap: 4px;
+  }
+  .habit-card__icon { grid-area: icon; width: 30px; height: 30px; font-size: var(--fs-sm); }
+  .habit-card__titles { grid-area: titles; }
+  .badge { grid-area: badge; justify-self: start; }
 
-  .check-btn,
-  .stepper,
-  .slip-btn,
-  .habit-card .habit-card__amount { grid-area: control; justify-self: end; }
+  /* El nombre de la categoría no cabe; queda su icono, con el nombre
+     completo en el title y el color en el canto de la tarjeta. */
+  .habit-card__cat span:last-child { display: none; }
+  .habit-card__cat-icon { font-size: var(--fs-sm); }
+
+  .habit-card__controls { min-height: 42px; gap: 4px; }
+  .round-btn { width: 42px; height: 42px; font-size: var(--fs-lg); }
+  .habit-card__value { min-width: 0; flex: 1; font-size: var(--fs-xs); }
+  .habit-card__value strong { font-size: var(--fs-md); }
+  .habit-card__metrics { gap: 2px var(--sp-2); }
+  .habit-card__pct { display: none; }
 
   .habit-card__name { font-size: var(--fs-sm); }
   /* Truncar a una línea dejaba "Pantallas an…". Con tres caben los nombres
@@ -689,54 +847,13 @@ button.habit-card__icon:active { transform: scale(.94); }
     white-space: normal;
   }
 
-  .check-btn { width: 34px; height: 34px; }
-  .check-btn svg { width: 17px; height: 17px; }
-  .stepper__btn { width: 34px; height: 34px; font-size: var(--fs-md); }
-  .slip-btn { min-height: 34px; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
-  .habit-card .habit-card__amount { width: 4.75rem; min-height: 34px; }
+  .check-btn { width: 42px; height: 42px; }
+  .habit-card .habit-card__amount { width: 4.75rem; min-height: 40px; }
   .slot { padding: 4px var(--sp-2); }
 }
 
-/* Stepper para hábitos por cantidad */
-.stepper { display: flex; gap: var(--sp-2); }
-.stepper__btn {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  /* Los dos botones pesan igual: mismo borde, mismo tipo de relleno y el
-     mismo color de glifo. Antes el "−" era gris sobre gris y desaparecía. */
-  border: 1px solid color-mix(in srgb, var(--habit-color, var(--accent)) 55%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--habit-color, var(--accent)) 18%, transparent);
-  color: var(--text);
-  font-size: var(--fs-lg);
-  font-weight: 650;
-  line-height: 1;
-  /* Se puede mantener pulsado: sin esto el táctil espera al doble toque
-     antes de reaccionar, y el dedo acaba seleccionando el glifo. */
-  touch-action: manipulation;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  transition: background var(--dur) var(--ease), transform 120ms var(--ease);
-}
-.stepper__btn:hover {
-  background: color-mix(in srgb, var(--habit-color, var(--accent)) 34%, transparent);
-}
-.stepper__btn:active,
-.stepper__btn.is-holding { transform: scale(.9); }
-/* Mientras se repite, el botón se enciende: deja claro que sigue actuando
-   aunque el dedo no se mueva. */
-.stepper__btn.is-repeating {
-  background: color-mix(in srgb, var(--habit-color, var(--accent)) 52%, transparent);
-  border-color: var(--habit-color, var(--accent));
-}
-/* El "+" sigue siendo la acción principal, pero se distingue por el relleno
-   más sólido, no por ser el único legible. */
-.stepper__btn--add {
-  background: color-mix(in srgb, var(--habit-color, var(--accent)) 32%, transparent);
-}
+/* Stepper: [−] valor [+]. Lo usan los hábitos por cantidad y los de evitar. */
+.stepper { display: flex; align-items: center; gap: var(--sp-2); }
 
 /* Campo para escribir el total del día a mano.
    Selector doble a propósito: `.input` se declara más abajo y, a igual
@@ -1432,6 +1549,26 @@ button.week-cell:disabled:hover { transform: none; }
 #view-progress .chart__bar.is-active { fill: var(--sys-cyan); }
 .chart__stop-a { stop-color: var(--sys-violet, #a78bfa); }
 .chart__stop-b { stop-color: var(--sys-cyan, #46dcff); }
+
+/* Gráfica lineal del día a día. La línea toma el mismo degradado vertical
+   que tenían las barras, así que su color sigue diciendo a qué altura va. */
+.chart__line {
+  fill: none;
+  stroke: url(#chartBarGrad);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart__area { fill: url(#chartAreaGrad); }
+.chart__area-a { stop-color: var(--sys-cyan, #46dcff); stop-opacity: .26; }
+.chart__area-b { stop-color: var(--sys-cyan, #46dcff); stop-opacity: 0; }
+.chart__dot {
+  fill: var(--bg);
+  stroke: url(#chartBarGrad);
+  stroke-width: 2;
+  transition: r 120ms var(--ease);
+}
+.chart__dot.is-active { fill: var(--sys-cyan, var(--accent)); }
 #view-progress .chart__readout { font-family: var(--sys-mono); font-size: var(--fs-xs); }
 
 /* Rachas y logros con el mismo lenguaje */
@@ -1567,11 +1704,12 @@ button.week-cell:disabled:hover { transform: none; }
 .streak-list { display: grid; gap: var(--sp-2); }
 .streak-item__open {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-3);
   width: 100%;
   padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--habit-color, var(--accent));
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   font-size: var(--fs-sm);
@@ -1579,31 +1717,69 @@ button.week-cell:disabled:hover { transform: none; }
   transition: background var(--dur) var(--ease);
 }
 .streak-item__open:hover { background: var(--surface-3); }
-.streak-item__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Antes ponía "8 limpio · récord 8" en una línea y no se entendía qué era
-   cada número. Ahora van apilados: arriba lo que llevas, abajo el récord,
-   con la unidad escrita y distinta jerarquía. */
-.streak-item__stats {
+.streak-item__icon {
   display: grid;
-  justify-items: end;
-  gap: 1px;
-  text-align: right;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 18%, transparent);
+  font-size: var(--fs-md);
+}
+.streak-item__body { min-width: 0; }
+.streak-item__name {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+.streak-item__under {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 3px;
+}
+
+/* Los siete últimos días como puntos. Es lo que hace que la fila se lea de
+   un vistazo: además de cuántos llevas, qué forma ha tenido la semana. */
+.streak-item__week { display: flex; gap: 3px; }
+.streak-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--surface-3);
+}
+.streak-dot[data-outcome="done"] { background: var(--habit-color, var(--accent)); }
+.streak-dot[data-outcome="missed"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+.streak-item__best {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* La cifra manda: número grande y unidad pequeña debajo. */
 .streak-item__now {
-  font-size: var(--fs-sm);
-  font-weight: 650;
+  display: grid;
+  justify-items: center;
+  line-height: 1.1;
   color: var(--streak);
   font-variant-numeric: tabular-nums;
 }
 .streak-item__now--clean { color: var(--frost); }
-.streak-item__now b { font-size: var(--fs-md); }
-.streak-item__best {
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+.streak-item__now b { font-size: var(--fs-xl); font-weight: 700; }
+.streak-item__unit {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .ach-grid {

@@ -5,7 +5,7 @@
    ============================================================ */
 /* Este número tiene que coincidir con VERSION en js/utils.js. Si se
    desincronizan, la pantalla de Ajustes lo avisa en lugar de callarse. */
-const CACHE = 'habitos-v1.1.2';
+const CACHE = 'habitos-v1.2.1';
 
 const ASSETS = [
   './',
