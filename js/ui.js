@@ -277,24 +277,13 @@ HT.ui = (function () {
       text: habit.icon
     }));
 
-    const titles = el('div', { class: 'habit-card__titles' });
-
     // El nombre abre la ficha igual que el icono: un blanco mucho mayor.
-    const title = el('h2', { class: 'habit-card__name' });
+    // La categoría no se repite aquí: la dice la cabecera de la sección.
+    const title = el('h3', { class: 'habit-card__name' });
     title.appendChild(el('button', {
       type: 'button', class: 'habit-card__link', 'data-action': 'detail', text: habit.name
     }));
-    titles.appendChild(title);
-
-    const catRow = el('p', { class: 'habit-card__cat' });
-    if (cat) {
-      catRow.appendChild(el('span', { class: 'habit-card__cat-icon', 'aria-hidden': 'true', text: cat.icon }));
-      catRow.appendChild(el('span', { text: cat.name }));
-    } else {
-      catRow.appendChild(el('span', { text: 'Sin categoría' }));
-    }
-    titles.appendChild(catRow);
-    head.appendChild(titles);
+    head.appendChild(title);
 
     head.appendChild(el('span', { class: 'badge' }));
     li.appendChild(head);
@@ -320,12 +309,16 @@ HT.ui = (function () {
       controls.appendChild(btn);
     }
 
-    if (habit.type === 'schedule') {
-      const group = el('div', { class: 'slots', role: 'group', 'aria-label': 'Franjas de ' + habit.name });
+    // Franjas. En 'schedule' marcan lo cumplido; en 'avoid', lo fallado.
+    if (habit.slots && (habit.type === 'schedule' || avoid)) {
+      const group = el('div', {
+        class: 'slots', role: 'group',
+        'aria-label': (avoid ? 'Franjas a evitar de ' : 'Franjas de ') + habit.name
+      });
       habit.slots.forEach(function (slot) {
         group.appendChild(el('button', {
           type: 'button',
-          class: 'slot',
+          class: 'slot' + (avoid ? ' slot--avoid' : ''),
           'data-action': 'slot',
           'data-slot': slot,
           'aria-pressed': 'false',
@@ -349,7 +342,9 @@ HT.ui = (function () {
     }
 
     // Stepper de cantidad y de fallos: mismo esqueleto, distinto significado.
-    if ((habit.type === 'quantity' && habit.target.entry !== 'manual') || avoid) {
+    // Con franjas no hace falta: son ellas las que cuentan los fallos.
+    if ((habit.type === 'quantity' && habit.target.entry !== 'manual') ||
+        (avoid && !habit.slots)) {
       const paso = avoid ? 1 : habit.target.step;
       const unidad = avoid ? 'fallos' : habit.target.unit;
 
@@ -372,21 +367,11 @@ HT.ui = (function () {
 
     li.appendChild(controls);
 
-    /* ── Métricas y mensaje ── */
-    li.appendChild(el('ul', { class: 'habit-card__metrics' }));
-    li.appendChild(el('p', { class: 'habit-card__cheer', hidden: true }));
+    // Sin métricas ni mensajes de racha: "Hoy" sirve para marcar hábitos.
+    // Rachas, récords, tasas y logros viven todos en Progreso.
 
     paintCard(li, habit, dateKey);
     return li;
-  }
-
-  /** Una métrica de la tira inferior: icono, número y etiqueta accesible. */
-  function metric(icon, text, label, className) {
-    const item = el('li', { class: 'metric' + (className ? ' ' + className : ''), title: label });
-    item.appendChild(el('span', { class: 'metric__icon', 'aria-hidden': 'true', text: icon }));
-    item.appendChild(el('span', { class: 'metric__text', text: text }));
-    item.appendChild(el('span', { class: 'sr-only', text: label }));
-    return item;
   }
 
   // Texto del badge por estado. El color lo pone el CSS con data-state.
@@ -397,7 +382,6 @@ HT.ui = (function () {
 
   /** Vuelca el estado del día sobre una tarjeta ya construida. */
   function paintCard(li, habit, dateKey) {
-    const hoy = U.todayKey();
     const value = S.getLog(habit.id, dateKey);
     const avoid = St.isAvoid(habit);
     const state = St.cardState(habit, dateKey);
@@ -441,62 +425,67 @@ HT.ui = (function () {
       btn.setAttribute('aria-label', (done ? 'Desmarcar ' : 'Marcar ') + habit.name);
     }
 
-    if (habit.type === 'schedule') {
+    if (habit.slots && (habit.type === 'schedule' || avoid)) {
       U.$$('.slot', li).forEach(function (btn) {
+        const franja = St.SLOT_LABELS[btn.dataset.slot];
         const on = !!(value && value[btn.dataset.slot]);
-        btn.classList.toggle('is-done', on);
+
+        // Marcada significa lo contrario en cada tipo: cumplida en un
+        // horario, fallada en uno a evitar. Por eso cambia también el color.
+        btn.classList.toggle('is-done', on && !avoid);
+        btn.classList.toggle('is-failed', on && avoid);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.setAttribute('aria-label', avoid
+          ? (on ? 'Quitar el fallo de la ' : 'Apuntar un fallo en la ') + franja.toLowerCase() +
+            ' de ' + habit.name
+          : franja + ' de ' + habit.name);
       });
     }
 
-    /* ── Métricas ── */
-    const streak = St.currentStreak(habit, hoy);
-    const best = St.bestStreak(habit, hoy);
-    const rate = St.habitRate(habit, hoy, 30);
-
-    const metrics = $('.habit-card__metrics', li);
-    metrics.textContent = '';
-
-    metrics.appendChild(metric('🔥', String(streak),
-      'Racha actual: ' + streak + (streak === 1 ? ' día' : ' días') +
-      (avoid ? ' sin caer' : ' cumpliendo')));
-
-    // El récord solo se enseña si hay algo que superar. Cuando la racha lo
-    // alcanza, deja de ser una meta y pasa a ser la noticia.
-    if (best > streak) {
-      metrics.appendChild(metric('🏆', String(best), 'Récord: ' + best + ' días'));
-    } else if (best > 0 && streak === best) {
-      metrics.appendChild(metric('🏆', '¡récord!', 'Estás en tu mejor racha: ' + best + ' días',
-                                 'metric--record'));
-    }
-
-    metrics.appendChild(metric('📊', rate.total ? rate.pct + '%' : '—',
-      rate.total ? 'Tasa de éxito de los últimos 30 días: ' + rate.pct + '%'
-                 : 'Todavía sin datos de los últimos 30 días'));
-
-    if (avoid) {
-      const semana = St.failsThisWeek(habit, hoy, S.getSettings().weekStart);
-      metrics.appendChild(metric('❌', String(semana),
-        semana + (semana === 1 ? ' fallo' : ' fallos') + ' esta semana',
-        semana ? 'metric--bad' : null));
-    }
-
-    /* ── Mensaje ── */
-    const cheer = $('.habit-card__cheer', li);
-    const texto = cheerFor(habit, state, streak, avoid);
-    cheer.textContent = texto || '';
-    cheer.hidden = !texto;
   }
 
-  /** El mensaje de ánimo, o null si no toca decir nada. */
-  function cheerFor(habit, state, streak, avoid) {
-    if (avoid) {
-      if (state === 'critical') return '⚠️ Has llegado al límite. Mañana, de cero.';
-      if (state === 'warn') return '💪 Un tropiezo no borra la racha.';
-      return streak > 1 ? '🎉 ¡' + streak + ' días sin caer!' : '🎉 ¡Día sin!';
+  /**
+   * Reparte los hábitos del día en secciones por categoría, en el orden del
+   * catálogo y con los sin clasificar al final. Una categoría sin hábitos ese
+   * día no se dibuja: dejaría una cabecera suelta sobre un hueco.
+   */
+  /* Alfabético con las reglas del español: así "Ajedrez" va antes que
+     "Évitar", la ñ cae entre n y o, y las tildes no mandan un hábito al
+     final de la lista. */
+  const byName = function (a, b) { return a.name.localeCompare(b.name, 'es'); };
+
+  function groupByCategory(habits) {
+    const groups = [];
+
+    U.CATEGORIES.forEach(function (cat) {
+      const items = habits.filter(function (h) { return h.category === cat.id; });
+      if (items.length) groups.push({ cat: cat, habits: items.sort(byName) });
+    });
+
+    const loose = habits.filter(function (h) { return !U.categoryById(h.category); });
+    if (loose.length) {
+      groups.push({
+        cat: { id: '', name: 'Sin categoría', icon: '•', color: '' },
+        habits: loose.sort(byName)
+      });
     }
-    if (state === 'done') return streak > 1 ? '🎉 ¡' + streak + ' días seguidos!' : '🎉 ¡Hecho!';
-    return null;
+    return groups;
+  }
+
+  /** Cabecera de sección: icono, nombre y cuántos llevas de esa categoría. */
+  function groupHead(group, dateKey, id) {
+    const done = group.habits.filter(function (h) {
+      return St.isComplete(h, S.getLog(h.id, dateKey));
+    }).length;
+
+    const head = el('div', { class: 'cat-group__head' });
+    head.appendChild(el('span', { class: 'cat-group__icon', 'aria-hidden': 'true', text: group.cat.icon }));
+    head.appendChild(el('h2', { class: 'cat-group__name', id: id, text: group.cat.name }));
+    head.appendChild(el('p', {
+      class: 'cat-group__count',
+      text: done + ' de ' + group.habits.length
+    }));
+    return head;
   }
 
   /** Reconstruye la lista entera. Solo al añadir, editar, borrar o cambiar de día. */
@@ -506,10 +495,22 @@ HT.ui = (function () {
 
     Object.keys(cardIndex).forEach(function (k) { delete cardIndex[k]; });
 
-    habits.forEach(function (habit) {
-      const card = buildCard(habit, dateKey);
-      cardIndex[habit.id] = card;
-      frag.appendChild(card);
+    groupByCategory(habits).forEach(function (group, i) {
+      const titleId = 'catGroup' + i;
+      const section = el('section', { class: 'cat-group', 'aria-labelledby': titleId });
+      if (group.cat.color) section.style.setProperty('--cat-color', group.cat.color);
+
+      section.appendChild(groupHead(group, dateKey, titleId));
+
+      const list = el('ul', { class: 'habit-list' });
+      group.habits.forEach(function (habit) {
+        const card = buildCard(habit, dateKey);
+        cardIndex[habit.id] = card;
+        list.appendChild(card);
+      });
+
+      section.appendChild(list);
+      frag.appendChild(section);
     });
 
     els.habitList.textContent = '';
@@ -535,7 +536,21 @@ HT.ui = (function () {
     const card = cardIndex[habitId];
     const habit = S.getHabit(habitId);
     if (!card || !habit) return;
+
     paintCard(card, habit, dateKey);
+
+    // El contador de la sección cuenta esta tarjeta, así que se recalcula
+    // aquí mismo en vez de rehacer la lista entera.
+    const section = card.closest('.cat-group');
+    const counter = section && $('.cat-group__count', section);
+    if (!counter) return;
+
+    const cards = U.$$('.habit-card', section);
+    const done = cards.filter(function (node) {
+      const h = S.getHabit(node.dataset.id);
+      return h && St.isComplete(h, S.getLog(h.id, dateKey));
+    }).length;
+    counter.textContent = done + ' de ' + cards.length;
   }
 
   function pulse(habitId) {
@@ -1410,8 +1425,19 @@ HT.ui = (function () {
 
     const under = el('span', { class: 'streak-item__under', 'aria-hidden': 'true' });
     under.appendChild(weekDots(row.habit, U.todayKey()));
+
+    // Récord, tasa de éxito y fallos de la semana: las métricas que antes
+    // llevaba cada tarjeta de "Hoy" viven aquí.
     if (row.best > 0) {
-      under.appendChild(el('span', { class: 'streak-item__best', text: 'récord ' + row.best }));
+      under.appendChild(el('span', { class: 'streak-item__best', text: '🏆 ' + row.best }));
+    }
+    if (row.rate && row.rate.total) {
+      under.appendChild(el('span', { class: 'streak-item__best', text: '📊 ' + row.rate.pct + '%' }));
+    }
+    if (clean && row.fails) {
+      under.appendChild(el('span', {
+        class: 'streak-item__best streak-item__best--bad', text: '❌ ' + row.fails
+      }));
     }
     body.appendChild(under);
     btn.appendChild(body);
@@ -1440,9 +1466,17 @@ HT.ui = (function () {
 
     const frag = document.createDocumentFragment();
 
+    const weekStart = S.getSettings().weekStart;
+
     habits
       .map(function (h) {
-        return { habit: h, current: St.currentStreak(h, dateKey), best: St.bestStreak(h, dateKey) };
+        return {
+          habit: h,
+          current: St.currentStreak(h, dateKey),
+          best: St.bestStreak(h, dateKey),
+          rate: St.habitRate(h, dateKey, 30),
+          fails: St.failsThisWeek(h, dateKey, weekStart)
+        };
       })
       .sort(function (a, b) { return b.current - a.current || b.best - a.best; })
       .forEach(function (row) { frag.appendChild(streakRow(row, true)); });
@@ -1456,7 +1490,12 @@ HT.ui = (function () {
     const frag = document.createDocumentFragment();
 
     const rows = habits.map(function (h) {
-      return { habit: h, current: St.currentStreak(h, dateKey), best: St.bestStreak(h, dateKey) };
+      return {
+        habit: h,
+        current: St.currentStreak(h, dateKey),
+        best: St.bestStreak(h, dateKey),
+        rate: St.habitRate(h, dateKey, 30)
+      };
     });
 
     // Todo a cero significa que aún no hay historial, no que las rachas valgan 0
@@ -1751,7 +1790,7 @@ HT.ui = (function () {
         });
       }
       U.$$('input[name="slots"]', form).forEach(function (c) {
-        c.checked = habit.type === 'schedule' && habit.slots.indexOf(c.value) >= 0;
+        c.checked = !!habit.slots && habit.slots.indexOf(c.value) >= 0;
       });
       U.$$('input[name="days"]', form).forEach(function (c) {
         c.checked = habit.activeDays.indexOf(Number(c.value)) >= 0;
@@ -1788,7 +1827,8 @@ HT.ui = (function () {
 
     els.quantityFields.hidden = type !== 'quantity';
     els.entryFields.hidden = type !== 'quantity';
-    els.slotFields.hidden = type !== 'schedule';
+    // Las franjas valen para los dos: cuándo cumplir, o cuándo no caer.
+    els.slotFields.hidden = type !== 'schedule' && type !== 'avoid';
     // "Dejar" invierte la lógica: conviene decirlo antes de guardar, no después.
     els.avoidHint.hidden = type !== 'avoid';
     els.limitField.hidden = type !== 'avoid';
@@ -1842,7 +1882,12 @@ HT.ui = (function () {
       reminder: { enabled: isReminderOn(), time: field('reminderTime').value || '08:00' }
     };
 
-    if (type === 'avoid') data.limit = Number(els.fLimit.value) || 2;
+    if (type === 'avoid') {
+      data.limit = Number(els.fLimit.value) || 2;
+      // Franjas opcionales aquí: sin ninguna marcada se cuentan fallos sueltos.
+      const franjas = U.$$('input[name="slots"]:checked', form).map(function (c) { return c.value; });
+      if (franjas.length) data.slots = franjas;
+    }
 
     if (type === 'quantity') {
       const entry = form.querySelector('input[name="entry"]:checked');

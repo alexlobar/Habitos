@@ -48,15 +48,28 @@ HT.stats = (function () {
     return habit.type === 'avoid';
   }
 
-  /** Fallos apuntados en un día. `true` es el formato viejo y vale 1. */
+  /**
+   * Fallos apuntados en un día. Hay tres formas posibles: `true` (formato
+   * de la primera versión), un número, o un objeto de franjas cuando el
+   * hábito las tiene — ahí cada franja marcada cuenta como un fallo.
+   */
   function failsOf(value) {
     if (value === true) return 1;
+
+    if (value && typeof value === 'object') {
+      return Object.keys(value).filter(function (k) { return value[k] === true; }).length;
+    }
+
     const n = Number(value);
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
-  /** Tope de fallos de un hábito a evitar antes de considerarlo crítico. */
+  /**
+   * Tope de fallos antes de considerarlo crítico. Con franjas lo marcan
+   * ellas: fallar en todas es el peor día posible, y no hay más que fallar.
+   */
   function limitOf(habit) {
+    if (habit.slots && habit.slots.length) return habit.slots.length;
     const n = Math.floor(Number(habit.limit));
     return isFinite(n) && n > 0 ? n : 2;
   }

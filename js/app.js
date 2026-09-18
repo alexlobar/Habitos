@@ -278,6 +278,14 @@
 
     if (action === 'detail') { openHabit(habit.id); return; }
 
+    // Una franja de un hábito a evitar apunta un fallo, no un logro: va por
+    // el mismo camino que el ✗, fuera de withScoring.
+    if (action === 'slot' && St.isAvoid(habit)) {
+      S.toggleSlot(habit.id, currentDate, btn.dataset.slot);
+      syncProgressState();
+      return;
+    }
+
     // Con ratón o dedo, el paso ya lo ha dado onStepperPointerDown. Aquí solo
     // debe entrar el teclado, que activa el botón con un click de detail 0.
     if (action === 'plus' || action === 'minus') {

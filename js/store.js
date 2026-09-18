@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 4;
+  const VERSION = 5;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   const MAX_NOTE = 500;
@@ -121,9 +121,10 @@ HT.store = (function () {
     'meditar': 'mental',
     'planificar el dia': 'mental',
     'planificar la semana': 'mental',
-    'pantallas antes de dormir': 'mental',
-    'evitar pantallas antes de dormir': 'mental',
-    'sin pantallas antes de dormir': 'mental',
+    'evitar pantallas': 'evitar',
+    'pantallas antes de dormir': 'evitar',
+    'evitar pantallas antes de dormir': 'evitar',
+    'sin pantallas antes de dormir': 'evitar',
     'lectura': 'aprendizaje',
     'leer': 'aprendizaje',
     'japones': 'aprendizaje',
@@ -167,10 +168,10 @@ HT.store = (function () {
       // El único que no es diario: 0 = domingo, sea cual sea el inicio de semana.
       mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b', category: 'mental',
                 type: 'check', activeDays: [0] }, today),
-      // Se nombra por lo que evitas, no por el objetivo: los botones apuntan
-      // fallos, y "he fallado en Sin pantallas" no se entiende.
-      mkHabit({ name: 'Pantallas antes de dormir', icon: '📵', color: '#94a3b8',
-                category: 'mental', type: 'avoid', limit: 2 }, today),
+      // Con franjas: se cumple por la mañana y por la noche, y cada una es
+      // un fallo posible, así que el tope crítico sale de ellas (2).
+      mkHabit({ name: 'Evitar pantallas', icon: '📵', color: '#94a3b8',
+                category: 'evitar', type: 'avoid', slots: ['morning', 'night'] }, today),
       mkHabit({ name: 'Dormir 7-9 horas', icon: '😴', color: '#818cf8', category: 'fisico',
                 type: 'check' }, today),
       mkHabit(AVOID_SEED[0], today),
@@ -244,6 +245,12 @@ HT.store = (function () {
       slots = Array.isArray(raw.slots) ? raw.slots.filter(function (s) { return SLOTS.indexOf(s) >= 0; }) : [];
       if (!slots.length) slots = SLOTS.slice();
       slots.sort(function (a, b) { return SLOTS.indexOf(a) - SLOTS.indexOf(b); });
+    } else if (type === 'avoid' && Array.isArray(raw.slots)) {
+      // En un hábito a evitar las franjas son opcionales. Sin ellas se
+      // cuentan fallos sueltos; con ellas, cada franja es un fallo posible.
+      slots = raw.slots.filter(function (s) { return SLOTS.indexOf(s) >= 0; });
+      slots.sort(function (a, b) { return SLOTS.indexOf(a) - SLOTS.indexOf(b); });
+      if (!slots.length) slots = null;
     }
 
     let days = Array.isArray(raw.activeDays)
@@ -291,6 +298,25 @@ HT.store = (function () {
     // día, no un logro. El `true` de la versión anterior vale un fallo, así
     // que los datos viejos se leen solos sin migración aparte.
     if (habit.type === 'avoid') {
+      // Con franjas, el registro dice EN CUÁL se falló, igual que en
+      // 'schedule' pero con el significado invertido.
+      if (habit.slots) {
+        if (!value || typeof value !== 'object') {
+          // Formato anterior (true o número) sobre un hábito que ahora tiene
+          // franjas. No se sabe en cuáles se falló, así que se reparten por
+          // orden: así un "2" no pierde uno de sus dos fallos por el camino.
+          const previo = value === true ? 1 : Math.floor(Number(value)) || 0;
+          if (previo <= 0) return null;
+
+          const repartido = {};
+          habit.slots.slice(0, previo).forEach(function (s) { repartido[s] = true; });
+          return repartido;
+        }
+        const out = {};
+        habit.slots.forEach(function (s) { if (value[s] === true) out[s] = true; });
+        return Object.keys(out).length ? out : null;
+      }
+
       if (value === true) return 1;
       const fails = Math.floor(Number(value));
       return isFinite(fails) && fails > 0 ? Math.min(fails, MAX_FAILS) : null;
@@ -504,6 +530,37 @@ HT.store = (function () {
     });
   }
 
+  /**
+   * Migración a la v5: el hábito de las pantallas pasa a llamarse "Evitar
+   * pantallas", se muda a la categoría de evitar y gana las dos franjas.
+   * Se busca por nombre y solo se toca lo que sigue con el valor anterior,
+   * para no pisar un cambio hecho a mano.
+   */
+  function migrateToScreenSlots() {
+    const viejos = ['pantallas antes de dormir', 'sin pantallas antes de dormir',
+                    'evitar pantallas antes de dormir'];
+
+    state.habits.forEach(function (h) {
+      if (h.type !== 'avoid' || viejos.indexOf(plainName(h.name)) < 0) return;
+      h.name = 'Evitar pantallas';
+      h.category = 'evitar';
+      if (!h.slots) h.slots = ['morning', 'night'];
+
+      // El saneado corrió antes de que existieran las franjas, así que el
+      // histórico sigue como booleano o número. Se reconvierte aquí para
+      // que el recuento y las fichas de la tarjeta no discrepen ni un solo
+      // arranque.
+      const logs = state.logs[h.id];
+      if (!logs) return;
+
+      Object.keys(logs).forEach(function (key) {
+        const limpio = cleanLogValue(h, logs[key]);
+        if (limpio === null) delete logs[key];
+        else logs[key] = limpio;
+      });
+    });
+  }
+
   /* ── Carga y guardado ─────────────────────────────────────── */
 
   function load() {
@@ -535,6 +592,7 @@ HT.store = (function () {
       refillFreezes();
       if (incoming < 3) migrateToWorkout();
       if (incoming < 4) migrateToCategories();
+      if (incoming < 5) migrateToScreenSlots();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);
@@ -727,7 +785,8 @@ HT.store = (function () {
 
   function toggleSlot(habitId, dateKey, slot) {
     const habit = getHabit(habitId);
-    if (!habit || habit.type !== 'schedule' || habit.slots.indexOf(slot) < 0) return null;
+    if (!habit || (habit.type !== 'schedule' && habit.type !== 'avoid')) return null;
+    if (!habit.slots || habit.slots.indexOf(slot) < 0) return null;
 
     const current = getLog(habitId, dateKey) || {};
     const next = Object.assign({}, current);

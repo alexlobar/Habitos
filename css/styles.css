@@ -482,6 +482,41 @@ svg { display: block; }
 }
 
 /* ── 7. TARJETAS DE HÁBITO ─────────────────────────────────── */
+/* ── Secciones por categoría ──────────────────────────────
+   "Hoy" se lee como una lista de secciones: cada categoría con su nombre
+   y debajo solo sus hábitos. El color de la categoría aparece una vez en
+   la línea de la cabecera y otra en el canto de sus tarjetas. ───────── */
+.habit-groups { display: grid; gap: var(--sp-5); }
+
+.cat-group__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--cat-color, var(--border-strong)) 45%, transparent);
+}
+.cat-group__icon { font-size: var(--fs-lg); line-height: 1; }
+.cat-group__name {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fs-md);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Cuántos llevas de esta categoría. No es una estadística: responde a
+   "qué me queda hoy", que es justo para lo que se entra en esta pantalla. */
+.cat-group__count {
+  flex: none;
+  margin: 0 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Dos tarjetas por fila también en el móvil. El gap se abre en pantallas
    grandes, donde hay sitio de sobra. */
 .habit-list {
@@ -536,24 +571,9 @@ svg { display: block; }
 .habit-card__head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: center;
   gap: var(--sp-2);
 }
-.habit-card__titles { min-width: 0; }
-.habit-card__cat {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 1px;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-}
-.habit-card__cat span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .badge {
   flex: none;
   padding: 2px var(--sp-2);
@@ -657,37 +677,10 @@ svg { display: block; }
 }
 .round-btn--fail.is-repeating { background: color-mix(in srgb, var(--danger) 40%, transparent); }
 
-/* ── Métricas ── */
-.habit-card__metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-3);
-  padding-top: var(--sp-2);
-  border-top: 1px solid var(--border);
-}
-.metric {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.metric__icon { font-size: 11px; }
-.metric--record { color: var(--warning); }
-.metric--bad { color: var(--danger); }
+/* Las métricas por hábito (racha, récord, tasa, fallos) ya no están aquí:
+   se muestran en Progreso, en "Rachas por hábito" y "Días sin". */
 
-.habit-card__cheer {
-  margin: 0;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--success);
-}
-.habit-card[data-state="warn"] .habit-card__cheer { color: var(--warning); }
-.habit-card[data-state="critical"] .habit-card__cheer { color: var(--danger); }
-
-/* Solo para lectores de pantalla: la etiqueta larga de cada métrica. */
+/* Solo para lectores de pantalla. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -816,17 +809,17 @@ button.habit-card__icon:active { transform: scale(.94); }
   /* A ~165px no cabe el badge junto al nombre: baja a su propia línea. */
   .habit-card__head {
     grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "icon titles" "badge badge";
+    grid-template-areas: "icon name" "badge badge";
     row-gap: 4px;
+    align-items: center;
   }
   .habit-card__icon { grid-area: icon; width: 30px; height: 30px; font-size: var(--fs-sm); }
-  .habit-card__titles { grid-area: titles; }
+  .habit-card__name { grid-area: name; }
   .badge { grid-area: badge; justify-self: start; }
 
-  /* El nombre de la categoría no cabe; queda su icono, con el nombre
-     completo en el title y el color en el canto de la tarjeta. */
-  .habit-card__cat span:last-child { display: none; }
-  .habit-card__cat-icon { font-size: var(--fs-sm); }
+  .habit-groups { gap: var(--sp-4); }
+  .cat-group__head { margin-bottom: var(--sp-2); }
+  .cat-group__name { font-size: var(--fs-sm); }
 
   .habit-card__controls { min-height: 42px; gap: 4px; }
   .round-btn { width: 42px; height: 42px; font-size: var(--fs-lg); }
@@ -891,6 +884,25 @@ button.habit-card__icon:active { transform: scale(.94); }
   background: color-mix(in srgb, var(--habit-color) 26%, transparent);
   color: var(--text);
   font-weight: 650;
+}
+
+/* Franja de un hábito a evitar. Sin marcar va en verde tenue —es el estado
+   bueno, y se llega a él sin hacer nada—; marcada significa que se falló
+   ahí, así que se pone en rojo. Nunca comparten color con las de cumplir. */
+.slot--avoid {
+  border-color: color-mix(in srgb, var(--success) 34%, transparent);
+  color: var(--text-muted);
+}
+.slot--avoid:hover {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--danger);
+}
+.slot--avoid.is-failed {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 26%, transparent);
+  color: var(--danger);
+  font-weight: 650;
+  text-decoration: line-through;
 }
 
 /* Comodín de racha y notas del día */
@@ -1763,6 +1775,7 @@ button.week-cell:disabled:hover { transform: none; }
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.streak-item__best--bad { color: var(--danger); }
 
 /* La cifra manda: número grande y unidad pequeña debajo. */
 .streak-item__now {
