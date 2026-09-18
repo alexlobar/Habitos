@@ -165,21 +165,24 @@
      valor de la tabla — por ejemplo grantXp(St.XP.goal) al cumplir un
      objetivo, cuando esa acción exista. */
   function onLevelUp(info) {
-    UI.showLevelUp(info.level, info.rank.name);
+    UI.showLevelUp(info.level, info.rank.name, info.rank);
   }
 
   function withScoring(habit, dateKey, mutate) {
     const beforeDone = St.isComplete(habit, S.getLog(habit.id, dateKey));
     const beforePerfect = St.dayStats(dateKey).perfect;
+    // El bonus del día ya no es fijo: depende de cuántos hábitos lleves, así
+    // que se mide entero antes y después y se paga solo la diferencia.
+    const beforeBonus = St.dayBonus(dateKey);
 
     mutate();
 
     const afterDone = St.isComplete(habit, S.getLog(habit.id, dateKey));
     const afterPerfect = St.dayStats(dateKey).perfect;
+    const afterBonus = St.dayBonus(dateKey);
 
-    let delta = 0;
+    let delta = afterBonus - beforeBonus;
     if (afterDone !== beforeDone) delta += (afterDone ? 1 : -1) * St.POINTS_PER_HABIT;
-    if (afterPerfect !== beforePerfect) delta += (afterPerfect ? 1 : -1) * St.POINTS_PERFECT_DAY;
     if (delta) grantXp(delta);
 
     const effects = S.getSettings().effects;
@@ -419,7 +422,7 @@
 
     return {
       complete: summary.complete,
-      all: summary.total > 0 && summary.complete === summary.total,
+      bonus: St.exerciseBonus(dateKey, exercises),
       done: !!(session && session.done)
     };
   }
@@ -436,7 +439,7 @@
     const after = workoutSnapshot(dateKey);
 
     let delta = (after.complete - before.complete) * St.XP.exercise;
-    if (after.all !== before.all) delta += (after.all ? 1 : -1) * St.XP.allExercises;
+    delta += after.bonus - before.bonus;
     if (after.done !== before.done) delta += (after.done ? 1 : -1) * St.XP.workout;
 
     if (delta) grantXp(delta);
@@ -993,6 +996,12 @@
       });
     });
     els.levelBadge.addEventListener('click', showProgress);
+
+    // El aviso de nivel se quita al tocarlo o con Escape; no hay que esperar.
+    els.levelUp.addEventListener('click', UI.hideLevelUp);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !els.levelUp.hidden) UI.hideLevelUp();
+    });
 
     // Semana
     byId('prevWeek').addEventListener('click', function () { stepWeek(-1); });

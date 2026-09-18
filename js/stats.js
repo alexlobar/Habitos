@@ -23,17 +23,55 @@ HT.stats = (function () {
      `habit` y `perfectDay` ya existían con estos valores desde la v1: no
      se tocan para que la XP acumulada siga significando lo mismo. ──── */
   const XP = {
-    habit: 10,          // completar un hábito del día
-    perfectDay: 5,      // cumplir todos los hábitos de un día
+    habit: 20,          // completar un hábito del día
     exercise: 10,       // completar todas las series de un ejercicio
     workout: 50,        // cerrar un entrenamiento
-    allExercises: 25,   // extra al completar todos los ejercicios del día
-    goal: 100           // cumplir un objetivo — todavía sin acción que lo dispare
+    goal: 100,          // cumplir un objetivo — todavía sin acción que lo dispare
+
+    /* Los bonus ya no son cantidades fijas: son un porcentaje de lo que has
+       ganado ese día. Con dos escalones, para que fallar un hábito no tire
+       por tierra la jornada entera. */
+    perfectDayPct: 0.50,   // 9 de 9  → la mitad de lo ganado
+    goodDayPct:    0.25,   // 8 de 9  → un cuarto
+    goodDayFrom:   0.80,   // a partir de este cumplimiento
+    allExercisesPct: 0.50  // todos los ejercicios del día
   };
 
-  // Nombres anteriores, conservados porque app.js y otros los usan.
+  // Nombre anterior, conservado porque app.js lo usa.
   const POINTS_PER_HABIT = XP.habit;
-  const POINTS_PERFECT_DAY = XP.perfectDay;
+
+  /* Toda la EXP acaba en 0 o en 5. Con los valores de arriba sale solo
+     (20·0,5 = 10 y 20·0,25 = 5), pero el redondeo queda como red por si
+     algún día se toca la tabla. */
+  function round5(n) {
+    return Math.round(n / 5) * 5;
+  }
+
+  /**
+   * Bonus del día por cumplimiento. Se calcula sobre el estado completo del
+   * día, no sobre la última acción: así app.js puede pedirlo antes y después
+   * y pagar solo la diferencia, que es lo que impide duplicar EXP.
+   */
+  function dayBonus(dateKey) {
+    const day = dayStats(dateKey);
+    if (!day.total || !day.done) return 0;
+
+    const ratio = day.done / day.total;
+    if (ratio < XP.goodDayFrom) return 0;
+
+    const ganado = day.done * XP.habit;
+    return round5(ganado * (ratio >= 1 ? XP.perfectDayPct : XP.goodDayPct));
+  }
+
+  /** Bonus por completar todos los ejercicios del día. Misma mecánica. */
+  function exerciseBonus(dateKey, exercises) {
+    if (!exercises.length) return 0;
+
+    const summary = sessionSummary(dateKey, exercises);
+    if (summary.complete < summary.total) return 0;
+
+    return round5(summary.complete * XP.exercise * XP.allExercisesPct);
+  }
 
   /* ── Completado y progreso ────────────────────────────────── */
 
@@ -612,13 +650,20 @@ HT.stats = (function () {
   /* Rangos por tramos de nivel. Añadir uno nuevo es añadir una fila:
      siempre gana la última cuyo `from` no supera el nivel. El rango
      acompaña al nivel, no lo sustituye. */
+  /* Once tramos de diez niveles cada uno. La escala sigue saliendo del
+     nivel, que sale de la EXP: no hay una segunda contabilidad. */
   const RANKS = [
-    { id: 'novato',      from: 0,  name: 'Novato' },
-    { id: 'aprendiz',    from: 10, name: 'Aprendiz' },
-    { id: 'combatiente', from: 20, name: 'Combatiente' },
-    { id: 'elite',       from: 30, name: 'Élite' },
-    { id: 'maestro',     from: 40, name: 'Maestro' },
-    { id: 'desconocido', from: 50, name: '???' }
+    { id: 'e',        from: 0,   letter: 'E',    name: 'Novato' },
+    { id: 'd',        from: 10,  letter: 'D',    name: 'Aprendiz' },
+    { id: 'c',        from: 20,  letter: 'C',    name: 'Combatiente' },
+    { id: 'b',        from: 30,  letter: 'B',    name: 'Élite' },
+    { id: 'a',        from: 40,  letter: 'A',    name: 'Maestro' },
+    { id: 's',        from: 50,  letter: 'S',    name: 'Soberano' },
+    { id: 'ss',       from: 60,  letter: 'SS',   name: 'Monarca' },
+    { id: 'ss-plus',  from: 70,  letter: 'SS+',  name: 'Monarca supremo' },
+    { id: 'sss',      from: 80,  letter: 'SSS',  name: 'Leyenda' },
+    { id: 'sss-plus', from: 90,  letter: 'SSS+', name: 'Leyenda eterna' },
+    { id: 'x',        from: 100, letter: 'X',    name: 'Fuera de escala' }
   ];
 
   function rankForLevel(level) {
@@ -680,26 +725,110 @@ HT.stats = (function () {
     return levelFromXp(xpAfter) > levelFromXp(xpBefore);
   }
 
+  /* ── Atributos del personaje ──────────────────────────────
+     No son datos nuevos: cada atributo es una métrica que la app ya
+     calculaba, presentada como estadística de RPG. Debajo de cada barra
+     se enseña de dónde sale, para que ningún número parezca inventado.
+     ──────────────────────────────────────────────────────── */
+
+  const WORKOUT_GOAL_30 = 12;   // entrenos en 30 días que cuentan como 100
+
+  /** Cumplimiento medio a 30 días de los hábitos de una categoría. */
+  function categoryScore(categoryId, todayKey) {
+    const habits = S.getHabits().filter(function (h) { return h.category === categoryId; });
+    if (!habits.length) return { value: 0, detail: 'Sin hábitos en esta rama' };
+
+    let sum = 0;
+    let counted = 0;
+    habits.forEach(function (h) {
+      const r = habitRate(h, todayKey, 30);
+      if (!r.total) return;
+      sum += r.pct;
+      counted++;
+    });
+
+    return {
+      value: counted ? Math.round(sum / counted) : 0,
+      detail: habits.length + (habits.length === 1 ? ' hábito' : ' hábitos') + ' · 30 días'
+    };
+  }
+
+  /** Entrenos cerrados en los últimos 30 días. */
+  function workoutScore(todayKey) {
+    const sessions = S.getState().sessions;
+    const desde = U.addDaysKey(todayKey, -29);
+
+    const done = Object.keys(sessions).filter(function (key) {
+      return key >= desde && key <= todayKey && sessions[key].done;
+    }).length;
+
+    return {
+      value: U.clamp(Math.round((done / WORKOUT_GOAL_30) * 100), 0, 100),
+      detail: done + (done === 1 ? ' entreno' : ' entrenos') + ' · 30 días'
+    };
+  }
+
+  /**
+   * Los cinco atributos. Códigos de RPG, datos reales: si una rama no
+   * tiene hábitos, su atributo vale 0 y lo dice — no se rellena a ojo.
+   */
+  function attributes(todayKey) {
+    const today = todayKey || U.todayKey();
+
+    const spec = [
+      { code: 'STR', name: 'Fuerza',        get: function () { return workoutScore(today); } },
+      { code: 'VIT', name: 'Vitalidad',     get: function () { return categoryScore('fisico', today); } },
+      { code: 'AGI', name: 'Agilidad',      get: function () { return categoryScore('evitar', today); } },
+      { code: 'INT', name: 'Inteligencia',  get: function () { return categoryScore('aprendizaje', today); } },
+      { code: 'SEN', name: 'Concentración', get: function () { return categoryScore('mental', today); } }
+    ];
+
+    return spec.map(function (a) {
+      const r = a.get();
+      return { code: a.code, name: a.name, value: r.value, detail: r.detail };
+    });
+  }
+
   /* ── Logros ───────────────────────────────────────────────── */
 
+  /* Los `id` son los que están guardados en el almacén: no se tocan nunca.
+     Lo que cambia es el nombre con el que se enseñan, y `hint` sigue
+     diciendo la condición real para que ninguno resulte un jeroglífico. */
   const ACHIEVEMENTS = [
-    { id: 'first_step',   icon: '🌱', name: 'Primer paso',    hint: 'Completa tu primer hábito' },
-    { id: 'streak_7',     icon: '🔥', name: 'Una semana',     hint: '7 días seguidos con un hábito' },
-    { id: 'streak_30',    icon: '🏔️', name: 'Un mes',         hint: '30 días seguidos con un hábito' },
-    { id: 'streak_100',   icon: '💎', name: 'Centenario',     hint: '100 días seguidos con un hábito' },
-    { id: 'perfect_day',  icon: '⭐', name: 'Día perfecto',   hint: 'Cumple todos los hábitos de un día' },
-    { id: 'perfect_week', icon: '🏆', name: 'Semana perfecta', hint: '7 días perfectos seguidos' },
-    { id: 'collector',    icon: '🗂️', name: 'Coleccionista',  hint: 'Crea 10 hábitos' },
-    { id: 'points_1000',  icon: '⚡', name: 'Mil de XP',      hint: 'Acumula 1000 de XP' },
-    { id: 'historian',    icon: '📝', name: 'Cronista',       hint: 'Escribe 10 notas de día' }
+    { id: 'first_step',   icon: '🌱', name: 'Primer despertar', hint: 'Completa tu primer hábito' },
+    { id: 'quests_100',   icon: '⚔️', name: 'Cien misiones',    hint: 'Completa 100 hábitos' },
+    { id: 'quests_1000',  icon: '🏹', name: 'Mil misiones',     hint: 'Completa 1000 hábitos' },
+    { id: 'streak_7',     icon: '🔥', name: 'Racha de 7 días',  hint: '7 días seguidos con un hábito' },
+    { id: 'streak_30',    icon: '🏔️', name: 'Racha de 30 días', hint: '30 días seguidos con un hábito' },
+    { id: 'streak_100',   icon: '💎', name: 'Centurión',        hint: '100 días seguidos con un hábito' },
+    { id: 'perfect_day',  icon: '⭐', name: 'Día impecable',    hint: 'Cumple todos los hábitos de un día' },
+    { id: 'perfect_week', icon: '🏆', name: 'Semana impecable', hint: '7 días perfectos seguidos' },
+    { id: 'rank_d',       icon: '🔰', name: 'Primer ascenso',   hint: 'Alcanza el rango D' },
+    { id: 'rank_s',       icon: '👑', name: 'Soberano',         hint: 'Alcanza el rango S' },
+    { id: 'rank_x',       icon: '🌌', name: 'Fuera de escala',  hint: 'Alcanza el rango X' },
+    { id: 'collector',    icon: '🗂️', name: 'Archimaestro',     hint: 'Crea 10 hábitos' },
+    { id: 'points_1000',  icon: '⚡', name: 'Diez mil de EXP',  hint: 'Acumula 10 000 de EXP' },
+    { id: 'historian',    icon: '📝', name: 'Cronista',         hint: 'Escribe 10 notas de día' }
   ];
+
+  /** Nivel en el que empieza un rango. Los logros de rango lo leen de aquí
+      para que mover un tramo en RANKS no deje el logro descolgado. */
+  function rankFloor(id) {
+    const rank = RANKS.filter(function (r) { return r.id === id; })[0];
+    return rank ? rank.from : Infinity;
+  }
 
   const PERFECT_WEEK_MIN_DAYS = 5;
 
+  /**
+   * Misiones cumplidas: veces que se ha completado un hábito. Los de evitar
+   * quedan fuera — sus "días limpios" son cada día que pasa sin hacer nada,
+   * y contarlos ahogaría el número real de cosas hechas.
+   */
   function totalCompletions() {
     let n = 0;
     S.getHabits(true).forEach(function (h) {
-      n += habitTotal(h);
+      if (!isAvoid(h)) n += habitTotal(h);
     });
     return n;
   }
@@ -723,10 +852,18 @@ HT.stats = (function () {
     const game = S.getGame();
     const earned = [];
 
-    if (totalCompletions() >= 1) earned.push('first_step');
+    // Misiones: veces que se ha completado un hábito.
+    const quests = totalCompletions();
+    if (quests >= 1) earned.push('first_step');
+    if (quests >= 100) earned.push('quests_100');
+    if (quests >= 1000) earned.push('quests_1000');
 
+    /* Un solo criterio para las rachas: las de los hábitos a evitar quedan
+       fuera, igual que ya lo estaban en la ficha "Racha actual" y en el
+       récord general. No se quedan sin premio — cobran sus propios hitos
+       de EXP a los 7, 30 y 100 días sin caer. */
     const best = S.getHabits().reduce(function (max, h) {
-      return Math.max(max, bestStreak(h, today));
+      return isAvoid(h) ? max : Math.max(max, bestStreak(h, today));
     }, 0);
     if (best >= 7) earned.push('streak_7');
     if (best >= 30) earned.push('streak_30');
@@ -735,8 +872,15 @@ HT.stats = (function () {
     if (dayStats(today).perfect) earned.push('perfect_day');
     if (hasPerfectWeek(today)) earned.push('perfect_week');
 
+    const level = levelFromXp(game.points);
+    if (level >= rankFloor('d')) earned.push('rank_d');
+    if (level >= rankFloor('s')) earned.push('rank_s');
+    if (level >= rankFloor('x')) earned.push('rank_x');
+
     if (game.habitsCreated >= 10) earned.push('collector');
-    if (game.points >= 1000) earned.push('points_1000');
+    // Sube a 10 000 con la EXP nueva: 1000 se alcanzaba en cuatro días.
+    // El `id` no cambia, así que a quien ya lo tuviera no se le retira.
+    if (game.points >= 10000) earned.push('points_1000');
     if (Object.keys(S.getState().notes).length >= 10) earned.push('historian');
 
     return earned;
@@ -750,11 +894,12 @@ HT.stats = (function () {
     SLOT_LABELS: SLOT_LABELS,
     XP: XP, RANKS: RANKS, XP_TABLE: XP_TABLE,
     POINTS_PER_HABIT: POINTS_PER_HABIT,
-    POINTS_PERFECT_DAY: POINTS_PERFECT_DAY,
+    dayBonus: dayBonus, exerciseBonus: exerciseBonus,
     ACHIEVEMENTS: ACHIEVEMENTS,
 
     xpForLevel: xpForLevel, levelFromXp: levelFromXp,
     rankForLevel: rankForLevel, leveledUp: leveledUp,
+    attributes: attributes, totalCompletions: totalCompletions,
 
     AVOID_MILESTONES: AVOID_MILESTONES,
     isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,

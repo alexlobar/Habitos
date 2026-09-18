@@ -182,18 +182,31 @@
 
         <div class="progress-grid">
           <article class="card sys-level" id="levelPanel" aria-labelledby="lvTitle">
-            <h2 class="sys-level__eyebrow" id="lvTitle">Nivel</h2>
+            <p class="sys-win__tag" aria-hidden="true">Sistema</p>
+            <h2 class="sys-level__eyebrow" id="lvTitle">Estado</h2>
 
             <p class="sys-level__num" id="lvNumber">0</p>
-            <p class="sys-level__rank" id="lvRank">Novato</p>
+            <p class="sys-level__rank">
+              <span class="sys-rank__letter" id="lvRankLetter">E</span>
+              <span class="sys-rank__name" id="lvRank">Novato</span>
+            </p>
 
             <div class="sys-level__bar" id="lvBar" role="progressbar"
                  aria-labelledby="lvTitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
               <span class="sys-level__fill" id="lvFill" style="--pct:0"></span>
             </div>
 
-            <p class="sys-level__xp" id="lvXp">0 / 100 XP</p>
-            <p class="sys-level__left" id="lvRemaining">100 XP para subir de nivel</p>
+            <p class="sys-level__xp" id="lvXp">0 / 100 EXP</p>
+            <p class="sys-level__left" id="lvRemaining">100 EXP para subir de nivel</p>
+          </article>
+
+          <article class="card sys-attrs" aria-labelledby="attrsTitle">
+            <p class="sys-win__tag" aria-hidden="true">Estado</p>
+            <header class="card__head"><h2 class="card__title" id="attrsTitle">Estado del jugador</h2></header>
+            <ul class="attr-list" id="attrList"></ul>
+            <p class="card__text card__text--tight">
+              Cada atributo es una métrica real de tus hábitos, no una puntuación inventada.
+            </p>
           </article>
 
           <ul class="stat-grid" aria-label="Resumen de estadísticas">
@@ -209,6 +222,8 @@
             </li>
             <li class="stat"><p class="stat__value" id="statStreak">—</p><p class="stat__label">Racha actual</p></li>
             <li class="stat"><p class="stat__value" id="statBest">—</p><p class="stat__label">Mejor racha</p></li>
+            <li class="stat"><p class="stat__value" id="statQuests">—</p><p class="stat__label">Misiones completadas</p></li>
+            <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
 
           <article class="card" aria-labelledby="heatmapTitle">
@@ -677,6 +692,20 @@
         <button type="button" class="btn" data-close>Cancelar</button>
         <button type="submit" class="btn btn--primary" form="exerciseForm">Guardar</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- Aviso de subida de nivel. Vive fuera de las vistas porque se
+       superpone a todo; lo abre y lo cierra UI.showLevelUp(). -->
+  <div class="levelup" id="levelUp" hidden aria-live="assertive">
+    <div class="levelup__panel">
+      <span class="levelup__corner levelup__corner--tl" aria-hidden="true"></span>
+      <span class="levelup__corner levelup__corner--br" aria-hidden="true"></span>
+      <p class="levelup__tag">Sistema</p>
+      <p class="levelup__title">Subida de nivel</p>
+      <p class="levelup__level" id="levelUpLevel">1</p>
+      <p class="levelup__rank" id="levelUpRank" hidden>Nuevo rango</p>
+      <p class="levelup__hint" id="levelUpHint">Nivel 1 alcanzado</p>
     </div>
   </div>
 

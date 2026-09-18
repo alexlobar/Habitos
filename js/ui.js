@@ -82,7 +82,9 @@ HT.ui = (function () {
       'prevDay', 'nextDay', 'btnToday',
       'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeHint', 'dayNote',
       'statWeek', 'statMonth', 'statStreak', 'statBest',
-      'levelPanel', 'lvNumber', 'lvRank', 'lvBar', 'lvFill', 'lvXp', 'lvRemaining',
+      'levelPanel', 'lvNumber', 'lvRank', 'lvRankLetter', 'lvBar', 'lvFill', 'lvXp', 'lvRemaining',
+      'attrList', 'statQuests', 'statTrophies',
+      'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList',
       'statWeekBar', 'statMonthBar',
@@ -200,17 +202,52 @@ HT.ui = (function () {
 
     setStat(els.lvNumber, String(info.level));
     els.lvRank.textContent = info.rank.name;
+    els.lvRankLetter.textContent = info.rank.letter;
+    els.levelPanel.dataset.rank = info.rank.id;
 
-    els.lvXp.textContent = fmtNum.format(info.xp) + ' / ' + fmtNum.format(info.next) + ' XP';
-    els.lvRemaining.textContent = fmtNum.format(info.remaining) + ' XP para subir de nivel';
+    els.lvXp.textContent = fmtNum.format(info.xp) + ' / ' + fmtNum.format(info.next) + ' EXP';
+    els.lvRemaining.textContent = fmtNum.format(info.remaining) + ' EXP para subir de nivel';
 
     els.lvFill.style.setProperty('--pct', info.pct);
     els.lvBar.setAttribute('aria-valuenow', info.pct);
     els.lvBar.setAttribute(
       'aria-valuetext',
       fmtNum.format(info.into) + ' de ' + fmtNum.format(info.needed) +
-      ' XP del nivel ' + info.level + ' · rango ' + info.rank.name
+      ' EXP del nivel ' + info.level + ' · rango ' + info.rank.letter + ', ' + info.rank.name
     );
+  }
+
+  /**
+   * Los cinco atributos. Los números los calcula St.attributes() a partir
+   * de métricas que ya existían; aquí solo se pintan como barras.
+   */
+  function renderAttributes(dateKey) {
+    const frag = document.createDocumentFragment();
+
+    St.attributes(dateKey).forEach(function (attr) {
+      const item = el('li', {
+        class: 'attr',
+        'aria-label': attr.code + ', ' + attr.name + ': ' + attr.value + ' sobre 100. ' + attr.detail
+      });
+
+      const head = el('div', { class: 'attr__head', 'aria-hidden': 'true' });
+      head.appendChild(el('span', { class: 'attr__code', text: attr.code }));
+      head.appendChild(el('span', { class: 'attr__name', text: attr.name }));
+      head.appendChild(el('span', { class: 'attr__value', text: String(attr.value) }));
+      item.appendChild(head);
+
+      const track = el('div', { class: 'attr__track', 'aria-hidden': 'true' });
+      const fill = el('span', { class: 'attr__fill' });
+      fill.style.setProperty('--pct', attr.value);
+      track.appendChild(fill);
+      item.appendChild(track);
+
+      item.appendChild(el('p', { class: 'attr__detail', 'aria-hidden': 'true', text: attr.detail }));
+      frag.appendChild(item);
+    });
+
+    els.attrList.textContent = '';
+    els.attrList.appendChild(frag);
   }
 
   /**
@@ -218,9 +255,21 @@ HT.ui = (function () {
    * esto decide solo cómo se enseña, así que cambiar la animación no
    * toca la detección.
    */
-  function showLevelUp(level, rankName) {
-    toast('¡Nivel ' + level + '! Rango ' + rankName, { type: 'achievement', icon: '⬆' });
+  let levelUpTimer = null;
 
+  function hideLevelUp() {
+    clearTimeout(levelUpTimer);
+    levelUpTimer = null;
+    els.levelUp.hidden = true;
+    els.levelUp.classList.remove('is-open');
+  }
+
+  /**
+   * Ventana de subida de nivel. Se cierra sola, y también al tocarla o con
+   * Escape: un aviso a pantalla completa que no se puede quitar molesta.
+   * Sin efectos activados se queda en el aviso de siempre.
+   */
+  function showLevelUp(level, rankName, rank) {
     const badge = els.levelBadge;
     badge.classList.remove('is-levelup');
     void badge.offsetWidth;                 // reinicia la animación
@@ -229,7 +278,30 @@ HT.ui = (function () {
       badge.classList.remove('is-levelup');
     }, { once: true });
 
-    if (S.getSettings().effects) { celebrate(); buzz([30, 50, 30, 50, 60]); }
+    if (!S.getSettings().effects || prefersReducedMotion()) {
+      toast('Nivel ' + level + ' · rango ' + rankName, { type: 'achievement', icon: '⬆' });
+      return;
+    }
+
+    // Un rango nuevo solo se anuncia si el nivel es justo su frontera.
+    const nuevoRango = !!rank && rank.from === level;
+
+    els.levelUpLevel.textContent = 'Nivel ' + level;
+    els.levelUpRank.textContent = 'Nuevo rango · ' + rank.letter + ' — ' + rankName;
+    els.levelUpRank.hidden = !nuevoRango;
+    els.levelUpHint.textContent = nuevoRango
+      ? 'Has ascendido de rango'
+      : 'Rango ' + (rank ? rank.letter : '') + ' · ' + rankName;
+
+    clearTimeout(levelUpTimer);
+    els.levelUp.hidden = false;
+    void els.levelUp.offsetWidth;
+    els.levelUp.classList.add('is-open');
+
+    levelUpTimer = setTimeout(hideLevelUp, nuevoRango ? 4200 : 3200);
+
+    celebrate();
+    buzz([30, 50, 30, 50, 60]);
   }
 
   /* ── Tarjetas de hábito ───────────────────────────────────── */
@@ -660,6 +732,10 @@ HT.ui = (function () {
     setStat(els.statMonth, month.total ? month.pct + '%' : '—');
     setStat(els.statStreak, String(St.topStreak(dateKey)));
     setStat(els.statBest, String(S.getGame().bestStreak));
+    // Misiones = veces que se ha cumplido un hábito. Logros = los ya ganados.
+    setStat(els.statQuests, String(St.totalCompletions()));
+    setStat(els.statTrophies, S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length);
+    renderAttributes(dateKey);
 
     // Las barras muestran el mismo dato que la cifra, no uno nuevo
     els.statWeekBar.style.setProperty('--pct', week.total ? week.pct : 0);
@@ -2036,7 +2112,8 @@ HT.ui = (function () {
     openExerciseModal: openExerciseModal, closeExerciseModal: closeExerciseModal,
     readExerciseForm: readExerciseForm,
     renderProgress: renderProgress, renderLevelPanel: renderLevelPanel,
-    showLevelUp: showLevelUp, renderHabitView: renderHabitView,
+    showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
+    renderAttributes: renderAttributes, renderHabitView: renderHabitView,
     renderSettings: renderSettings, applyAccent: applyAccent,
     openModal: openModal, closeModal: closeModal,
     toggleEmojiPicker: toggleEmojiPicker, markSelectedEmoji: markSelectedEmoji,

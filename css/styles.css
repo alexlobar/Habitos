@@ -70,6 +70,9 @@
   /* Tipografía */
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, sans-serif;
+  /* Monoespaciada del sistema. Vive aquí y no en #view-progress porque la
+     ventana de subida de nivel se pinta fuera de esa vista. */
+  --sys-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fs-xs:  .75rem;
   --fs-sm:  .8125rem;
   --fs-md:  .9375rem;
@@ -1352,6 +1355,39 @@ button.week-cell:disabled:hover { transform: none; }
   --heat-4: #46dcff;
 }
 
+/* Fondo de la vista: rejilla tenue y halo, para que los paneles floten
+   sobre algo en vez de sobre el fondo plano de la app. */
+#view-progress {
+  position: relative;
+  isolation: isolate;
+}
+#view-progress::before {
+  content: "";
+  position: absolute;
+  inset: -40px -24px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 50% 0%, rgb(70 220 255 / .10), transparent 70%),
+    linear-gradient(rgb(70 220 255 / .045) 1px, transparent 1px) 0 0 / 100% 34px,
+    linear-gradient(90deg, rgb(70 220 255 / .045) 1px, transparent 1px) 0 0 / 34px 100%;
+  mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+}
+
+/* Etiqueta de esquina: el sello de "esto es una ventana del sistema". */
+.sys-win__tag {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  margin: 0;
+  font-family: var(--sys-mono);
+  font-size: 9px;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: rgb(70 220 255 / .45);
+  pointer-events: none;
+}
+
 /* Cabecera con línea de sistema */
 #view-progress .view__head { position: relative; padding-bottom: var(--sp-3); }
 #view-progress .view__head::after {
@@ -1374,10 +1410,16 @@ button.week-cell:disabled:hover { transform: none; }
   position: relative;
   border: 1px solid var(--sys-edge);
   border-radius: 10px;
+  /* Semitransparente sobre la rejilla del fondo: es lo que da el aire
+     holográfico, más que cualquier brillo. */
   background:
-    linear-gradient(180deg, rgb(70 220 255 / .05), transparent 45%),
-    var(--sys-panel);
-  box-shadow: inset 0 0 0 1px rgb(70 220 255 / .05),
+    linear-gradient(180deg, rgb(70 220 255 / .07), rgb(70 220 255 / .01) 45%),
+    color-mix(in srgb, var(--sys-panel) 82%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  box-shadow: inset 0 0 0 1px rgb(70 220 255 / .07),
+              inset 0 1px 0 0 rgb(70 220 255 / .18),
+              0 0 26px -16px var(--sys-glow),
               0 12px 32px -22px rgb(0 0 0 / .95);
 }
 #view-progress .card::before,
@@ -1468,8 +1510,60 @@ button.week-cell:disabled:hover { transform: none; }
   justify-items: center;
   gap: var(--sp-1);
   text-align: center;
-  padding: var(--sp-5) var(--sp-4);
+  padding: var(--sp-6) var(--sp-4) var(--sp-5);
+  border-color: color-mix(in srgb, var(--sys-cyan) 42%, transparent);
+  box-shadow: inset 0 0 0 1px rgb(70 220 255 / .10),
+              inset 0 1px 0 0 rgb(70 220 255 / .3),
+              0 0 60px -26px var(--sys-cyan),
+              0 12px 32px -22px rgb(0 0 0 / .95);
 }
+
+/* Letra del rango, en grande y con su propio color por tramo. */
+/* Ancho automático: "SSS+" no cabe en una casilla cuadrada. */
+.sys-rank__letter {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  margin-right: 6px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-family: var(--sys-mono);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.02em;
+  vertical-align: -6px;
+}
+
+/* De E a A, una rampa de calor: cian, verde, ámbar, naranja, rojo. De S en
+   adelante se sale de la escala — magenta, violeta, índigo y oros. */
+.sys-level[data-rank="e"]        { --rank-color: #7dd3fc; }
+.sys-level[data-rank="d"]        { --rank-color: #4ade80; }
+.sys-level[data-rank="c"]        { --rank-color: #facc15; }
+.sys-level[data-rank="b"]        { --rank-color: #fb923c; }
+.sys-level[data-rank="a"]        { --rank-color: #f87171; }
+.sys-level[data-rank="s"]        { --rank-color: #e879f9; }
+.sys-level[data-rank="ss"]       { --rank-color: #c084fc; }
+.sys-level[data-rank="ss-plus"]  { --rank-color: #a78bfa; }
+.sys-level[data-rank="sss"]      { --rank-color: #818cf8; }
+.sys-level[data-rank="sss-plus"] { --rank-color: #fbbf24; }
+.sys-level[data-rank="x"]        { --rank-color: #f8fafc; }
+
+/* A partir de SSS+ la chapa late: son los dos tramos que casi nadie ve. */
+@media (prefers-reduced-motion: no-preference) {
+  .sys-level[data-rank="sss-plus"] .sys-rank__letter,
+  .sys-level[data-rank="x"] .sys-rank__letter {
+    animation: rank-pulse 2.4s var(--ease) infinite;
+  }
+}
+@keyframes rank-pulse {
+  0%, 100% { box-shadow: 0 0 14px -4px currentColor; }
+  50%      { box-shadow: 0 0 22px 0 currentColor; }
+}
+#view-progress .sys-level .sys-level__rank { color: var(--rank-color, var(--sys-violet)); }
+.sys-rank__letter { box-shadow: 0 0 14px -4px currentColor; }
 
 .sys-level__eyebrow {
   margin: 0;
@@ -1482,12 +1576,23 @@ button.week-cell:disabled:hover { transform: none; }
 .sys-level__num {
   margin: 0;
   font-family: var(--sys-mono);
-  font-size: 3.25rem;
+  font-size: 4rem;
   font-weight: 700;
   line-height: 1;
   color: var(--sys-cyan);
-  text-shadow: 0 0 28px var(--sys-glow);
+  text-shadow: 0 0 10px rgb(70 220 255 / .55), 0 0 42px var(--sys-glow);
   font-variant-numeric: tabular-nums;
+}
+/* "Level" delante de la cifra, como en un marcador de juego. */
+.sys-level__num::before {
+  content: "Nivel ";
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  vertical-align: 22px;
+  color: var(--text-muted);
+  text-shadow: none;
 }
 .sys-level__rank {
   margin: 0 0 var(--sp-3);
@@ -1503,21 +1608,39 @@ button.week-cell:disabled:hover { transform: none; }
 .sys-level__bar {
   position: relative;
   width: 100%;
-  max-width: 420px;
-  height: 12px;
-  border-radius: var(--radius-pill);
-  background: rgb(70 220 255 / .09);
-  box-shadow: inset 0 0 0 1px rgb(70 220 255 / .22);
+  max-width: 460px;
+  height: 18px;
+  border: 1px solid rgb(70 220 255 / .35);
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, rgb(70 220 255 / .07) 0 2px, transparent 2px 6px),
+    rgb(8 18 34 / .9);
   overflow: hidden;
 }
 .sys-level__fill {
+  position: relative;
   display: block;
   width: calc(var(--pct, 0) * 1%);
   height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--sys-violet), var(--sys-cyan));
-  box-shadow: 0 0 16px var(--sys-glow);
+  background: linear-gradient(90deg, #2563eb, var(--sys-cyan));
+  box-shadow: 0 0 18px var(--sys-glow), inset 0 0 0 1px rgb(255 255 255 / .18);
   transition: width 900ms cubic-bezier(.16, .84, .34, 1);
+}
+/* Reflejo que recorre la barra: la energía "circula" en vez de quedarse
+   quieta. Se apaga con movimiento reducido. */
+@media (prefers-reduced-motion: no-preference) {
+  .sys-level__fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / .35), transparent);
+    transform: translateX(-100%);
+    animation: sys-sweep 2.6s var(--ease) infinite;
+  }
+}
+@keyframes sys-sweep {
+  0%, 55% { transform: translateX(-100%); }
+  100%    { transform: translateX(100%); }
 }
 
 .sys-level__xp {
@@ -1541,6 +1664,65 @@ button.week-cell:disabled:hover { transform: none; }
   0%   { transform: none; }
   18%  { transform: scale(1.12); }
   100% { transform: none; }
+}
+
+/* ── Player status: los cinco atributos ───────────────────
+   Códigos de RPG con datos reales. El detalle bajo cada barra dice de
+   dónde sale el número, para que ninguno parezca decorativo. ──────── */
+.attr-list { display: grid; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+
+.attr__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: 5px;
+}
+.attr__code {
+  min-width: 2.6rem;
+  font-family: var(--sys-mono);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--sys-cyan);
+}
+.attr__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.attr__value {
+  font-family: var(--sys-mono);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.attr__track {
+  height: 8px;
+  border: 1px solid rgb(70 220 255 / .25);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(90deg, rgb(70 220 255 / .06) 0 2px, transparent 2px 5px),
+    rgb(8 18 34 / .8);
+  overflow: hidden;
+}
+.attr__fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  background: linear-gradient(90deg, var(--sys-violet), var(--sys-cyan));
+  box-shadow: 0 0 10px var(--sys-glow);
+  transition: width 900ms cubic-bezier(.16, .84, .34, 1);
+}
+.attr__detail {
+  margin: 4px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
 }
 
 /* Calendario y gráfica dentro del panel */
@@ -1611,19 +1793,139 @@ button.week-cell:disabled:hover { transform: none; }
   }
   /* El panel de nivel abre la secuencia; detrás entran las fichas y
      después las tarjetas, en el mismo orden en que se leen. */
-  #view-progress .stat:nth-child(1) { animation-delay: 80ms; }
-  #view-progress .stat:nth-child(2) { animation-delay: 140ms; }
-  #view-progress .stat:nth-child(3) { animation-delay: 200ms; }
-  #view-progress .stat:nth-child(4) { animation-delay: 260ms; }
-  #view-progress .progress-grid > .card:nth-of-type(2) { animation-delay: 320ms; }
-  #view-progress .progress-grid > .card:nth-of-type(3) { animation-delay: 380ms; }
+  #view-progress .progress-grid > .card:nth-of-type(2) { animation-delay: 70ms; }
+  #view-progress .stat:nth-child(1) { animation-delay: 130ms; }
+  #view-progress .stat:nth-child(2) { animation-delay: 170ms; }
+  #view-progress .stat:nth-child(3) { animation-delay: 210ms; }
+  #view-progress .stat:nth-child(4) { animation-delay: 250ms; }
+  #view-progress .stat:nth-child(5) { animation-delay: 290ms; }
+  #view-progress .stat:nth-child(6) { animation-delay: 330ms; }
+  #view-progress .progress-grid > .card:nth-of-type(3) { animation-delay: 390ms; }
   #view-progress .progress-grid > .card:nth-of-type(4) { animation-delay: 440ms; }
-  #view-progress .progress-grid > .card:nth-of-type(5) { animation-delay: 500ms; }
-  #view-progress .progress-grid > .card:nth-of-type(6) { animation-delay: 560ms; }
+  #view-progress .progress-grid > .card:nth-of-type(5) { animation-delay: 490ms; }
+  #view-progress .progress-grid > .card:nth-of-type(6) { animation-delay: 540ms; }
+  #view-progress .progress-grid > .card:nth-of-type(7) { animation-delay: 590ms; }
 }
 @keyframes sys-boot {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
+}
+
+/* ── Ventana de subida de nivel ───────────────────────────
+   A pantalla completa pero breve, y se puede cerrar tocándola o con
+   Escape. Todo es transform y opacity: no provoca reflows. ────────── */
+.levelup {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  background: rgb(4 10 20 / .78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 260ms var(--ease);
+  cursor: pointer;
+}
+.levelup.is-open { opacity: 1; }
+
+.levelup__panel {
+  position: relative;
+  width: min(420px, 100%);
+  padding: var(--sp-6) var(--sp-5);
+  border: 1px solid color-mix(in srgb, var(--sys-cyan, #46dcff) 60%, transparent);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(70 220 255 / .12), rgb(70 220 255 / .02) 55%),
+    rgb(8 18 34 / .94);
+  box-shadow: 0 0 80px -20px #46dcff, inset 0 1px 0 0 rgb(70 220 255 / .35);
+  text-align: center;
+  transform: scale(.9);
+  transition: transform 320ms cubic-bezier(.2, .9, .3, 1.2);
+}
+.levelup.is-open .levelup__panel { transform: scale(1); }
+
+.levelup__corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+.levelup__corner--tl {
+  top: -1px; left: -1px;
+  border-top: 2px solid #46dcff;
+  border-left: 2px solid #46dcff;
+  border-top-left-radius: 12px;
+}
+.levelup__corner--br {
+  right: -1px; bottom: -1px;
+  border-right: 2px solid #a78bfa;
+  border-bottom: 2px solid #a78bfa;
+  border-bottom-right-radius: 12px;
+}
+
+.levelup__tag,
+.levelup__title,
+.levelup__level,
+.levelup__rank,
+.levelup__hint { margin: 0; font-family: var(--sys-mono, monospace); }
+
+.levelup__tag {
+  font-size: 10px;
+  letter-spacing: .34em;
+  text-transform: uppercase;
+  color: rgb(70 220 255 / .6);
+}
+.levelup__title {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: #46dcff;
+  text-shadow: 0 0 24px rgb(70 220 255 / .7);
+}
+.levelup__level {
+  margin: var(--sp-2) 0;
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  text-shadow: 0 0 30px rgb(70 220 255 / .45);
+}
+.levelup__rank {
+  padding: 4px var(--sp-3);
+  border: 1px solid #a78bfa;
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+.levelup__hint {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* La onda que sale del panel. Solo con movimiento permitido. */
+@media (prefers-reduced-motion: no-preference) {
+  .levelup.is-open .levelup__panel::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 1px solid #46dcff;
+    border-radius: 12px;
+    animation: levelup-ring 1.6s var(--ease) 2;
+    pointer-events: none;
+  }
+}
+@keyframes levelup-ring {
+  from { opacity: .8; transform: scale(1); }
+  to   { opacity: 0;  transform: scale(1.14); }
 }
 
 /* ── 8a. GRÁFICA DE EVOLUCIÓN ──────────────────────────────── */
