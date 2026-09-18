@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 5;
+  const VERSION = 6;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   const MAX_NOTE = 500;
@@ -106,8 +106,8 @@ HT.store = (function () {
      instalaciones nuevas. El límite por defecto es 2: a partir de ahí el
      día se marca como crítico. Se edita desde el propio hábito. */
   const AVOID_SEED = [
-    { name: 'Gula', icon: '🍔', color: '#f97316', type: 'avoid', category: 'evitar', limit: 2 },
-    { name: 'Lujo', icon: '💸', color: '#eab308', type: 'avoid', category: 'evitar', limit: 2 }
+    { name: 'Gula', icon: '🍔', color: '#f97316', type: 'avoid', category: 'evitar', limit: 1 },
+    { name: 'Lujo', icon: '💸', color: '#eab308', type: 'avoid', category: 'evitar', limit: 1 }
   ];
 
   /* Reparto por nombre de los hábitos que ya existían. Se compara sin
@@ -155,7 +155,7 @@ HT.store = (function () {
                 type: 'check' }, today),
       mkHabit({ name: 'Lectura', icon: '📖', color: '#e879f9', category: 'aprendizaje',
                 type: 'quantity', target: { amount: 10, unit: 'páginas', step: 1 } }, today),
-      mkHabit({ name: 'Japonés', icon: '🗾', color: '#fb7185', category: 'aprendizaje',
+      mkHabit({ name: 'Japonés', icon: '🇯🇵', color: '#fb7185', category: 'aprendizaje',
                 type: 'check' }, today),
       mkHabit({ name: 'Ajedrez', icon: '♟️', color: '#a78bfa', category: 'aprendizaje',
                 type: 'check' }, today),
@@ -561,6 +561,20 @@ HT.store = (function () {
     });
   }
 
+  /**
+   * Migración a la v6: bandera para Japonés y tolerancia cero en Gula y Lujo.
+   * Solo se toca lo que sigue con el valor anterior, para no pisar un icono
+   * o un límite cambiados a mano.
+   */
+  function migrateSeedTweaks() {
+    state.habits.forEach(function (h) {
+      const nombre = plainName(h.name);
+      if (nombre === 'japones' && h.icon === '🗾') h.icon = '🇯🇵';
+      if (h.type === 'avoid' && h.limit === 2 &&
+          (nombre === 'gula' || nombre === 'lujo')) h.limit = 1;
+    });
+  }
+
   /* ── Carga y guardado ─────────────────────────────────────── */
 
   function load() {
@@ -593,6 +607,7 @@ HT.store = (function () {
       if (incoming < 3) migrateToWorkout();
       if (incoming < 4) migrateToCategories();
       if (incoming < 5) migrateToScreenSlots();
+      if (incoming < 6) migrateSeedTweaks();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);

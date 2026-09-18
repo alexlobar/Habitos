@@ -257,12 +257,27 @@
   function goToDate(key) {
     if (key > today) return;      // no se registra en el futuro
     currentDate = key;
+    UI.toggleDayPicker(false);
     dirty.all = true;
     scheduleFlush();
   }
 
   function stepDay(delta) {
     goToDate(U.addDaysKey(currentDate, delta));
+  }
+
+  /* ── Selector de día ──────────────────────────────────────── */
+
+  let pickerMonth = U.startOfMonth(new Date());
+
+  function openPickerAt(dateKey) {
+    pickerMonth = U.startOfMonth(U.fromKey(dateKey));
+    UI.renderDayPicker(pickerMonth, currentDate, today);
+  }
+
+  function stepPickerMonth(delta) {
+    pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + delta, 1);
+    UI.renderDayPicker(pickerMonth, currentDate, today);
   }
 
   /* ── Acciones sobre las tarjetas ──────────────────────────── */
@@ -1042,6 +1057,39 @@
     els.prevDay.addEventListener('click', function () { stepDay(-1); });
     els.nextDay.addEventListener('click', function () { stepDay(1); });
     els.btnToday.addEventListener('click', function () { goToDate(today); });
+
+    // Selector de día
+    els.btnPickDay.addEventListener('click', function () {
+      // Se abre siempre por el mes del día que estés mirando, no por donde
+      // lo dejaste la última vez.
+      if (UI.toggleDayPicker()) openPickerAt(currentDate);
+    });
+    byId('dpPrev').addEventListener('click', function () { stepPickerMonth(-1); });
+    byId('dpNext').addEventListener('click', function () { stepPickerMonth(1); });
+    els.dpToday.addEventListener('click', function () {
+      UI.toggleDayPicker(false);
+      goToDate(today);
+    });
+    els.dpGrid.addEventListener('click', function (e) {
+      const cell = e.target.closest('[data-date]');
+      if (!cell || cell.disabled) return;
+      UI.toggleDayPicker(false);
+      goToDate(cell.dataset.date);
+      window.scrollTo(0, 0);
+    });
+
+    // Cerrarlo: con Escape o pulsando fuera. Un desplegable que solo se
+    // cierra con su propio botón se queda enganchado.
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !UI.isDayPickerOpen()) return;
+      UI.toggleDayPicker(false);
+      els.btnPickDay.focus();
+    });
+    document.addEventListener('pointerdown', function (e) {
+      if (!UI.isDayPickerOpen()) return;
+      if (e.target.closest('#dayPicker') || e.target.closest('#btnPickDay')) return;
+      UI.toggleDayPicker(false);
+    });
 
     // Tarjetas (delegación: un listener para toda la lista)
     els.habitList.addEventListener('click', onHabitListClick);

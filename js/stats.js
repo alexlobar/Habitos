@@ -561,6 +561,90 @@ HT.stats = (function () {
   }
 
   /**
+   * Suma de lo registrado en un hábito por cantidad: semana, mes y toda su
+   * historia. El valor exacto de cada día ya se guardaba —8 páginas de 10 se
+   * apuntan como 8, no se redondean ni se descartan—, pero no había ningún
+   * sitio donde verlo acumulado. Esto lo lee, no cambia nada.
+   */
+  function habitSums(habit, todayKey, weekStart) {
+    const today = todayKey || U.todayKey();
+    const logs = S.getHabitLogs(habit.id);
+    const firstOfWeek = U.toKey(U.startOfWeek(U.fromKey(today), weekStart));
+    const firstOfMonth = today.slice(0, 8) + '01';
+
+    let week = 0, month = 0, total = 0, days = 0, best = 0, bestDay = null;
+
+    Object.keys(logs).forEach(function (key) {
+      const n = Number(logs[key]);
+      // Los días futuros no se suman aunque alguien los tenga apuntados.
+      if (!isFinite(n) || n <= 0 || key > today) return;
+
+      total += n;
+      days++;
+      if (n > best) { best = n; bestDay = key; }
+      if (key >= firstOfMonth) month += n;
+      if (key >= firstOfWeek) week += n;
+    });
+
+    return {
+      week: week, month: month, total: total,
+      days: days, best: best, bestDay: bestDay,
+      // Media sobre los días con registro, no sobre los días transcurridos:
+      // "he leído 12 páginas los días que leí" dice más que diluirlo en ceros.
+      avg: days ? Math.round(total / days) : 0
+    };
+  }
+
+  /** Suma de un hábito por cantidad en un rango de días concreto. */
+  function habitSumOver(habit, dateKeys) {
+    let total = 0;
+    dateKeys.forEach(function (key) {
+      const n = Number(S.getLog(habit.id, key));
+      if (isFinite(n) && n > 0) total += n;
+    });
+    return total;
+  }
+
+  /**
+   * Días seguidos apuntando algo, aunque no llegue a la meta. En un hábito
+   * como los pasos, la racha normal exige 10.000 y se corta constantemente;
+   * esta mide la constancia de registrar, que es otra cosa.
+   */
+  function logStreak(habit, todayKey) {
+    const today = todayKey || U.todayKey();
+    const apuntado = function (key) { return Number(S.getLog(habit.id, key)) > 0; };
+
+    // Que hoy aún no esté apuntado no rompe la cuenta: se mira desde ayer.
+    let key = apuntado(today) ? today : U.addDaysKey(today, -1);
+
+    let count = 0;
+    for (let i = 0; i < MAX_LOOKBACK && key >= habit.createdAt; i++) {
+      if (!apuntado(key)) break;
+      count++;
+      key = U.addDaysKey(key, -1);
+    }
+    return count;
+  }
+
+  /** Valores diarios de los últimos `n` días, para la gráfica de la ficha. */
+  function habitValueSeries(habit, todayKey, n) {
+    const today = todayKey || U.todayKey();
+
+    return U.lastNDays(today, n).map(function (key) {
+      const value = Number(S.getLog(habit.id, key)) || 0;
+      return {
+        key: key,
+        label: String(U.fromKey(key).getDate()),
+        full: U.formatShort(U.fromKey(key)),
+        value: value,
+        // Un día sin apuntar no es un día de cero: corta la línea en vez de
+        // dibujar un valle que nunca ocurrió. Un 0 no llega a guardarse.
+        hasData: value > 0
+      };
+    });
+  }
+
+  /**
    * Cumplimiento desglosado por día de la semana. Responde a la pregunta
    * útil de verdad: ¿qué día se me atraganta este hábito?
    */
@@ -915,7 +999,8 @@ HT.stats = (function () {
     weekMatrix: weekMatrix,
     exerciseDone: exerciseDone, sessionSummary: sessionSummary, exerciseRecord: exerciseRecord,
     monthSeries: monthSeries, yearSeries: yearSeries, seriesRate: seriesRate,
-    habitRate: habitRate, habitTotal: habitTotal,
+    habitRate: habitRate, habitTotal: habitTotal, habitSums: habitSums,
+    habitSumOver: habitSumOver, logStreak: logStreak, habitValueSeries: habitValueSeries,
     habitWeekdayRates: habitWeekdayRates, weakestWeekday: weakestWeekday,
     earnedAchievements: earnedAchievements, achievementById: achievementById
   };

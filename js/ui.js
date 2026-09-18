@@ -80,6 +80,7 @@ HT.ui = (function () {
       'levelBadge', 'levelRing', 'levelNum', 'pointsValue', 'todayTime', 'todayLabel',
       'doneCount', 'totalCount', 'dayProgress', 'dayProgressFill',
       'prevDay', 'nextDay', 'btnToday',
+      'btnPickDay', 'dayPicker', 'dpPrev', 'dpNext', 'dpLabel', 'dpGrid', 'dpToday',
       'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeHint', 'dayNote',
       'statWeek', 'statMonth', 'statStreak', 'statBest',
       'levelPanel', 'lvNumber', 'lvRank', 'lvRankLetter', 'lvBar', 'lvFill', 'lvXp', 'lvRemaining',
@@ -90,13 +91,16 @@ HT.ui = (function () {
       'statWeekBar', 'statMonthBar',
       'chart', 'chartTitle', 'chartReadout', 'chartTable', 'chartEmpty', 'chartData',
       'calendarEmpty', 'calendarEmptyText', 'heatmapLegend',
-      'weekGrid', 'weekLabel', 'weekSummary', 'emptyWeek', 'btnThisWeek',
+      'weekGrid', 'weekLabel', 'weekSummary', 'weekTotals', 'emptyWeek', 'btnThisWeek',
+      'hChartCard', 'habitChart', 'hChartReadout',
       'emojiPicker', 'btnEmoji',
       'sessionEyebrow', 'routineName', 'routinePick', 'sessionSummary', 'exerciseList',
       'emptyWorkout', 'btnFinishSession', 'sessionHint', 'btnManageWorkout',
       'workoutManager', 'routineTable',
       'exerciseModal', 'exerciseForm', 'exModalTitle', 'exNameError', 'btnDeleteExercise',
       'habitIcon', 'habitTitle', 'habitMeta', 'hStreak', 'hBest', 'hRate', 'hTotal',
+      'hSumsCard', 'hSumWeek', 'hSumMonth', 'hSumTotal', 'hSumAvg', 'hSumBest',
+      'hSumDays', 'hSumsNote',
       'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
       'setStartWeek', 'setAccent', 'btnResetAccent', 'setNotifications', 'setEffects',
@@ -302,6 +306,56 @@ HT.ui = (function () {
 
     celebrate();
     buzz([30, 50, 30, 50, 60]);
+  }
+
+  /* ── Selector de día ──────────────────────────────────────
+     Un mes en pequeño colgado de la cabecera. Reutiliza la misma rejilla
+     y los mismos niveles de color que el calendario de Progreso, así que
+     al elegir un día ya se ve cómo te fue. ──────────────────── */
+
+  function renderDayPicker(monthDate, currentDate, todayKey) {
+    const weekStart = S.getSettings().weekStart;
+    const frag = document.createDocumentFragment();
+
+    U.weekdayLabels(weekStart).forEach(function (letra) {
+      frag.appendChild(el('span', { class: 'dp-dow', 'aria-hidden': 'true', text: letra }));
+    });
+
+    U.monthGrid(monthDate.getFullYear(), monthDate.getMonth(), weekStart)
+      .forEach(function (key) {
+        if (!key) { frag.appendChild(el('span', { class: 'dp-gap', 'aria-hidden': 'true' })); return; }
+
+        const day = St.dayStats(key);
+        const futuro = key > todayKey;
+        const cell = el('button', {
+          type: 'button',
+          class: 'dp-day',
+          'data-date': key,
+          'data-level': String(St.heatLevel(day) || 0),
+          'data-today': key === todayKey ? 'true' : null,
+          'aria-current': key === currentDate ? 'date' : null,
+          'aria-label': dayCellLabel(key, day),
+          text: String(U.fromKey(key).getDate())
+        });
+        // En el futuro no se registra nada, así que tampoco se puede ir.
+        if (futuro) cell.disabled = true;
+        frag.appendChild(cell);
+      });
+
+    els.dpGrid.textContent = '';
+    els.dpGrid.appendChild(frag);
+    els.dpLabel.textContent = U.formatMonth(monthDate);
+  }
+
+  function toggleDayPicker(open) {
+    const next = open === undefined ? els.dayPicker.hidden : open;
+    els.dayPicker.hidden = !next;
+    els.btnPickDay.setAttribute('aria-expanded', next ? 'true' : 'false');
+    return next;
+  }
+
+  function isDayPickerOpen() {
+    return !els.dayPicker.hidden;
   }
 
   /* ── Tarjetas de hábito ───────────────────────────────────── */
@@ -829,6 +883,37 @@ HT.ui = (function () {
     frozen: 'día congelado', future: 'aún por llegar', off: 'no toca'
   };
 
+  /**
+   * Lo acumulado de los hábitos por cantidad en la semana mostrada. La
+   * rejilla dice si cumpliste; esto dice cuánto, que en los pasos es la
+   * pregunta de verdad.
+   */
+  function renderWeekTotals(dateKeys) {
+    const frag = document.createDocumentFragment();
+    let alguno = false;
+
+    S.getHabits()
+      .filter(function (h) { return h.type === 'quantity'; })
+      .forEach(function (habit) {
+        const total = St.habitSumOver(habit, dateKeys);
+        if (!total) return;
+        alguno = true;
+
+        const item = el('li', { class: 'week-total' });
+        item.style.setProperty('--habit-color', habit.color);
+        item.appendChild(el('span', { 'aria-hidden': 'true', text: habit.icon }));
+        item.appendChild(el('strong', { text: fmtNum.format(total) }));
+        item.appendChild(el('span', { class: 'week-total__unit', text: habit.target.unit }));
+        item.setAttribute('aria-label', habit.name + ': ' + fmtNum.format(total) + ' ' +
+                                        habit.target.unit + ' esta semana');
+        frag.appendChild(item);
+      });
+
+    els.weekTotals.textContent = '';
+    els.weekTotals.appendChild(frag);
+    els.weekTotals.hidden = !alguno;
+  }
+
   function renderWeek(dateKeys, todayKey) {
     const weekStart = S.getSettings().weekStart;
     const rows = St.weekMatrix(dateKeys, todayKey);
@@ -842,6 +927,8 @@ HT.ui = (function () {
     els.weekSummary.textContent = rate.total
       ? rate.done + ' de ' + rate.total + ' cumplidos · ' + rate.pct + '%'
       : 'Nada previsto en esta semana.';
+
+    renderWeekTotals(dateKeys);
 
     els.emptyWeek.hidden = rows.length > 0;
     els.weekGrid.hidden = rows.length === 0;
@@ -1561,6 +1648,118 @@ HT.ui = (function () {
     els.avoidList.appendChild(frag);
   }
 
+  /**
+   * Gráfica de valores del hábito: lo que registraste cada día, no el
+   * porcentaje. Comparte motor y clases con la de Progreso, pero su eje Y
+   * va en unidades reales y lleva la meta marcada con una línea.
+   */
+  function renderValueChart(habit, todayKey) {
+    const series = St.habitValueSeries(habit, todayKey, 30);
+    const meta = habit.target.amount;
+    const unidad = habit.target.unit;
+
+    const width = Math.max(els.habitChart.clientWidth || 0, CHART.minW);
+    const ml = 40;                       // más margen: aquí caben "12.400"
+    const plotW = width - ml - CHART.mr;
+    const plotH = CHART.h - CHART.mt - CHART.mb;
+    const base = CHART.mt + plotH;
+
+    // La escala incluye siempre la meta: si nunca la alcanzas, tiene que
+    // verse lo lejos que queda, no quedarse fuera del lienzo.
+    const pico = series.reduce(function (m, p) { return Math.max(m, p.value); }, 0);
+    const top = Math.max(pico, meta) * 1.1 || 1;
+
+    const svg = svgEl('svg', {
+      class: 'chart__svg', width: width, height: CHART.h,
+      viewBox: '0 0 ' + width + ' ' + CHART.h, role: 'img',
+      'aria-label': 'Valores diarios de ' + habit.name + ' en los últimos 30 días, en ' + unidad
+    });
+
+    const defs = svgEl('defs');
+    const grad = svgEl('linearGradient', {
+      id: 'valueAreaGrad', gradientUnits: 'userSpaceOnUse', x1: 0, y1: CHART.mt, x2: 0, y2: base
+    });
+    grad.appendChild(svgEl('stop', { class: 'chart__area-a', offset: '0' }));
+    grad.appendChild(svgEl('stop', { class: 'chart__area-b', offset: '1' }));
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+
+    const y = function (v) { return base - (v / top) * plotH; };
+    const x = function (i) { return ml + i * (plotW / series.length) + (plotW / series.length) / 2; };
+
+    [0, top / 2, top].forEach(function (v) {
+      svg.appendChild(svgEl('line', {
+        class: 'chart__grid', x1: ml, y1: y(v), x2: width - CHART.mr, y2: y(v)
+      }));
+      const label = svgEl('text', { class: 'chart__axis', x: ml - 6, y: y(v) + 3, 'text-anchor': 'end' });
+      label.textContent = fmtNum.format(Math.round(v));
+      svg.appendChild(label);
+    });
+
+    // La meta, de guiones: el listón que hay que pasar.
+    svg.appendChild(svgEl('line', {
+      class: 'chart__goal', x1: ml, y1: y(meta), x2: width - CHART.mr, y2: y(meta)
+    }));
+
+    let linea = '';
+    let area = '';
+    let abierto = false;
+
+    series.forEach(function (p, i) {
+      if (!p.hasData) { if (abierto) area += 'L' + x(i - 1) + ',' + base + 'Z'; abierto = false; return; }
+      linea += (abierto ? 'L' : 'M') + x(i) + ',' + y(p.value);
+      area += abierto ? 'L' + x(i) + ',' + y(p.value)
+                      : 'M' + x(i) + ',' + base + 'L' + x(i) + ',' + y(p.value);
+      abierto = true;
+    });
+    if (abierto) area += 'L' + x(series.length - 1) + ',' + base + 'Z';
+
+    if (area) svg.appendChild(svgEl('path', { class: 'chart__area chart__area--value', d: area }));
+    if (linea) svg.appendChild(svgEl('path', { class: 'chart__line', d: linea }));
+
+    const slot = plotW / series.length;
+    series.forEach(function (p, i) {
+      if (!p.hasData) return;
+
+      svg.appendChild(svgEl('circle', {
+        class: 'chart__dot' + (p.value >= meta ? ' chart__dot--goal' : ''),
+        cx: x(i), cy: y(p.value), r: 3
+      }));
+
+      const hit = svgEl('rect', {
+        class: 'chart__hit', x: ml + i * slot, y: CHART.mt, width: slot, height: plotH
+      });
+      const title = svgEl('title');
+      title.textContent = p.full + ': ' + fmtNum.format(p.value) + ' de ' +
+                          fmtNum.format(meta) + ' ' + unidad;
+      hit.appendChild(title);
+      svg.appendChild(hit);
+    });
+
+    series.forEach(function (p, i) {
+      if (i !== 0 && (i + 1) % 7 !== 0 && i !== series.length - 1) return;
+      const label = svgEl('text', {
+        class: 'chart__axis', x: x(i), y: CHART.h - 7, 'text-anchor': 'middle'
+      });
+      label.textContent = p.label;
+      svg.appendChild(label);
+    });
+
+    svg.appendChild(svgEl('line', {
+      class: 'chart__baseline', x1: ml, y1: base, x2: width - CHART.mr, y2: base
+    }));
+
+    els.habitChart.textContent = '';
+    els.habitChart.appendChild(svg);
+
+    const conDatos = series.filter(function (p) { return p.hasData && p.value > 0; });
+    const sobreMeta = conDatos.filter(function (p) { return p.value >= meta; }).length;
+    els.hChartReadout.textContent = conDatos.length
+      ? conDatos.length + ' días con registro · ' + sobreMeta + ' por encima de la meta de ' +
+        fmtNum.format(meta) + ' ' + unidad
+      : 'Todavía no hay valores registrados.';
+  }
+
   function renderStreakList(dateKey) {
     const habits = S.getHabits().filter(function (h) { return !St.isAvoid(h); });
     const frag = document.createDocumentFragment();
@@ -1651,8 +1850,42 @@ HT.ui = (function () {
     els.btnArchiveHabit.setAttribute('aria-label', archiveLabel);
     els.btnArchiveHabit.classList.toggle('is-on', habit.archived);
 
+    renderHabitSums(habit, todayKey, weekStart);
     renderHabitHeatmap(habit, monthDate, weekStart, todayKey);
     renderWeekBars(habit, todayKey, weekStart);
+  }
+
+  /**
+   * Totales acumulados. Solo tiene sentido en los hábitos por cantidad: en
+   * un check sumar "veces" ya lo dice la ficha "Veces cumplido".
+   */
+  function renderHabitSums(habit, todayKey, weekStart) {
+    const esCantidad = habit.type === 'quantity';
+    els.hSumsCard.hidden = !esCantidad;
+    els.hChartCard.hidden = !esCantidad;
+    if (!esCantidad) return;
+
+    renderValueChart(habit, todayKey);
+
+    const s = St.habitSums(habit, todayKey, weekStart);
+    const u = habit.target.unit;
+    const con = function (n) { return fmtNum.format(n) + ' ' + u; };
+
+    els.hSumWeek.textContent = con(s.week);
+    els.hSumMonth.textContent = con(s.month);
+    els.hSumTotal.textContent = con(s.total);
+    els.hSumAvg.textContent = s.days ? con(s.avg) : '—';
+    els.hSumBest.textContent = s.best ? con(s.best) : '—';
+
+    // Racha de apuntar, no de cumplir: en los pasos casi nunca llegas a la
+    // meta, pero registrar a diario ya es constancia.
+    const apuntando = St.logStreak(habit, todayKey);
+    els.hSumDays.textContent = apuntando + (apuntando === 1 ? ' día' : ' días');
+
+    els.hSumsNote.textContent = s.bestDay
+      ? 'Tu mejor día fue el ' + U.formatShort(U.fromKey(s.bestDay)) + ', y llevas ' + s.days +
+        ' días con registro en total. La media cuenta solo esos días, no los que no apuntaste nada.'
+      : 'Todavía no has registrado ningún valor en este hábito.';
   }
 
   function renderHabitHeatmap(habit, monthDate, weekStart, todayKey) {
@@ -1668,9 +1901,19 @@ HT.ui = (function () {
 
       const level = St.habitDayLevel(habit, key);
       const date = U.formatShort(U.fromKey(key));
-      const label = level === null
-        ? date + ': no tocaba'
-        : date + ': ' + (St.isComplete(habit, S.getLog(habit.id, key)) ? 'cumplido' : 'sin cumplir');
+      const value = S.getLog(habit.id, key);
+      let label;
+
+      if (level === null) {
+        label = date + ': no tocaba';
+      } else if (habit.type === 'quantity') {
+        // El valor exacto del día, que hasta ahora solo se veía volviendo a
+        // ese día en Hoy: "8 de 10 páginas" dice mucho más que "sin cumplir".
+        label = date + ': ' + (Number(value) || 0) + ' de ' + habit.target.amount +
+                ' ' + habit.target.unit;
+      } else {
+        label = date + ': ' + (St.isComplete(habit, value) ? 'cumplido' : 'sin cumplir');
+      }
 
       frag.appendChild(heatCell(key, level, label, {
         isToday: key === todayKey, frozen: S.isFrozen(key), future: key > todayKey
@@ -2111,6 +2354,8 @@ HT.ui = (function () {
     toggleWorkoutManager: toggleWorkoutManager,
     openExerciseModal: openExerciseModal, closeExerciseModal: closeExerciseModal,
     readExerciseForm: readExerciseForm,
+    renderDayPicker: renderDayPicker, toggleDayPicker: toggleDayPicker,
+    isDayPickerOpen: isDayPickerOpen,
     renderProgress: renderProgress, renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,

@@ -1763,6 +1763,133 @@ button.week-cell:disabled:hover { transform: none; }
   transition: r 120ms var(--ease);
 }
 .chart__dot.is-active { fill: var(--sys-cyan, var(--accent)); }
+
+/* Gráfica de valores de la ficha: fuera de Progreso, así que toma el acento
+   de la app en vez de los tokens del System. */
+#habitChart .chart__line { stroke: var(--habit-color, var(--accent)); }
+#habitChart .chart__dot { stroke: var(--habit-color, var(--accent)); }
+/* Los días que pasan la meta se rellenan: se ven de un vistazo. */
+#habitChart .chart__dot--goal { fill: var(--habit-color, var(--accent)); }
+.chart__area--value { fill: url(#valueAreaGrad); }
+#habitChart .chart__area-a { stop-color: var(--habit-color, var(--accent)); stop-opacity: .24; }
+#habitChart .chart__area-b { stop-color: var(--habit-color, var(--accent)); stop-opacity: 0; }
+/* La meta, a rayas y en verde: es el listón, no un dato más. */
+.chart__goal {
+  stroke: var(--success);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: .7;
+}
+
+/* ── Selector de día ──────────────────────────────────────
+   Un mes en pequeño colgado de la cabecera. Los días llevan el mismo
+   escalonado de color que el calendario de Progreso, así que al elegir
+   ya se ve cómo fue ese día. ─────────────────────────────── */
+.day-nav { position: relative; }
+.day-nav__pick svg { width: 17px; height: 17px; }
+.day-nav__pick[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.daypicker {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + var(--sp-2));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 268px;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+}
+.daypicker__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.daypicker__label {
+  flex: 1;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: center;
+}
+/* Solo la inicial: `capitalize` dejaba "Septiembre De 2026". */
+.daypicker__label::first-letter { text-transform: uppercase; }
+
+.daypicker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.dp-dow {
+  padding-bottom: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-faint);
+}
+.dp-gap { aspect-ratio: 1; }
+
+.dp-day {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: var(--heat-0);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  transition: outline-color var(--dur) var(--ease), transform 120ms var(--ease);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+}
+.dp-day[data-level="1"] { background: var(--heat-1); }
+.dp-day[data-level="2"] { background: var(--heat-2); }
+.dp-day[data-level="3"] { background: var(--heat-3); }
+.dp-day[data-level="4"] { background: var(--heat-4); color: var(--on-accent); }
+.dp-day:hover:not(:disabled) { transform: scale(1.12); }
+/* Hoy se marca con el filo; el día que estás mirando, con relleno sólido. */
+.dp-day[data-today="true"] { outline-color: var(--accent-text); }
+/* El día que estás viendo lleva aro claro además del relleno: sin él no se
+   distinguía de un día cumplido al 100%, que sale del mismo color. */
+.dp-day[aria-current="date"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  outline-color: var(--text);
+}
+.dp-day:disabled { opacity: .3; cursor: default; }
+
+.daypicker__today { width: 100%; margin-top: var(--sp-3); }
+
+/* Totales de la semana, bajo el resumen */
+.week-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+}
+.week-total {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--habit-color, var(--accent)) 45%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 14%, transparent);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.week-total strong {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 #view-progress .chart__readout { font-family: var(--sys-mono); font-size: var(--fs-xs); }
 
 /* Rachas y logros con el mismo lenguaje */

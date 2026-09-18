@@ -44,6 +44,26 @@
               <time id="todayTime" datetime="">—</time>
             </p>
             <button type="button" class="icon-btn" id="nextDay" aria-label="Día siguiente">›</button>
+
+            <button type="button" class="icon-btn day-nav__pick" id="btnPickDay"
+                    aria-expanded="false" aria-controls="dayPicker"
+                    title="Elegir un día" aria-label="Elegir un día del calendario">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>
+                <path d="M8 3v4M16 3v4M3.5 10h17"/>
+              </svg>
+            </button>
+
+            <div class="daypicker" id="dayPicker" role="dialog"
+                 aria-label="Elegir un día" hidden>
+              <div class="daypicker__nav">
+                <button type="button" class="icon-btn" id="dpPrev" aria-label="Mes anterior">‹</button>
+                <span class="daypicker__label" id="dpLabel" aria-live="polite">—</span>
+                <button type="button" class="icon-btn" id="dpNext" aria-label="Mes siguiente">›</button>
+              </div>
+              <div class="daypicker__grid" id="dpGrid"></div>
+              <button type="button" class="btn btn--ghost daypicker__today" id="dpToday">Ir a hoy</button>
+            </div>
           </div>
           <p class="day-summary__count"><strong id="doneCount">0</strong>/<span id="totalCount">0</span></p>
         </div>
@@ -105,6 +125,7 @@
 
         <article class="card">
           <p class="week-summary" id="weekSummary">—</p>
+          <ul class="week-totals" id="weekTotals" aria-label="Totales de la semana" hidden></ul>
           <div class="week-grid" id="weekGrid"></div>
           <div class="empty-state empty-state--inline" id="emptyWeek" hidden>
             <p class="empty-state__text">Ningún hábito toca esta semana.</p>
@@ -353,6 +374,27 @@
           <li class="stat"><p class="stat__value" id="hRate">—</p><p class="stat__label">Últimos 30 días</p></li>
           <li class="stat"><p class="stat__value" id="hTotal">—</p><p class="stat__label">Veces cumplido</p></li>
         </ul>
+
+        <article class="card" id="hSumsCard" aria-labelledby="hSumsTitle" hidden>
+          <header class="card__head"><h2 class="card__title" id="hSumsTitle">Totales acumulados</h2></header>
+          <ul class="stat-grid" aria-label="Totales del hábito">
+            <li class="stat"><p class="stat__value" id="hSumWeek">—</p><p class="stat__label">Esta semana</p></li>
+            <li class="stat"><p class="stat__value" id="hSumMonth">—</p><p class="stat__label">Este mes</p></li>
+            <li class="stat"><p class="stat__value" id="hSumTotal">—</p><p class="stat__label">Total histórico</p></li>
+            <li class="stat"><p class="stat__value" id="hSumAvg">—</p><p class="stat__label">Media por día</p></li>
+            <li class="stat"><p class="stat__value" id="hSumBest">—</p><p class="stat__label">Mejor día</p></li>
+            <li class="stat"><p class="stat__value" id="hSumDays">—</p><p class="stat__label">Racha apuntando</p></li>
+          </ul>
+          <p class="card__text card__text--tight" id="hSumsNote"></p>
+        </article>
+
+        <article class="card" id="hChartCard" aria-labelledby="hChartTitle" hidden>
+          <header class="card__head">
+            <h2 class="card__title" id="hChartTitle">Valores de los últimos 30 días</h2>
+          </header>
+          <p class="chart__readout" id="hChartReadout" aria-live="polite">—</p>
+          <div class="chart" id="habitChart"></div>
+        </article>
 
         <article class="card" aria-labelledby="hCalTitle">
           <header class="card__head">
