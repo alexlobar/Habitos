@@ -11,11 +11,12 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 6;
+  const VERSION = 7;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   const MAX_NOTE = 500;
-  const MAX_FREEZES = 3;
+  const MAX_FREEZES = 4;
+  const MAX_LEVEL_LOG = 200;
   const MAX_SETS = 20;
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
@@ -186,7 +187,13 @@ HT.store = (function () {
 
     return {
       version: VERSION,
-      settings: { weekStart: 1, accent: U.DEFAULT_ACCENT, notificationsEnabled: false, effects: true },
+      settings: {
+        weekStart: 1, accent: U.DEFAULT_ACCENT, notificationsEnabled: false,
+        effects: true, controls: 'comfy',
+        theme: 'dark', fontSize: 'normal',
+        hideDone: false, backupDays: 14,
+        showDayBar: true, showNotes: true, showFreeze: true
+      },
       habits: habits,
       logs: {},
       notes: {},
@@ -199,8 +206,8 @@ HT.store = (function () {
         // Arranca a 0 a propósito: el logro "Coleccionista" premia crear
         // hábitos, y los de partida los regala la app, no los creas tú.
         points: 0, achievements: [], bestStreak: 0, habitsCreated: 0,
-        avoidXpPaid: 0,
-        freezes: 1, freezeMonth: today.slice(0, 7)
+        avoidXpPaid: 0, lastExport: null, levelLog: [], levelLogFrom: 0,
+        freezes: 1, freezeWeek: U.toKey(U.startOfWeek(U.fromKey(today), 1))
       }
     };
   }
@@ -403,6 +410,30 @@ HT.store = (function () {
     };
   }
 
+  /**
+   * Historial de ascensos: un apunte por nivel, ordenado y sin repetidos.
+   * De cada nivel se queda el primero que aparezca, porque lo que se guarda
+   * es la primera vez que se llegó, no cada ida y vuelta.
+   */
+  function cleanLevelLog(raw) {
+    if (!Array.isArray(raw)) return [];
+
+    const vistos = {};
+    const out = [];
+
+    raw.forEach(function (entry) {
+      if (!entry || typeof entry !== 'object') return;
+      const level = Math.floor(Number(entry.level));
+      if (!(level >= 1) || vistos[level]) return;
+      if (!U.isValidKey(entry.date)) return;
+      vistos[level] = true;
+      out.push({ level: level, date: entry.date });
+    });
+
+    out.sort(function (a, b) { return a.level - b.level; });
+    return out.slice(-MAX_LEVEL_LOG);   // si hay que recortar, sobran los niveles bajos
+  }
+
   function cleanState(raw) {
     if (!raw || typeof raw !== 'object') throw new Error('estado no es un objeto');
 
@@ -445,7 +476,19 @@ HT.store = (function () {
         accent: HEX.test(s.accent) ? s.accent : U.DEFAULT_ACCENT,
         notificationsEnabled: s.notificationsEnabled === true,
         // Ausente en los datos de la v1: se activa por defecto.
-        effects: s.effects !== false
+        effects: s.effects !== false,
+        // Ausente antes de la 1.5.5: se estrena en cómodo, que es lo pedido.
+        controls: s.controls === 'compact' ? 'compact' : 'comfy',
+        // Todos estos nacen en la 1.6.2. Cada uno cae del lado que deja la
+        // app como estaba, para que actualizar no cambie nada sin pedirlo.
+        theme: s.theme === 'light' ? 'light' : 'dark',
+        fontSize: s.fontSize === 'large' ? 'large' : 'normal',
+        hideDone: s.hideDone === true,
+        backupDays: [0, 7, 14, 30].indexOf(Number(s.backupDays)) >= 0
+          ? Number(s.backupDays) : 14,
+        showDayBar: s.showDayBar !== false,
+        showNotes: s.showNotes !== false,
+        showFreeze: s.showFreeze !== false
       },
       habits: habits,
       logs: logs,
@@ -472,18 +515,42 @@ HT.store = (function () {
         // XP por hitos de malos hábitos ya cobrada. Ausente en datos
         // anteriores: empieza a 0 y solo puede subir.
         avoidXpPaid: Math.max(0, Math.floor(Number(g.avoidXpPaid) || 0)),
+        // Última copia exportada, para poder avisar cuando lleve tiempo.
+        lastExport: U.isValidKey(g.lastExport) ? g.lastExport : null,
+        // El único dato de progresión que NO se deriva de la XP: la XP guarda
+        // cuánta llevas, no cuándo la ganaste. Si se pierde este registro, las
+        // fechas de los ascensos ya no se pueden reconstruir.
+        levelLog: cleanLevelLog(g.levelLog),
+        // Nivel desde el que el registro es fiable. `null` significa "sin
+        // fijar": lo pone la app al arrancar con el nivel que ya tuviera el
+        // usuario, para no inventar fechas de ascensos anteriores a la 1.6.3.
+        levelLogFrom: g.levelLogFrom === null || g.levelLogFrom === undefined
+          ? null : Math.max(0, Math.floor(Number(g.levelLogFrom) || 0)),
         freezes: U.clamp(Math.floor(Number(g.freezes) || 0), 0, MAX_FREEZES),
-        freezeMonth: /^\d{4}-\d{2}$/.test(g.freezeMonth) ? g.freezeMonth : today.slice(0, 7)
+        // Desde la 1.6.1 los comodines son semanales, así que se guarda el
+        // lunes de la semana y no el mes. Quien venga del formato viejo
+        // empieza a contar desde esta semana, sin regalo ni castigo.
+        freezeWeek: U.isValidKey(g.freezeWeek) ? g.freezeWeek : today
       }
     };
   }
 
-  /** Un comodín nuevo al entrar en un mes distinto, hasta el tope. */
+  /**
+   * Un comodín por semana, hasta el tope. Se cuentan las semanas pasadas y no
+   * solo "ha cambiado la semana": si no abres la app en un mes, recuperas los
+   * cuatro de golpe en vez de uno.
+   */
   function refillFreezes() {
-    const month = U.todayKey().slice(0, 7);
-    if (state.game.freezeMonth === month) return;
-    state.game.freezeMonth = month;
-    state.game.freezes = Math.min(MAX_FREEZES, state.game.freezes + 1);
+    const week = U.toKey(U.startOfWeek(new Date(), state.settings.weekStart));
+    const last = state.game.freezeWeek;
+
+    if (!U.isValidKey(last)) { state.game.freezeWeek = week; return; }
+
+    const semanas = Math.floor(U.daysBetween(last, week) / 7);
+    if (semanas <= 0) return;
+
+    state.game.freezeWeek = week;
+    state.game.freezes = Math.min(MAX_FREEZES, state.game.freezes + semanas);
   }
 
   /**
@@ -1035,7 +1102,16 @@ HT.store = (function () {
       weekStart: Number(next.weekStart) === 0 ? 0 : 1,
       accent: HEX.test(next.accent) ? next.accent : state.settings.accent,
       notificationsEnabled: next.notificationsEnabled === true,
-      effects: next.effects !== false
+      effects: next.effects !== false,
+      controls: next.controls === 'compact' ? 'compact' : 'comfy',
+      theme: next.theme === 'light' ? 'light' : 'dark',
+      fontSize: next.fontSize === 'large' ? 'large' : 'normal',
+      hideDone: next.hideDone === true,
+      backupDays: [0, 7, 14, 30].indexOf(Number(next.backupDays)) >= 0
+        ? Number(next.backupDays) : 14,
+      showDayBar: next.showDayBar !== false,
+      showNotes: next.showNotes !== false,
+      showFreeze: next.showFreeze !== false
     };
     commit('settings:change', state.settings);
     return state.settings;
@@ -1074,6 +1150,73 @@ HT.store = (function () {
     state.game.bestStreak = n;
     commit('game:streak', n);
     return n;
+  }
+
+  /**
+   * Apunta la fecha de un ascenso, y de los niveles que se hayan saltado de
+   * una tacada si un bonus grande sube dos de golpe.
+   *
+   * Solo cuenta la primera vez que se alcanza cada nivel: la XP es simétrica
+   * —desmarcar un hábito la retira— y ese vaivén alrededor de un umbral no es
+   * un ascenso nuevo, así que nunca se apunta dos veces ni se borra.
+   */
+  function recordLevelUp(level, dateKey) {
+    const objetivo = Math.floor(Number(level) || 0);
+    if (objetivo < 1) return [];
+
+    const log = state.game.levelLog;
+    const base = Math.max(0, Number(state.game.levelLogFrom) || 0);
+    const ultimo = log.length ? Math.max(base, log[log.length - 1].level) : base;
+    if (objetivo <= ultimo) return [];
+
+    const date = U.isValidKey(dateKey) ? dateKey : U.todayKey();
+    const nuevos = [];
+    for (let n = ultimo + 1; n <= objetivo; n++) nuevos.push({ level: n, date: date });
+
+    log.push.apply(log, nuevos);
+    while (log.length > MAX_LEVEL_LOG) log.shift();
+
+    save();
+    return nuevos;
+  }
+
+  function getLevelLog() { return state.game.levelLog; }
+
+  /**
+   * Fija el nivel desde el que el registro cuenta. Solo actúa una vez, al
+   * arrancar con datos anteriores a la 1.6.3: a partir de ahí es un dato
+   * histórico y cambiarlo falsearía lo ya apuntado.
+   */
+  function initLevelLogFrom(level) {
+    if (state.game.levelLogFrom !== null) return state.game.levelLogFrom;
+    state.game.levelLogFrom = Math.max(0, Math.floor(Number(level) || 0));
+    save();
+    return state.game.levelLogFrom;
+  }
+
+  /** Deja constancia de la última copia exportada. */
+  function markExported() {
+    state.game.lastExport = U.todayKey();
+    save();
+    return state.game.lastExport;
+  }
+
+  /**
+   * Reinicia solo la progresión: EXP, nivel, logros y récord. Los hábitos y
+   * todo su histórico se quedan intactos — es la diferencia con reset().
+   */
+  function resetProgress() {
+    state.game.points = 0;
+    state.game.achievements = [];
+    state.game.avoidXpPaid = 0;
+    state.game.bestStreak = 0;
+    // Sin EXP no hay nivel, y sin nivel las fechas de los ascensos anteriores
+    // contarían una historia que ya no existe.
+    state.game.levelLog = [];
+    state.game.levelLogFrom = 0;
+    save(true);
+    emit('state:replace');
+    return state.game;
   }
 
   /* ── Mantenimiento ────────────────────────────────────────── */
@@ -1116,6 +1259,9 @@ HT.store = (function () {
     setSettings: setSettings,
     addPoints: addPoints, unlockAchievement: unlockAchievement, setBestStreak: setBestStreak,
     setAvoidXpPaid: setAvoidXpPaid,
+    recordLevelUp: recordLevelUp, getLevelLog: getLevelLog,
+    initLevelLogFrom: initLevelLogFrom,
+    markExported: markExported, resetProgress: resetProgress,
     replaceState: replaceState, reset: reset
   };
 })();

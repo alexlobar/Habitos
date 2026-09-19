@@ -63,6 +63,27 @@ HT.stats = (function () {
     return round5(ganado * (ratio >= 1 ? XP.perfectDayPct : XP.goodDayPct));
   }
 
+  /**
+   * Lo que todavía está en juego hoy: cuántos hábitos faltan y cuánta EXP
+   * darían si se cumplieran todos. Es lo que pintan las barras en gris.
+   *
+   * El bonus no se suma entero: cumplirlos todos deja el día perfecto, así
+   * que se calcula el bonus pleno y se resta el que ya esté ganado. Sin esa
+   * resta, la previsión prometería EXP que ya tienes.
+   */
+  function pendingToday(dateKey) {
+    const day = dayStats(dateKey);
+    const faltan = day.total - day.done;
+    if (faltan <= 0) return { habits: 0, xp: 0 };
+
+    const bonusPleno = round5(day.total * XP.habit * XP.perfectDayPct);
+
+    return {
+      habits: faltan,
+      xp: faltan * XP.habit + (bonusPleno - dayBonus(dateKey))
+    };
+  }
+
   /** Bonus por completar todos los ejercicios del día. Misma mecánica. */
   function exerciseBonus(dateKey, exercises) {
     if (!exercises.length) return 0;
@@ -993,7 +1014,8 @@ HT.stats = (function () {
 
     isActiveOn: isActiveOn, isComplete: isComplete, progressOf: progressOf,
     dayOutcome: dayOutcome,
-    dayStats: dayStats, heatLevel: heatLevel, habitDayLevel: habitDayLevel,
+    dayStats: dayStats, pendingToday: pendingToday,
+    heatLevel: heatLevel, habitDayLevel: habitDayLevel,
     currentStreak: currentStreak, bestStreak: bestStreak, topStreak: topStreak,
     weekRate: weekRate, monthRate: monthRate, rateOver: rateOver, levelInfo: levelInfo,
     weekMatrix: weekMatrix,

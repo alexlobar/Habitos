@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    app.js — Arranque y orquestación: conecta los eventos del
    usuario con el store, reparte puntos, programa recordatorios
    y exporta datos. Es el único módulo que conoce a los demás.
@@ -48,7 +48,7 @@
       // Semana, progreso y ficha son caros: solo se recalculan si están a la vista.
       if (dirty.week) renderWeekIfOpen();
       if (dirty.workout) renderExercisesIfOpen();
-      if (dirty.progress && !UI.els.views.progress.hidden) UI.renderProgress(currentDate, viewPeriod, calScale);
+      if (dirty.progress && !UI.els.views.progress.hidden) UI.renderProgress(currentDate);
       if (dirty.habit) renderHabitIfOpen();
     }
 
@@ -69,7 +69,7 @@
     UI.renderSettings();
     renderWeekIfOpen();
     renderExercisesIfOpen();
-    if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate, viewPeriod, calScale);
+    if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate);
     renderHabitIfOpen();
   }
 
@@ -87,9 +87,14 @@
     return out;
   }
 
+  /**
+   * Histórico entero: la rejilla de la semana más lo que depende del periodo
+   * —cumplimiento, calendario y evolución—, que se mudó aquí desde Progreso.
+   */
   function renderWeekIfOpen() {
     if (UI.els.views.week.hidden) return;
     UI.renderWeek(weekDates(), today);
+    UI.renderHistory(currentDate, viewPeriod, calScale);
   }
 
   function renderHabitIfOpen() {
@@ -165,6 +170,10 @@
      valor de la tabla — por ejemplo grantXp(St.XP.goal) al cumplir un
      objetivo, cuando esa acción exista. */
   function onLevelUp(info) {
+    // Primero se apunta y luego se celebra: la celebración es efímera y el
+    // registro no, así que una excepción pintando la ventana no puede
+    // llevarse por delante la fecha del ascenso.
+    S.recordLevelUp(info.level, today);
     UI.showLevelUp(info.level, info.rank.name, info.rank);
   }
 
@@ -832,7 +841,36 @@
     download('habitos-' + today + '.json',
              JSON.stringify(S.getState(), null, 2),
              'application/json');
+    S.markExported();
     UI.toast('Copia exportada en JSON.', { type: 'success', icon: '↓' });
+  }
+
+  /**
+   * Aviso de copia. Los datos viven solo en este navegador: si nunca exportas
+   * y se borran, no hay de dónde recuperarlos. Se avisa una vez al arrancar.
+   */
+  function checkBackupReminder() {
+    const dias = S.getSettings().backupDays;
+    if (!dias) return;
+
+    const last = S.getGame().lastExport;
+    if (last && U.daysBetween(last, today) < dias) return;
+
+    UI.toast(last
+      ? 'Llevas ' + U.daysBetween(last, today) + ' días sin exportar una copia.'
+      : 'Aún no has exportado ninguna copia de tus datos.', {
+      icon: '💾',
+      action: { label: 'Exportar', onClick: exportJson }
+    });
+  }
+
+  /** Reinicia la progresión dejando los hábitos y su histórico intactos. */
+  function resetProgressOnly() {
+    if (!window.confirm('Se pondrán a cero la EXP, el nivel, el rango y los logros.\n\n' +
+                        'Tus hábitos y todo su histórico se conservan. ¿Continuar?')) return;
+
+    S.resetProgress();
+    UI.toast('Progresión reiniciada. Tus hábitos siguen intactos.', { type: 'success', icon: '↺' });
   }
 
   function csvCell(value) {
@@ -857,9 +895,15 @@
         } else if (habit.type === 'quantity') {
           shown = value + ' ' + habit.target.unit;
           goal = habit.target.amount + ' ' + habit.target.unit;
+        } else if (habit.type === 'avoid' && !habit.slots) {
+          // Un hábito a evitar sin franjas guarda un número de fallos, no un
+          // objeto: aquí se colaba en la rama de franjas y rompía la exportación.
+          const fallos = St.failsOf(value);
+          shown = fallos + (fallos === 1 ? ' fallo' : ' fallos');
+          goal = 'máximo ' + St.limitOf(habit);
         } else {
           shown = Object.keys(value).map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
-          goal = habit.slots.map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
+          goal = (habit.slots || []).map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
         }
 
         rows.push([
@@ -968,7 +1012,7 @@
 
   function showProgress() {
     UI.setView('progress');
-    UI.renderProgress(currentDate, viewPeriod, calScale);
+    UI.renderProgress(currentDate);
   }
 
   function showWeek() {
@@ -985,7 +1029,7 @@
     viewPeriod = calScale === 'year'
       ? new Date(viewPeriod.getFullYear() + delta, 0, 1)
       : new Date(viewPeriod.getFullYear(), viewPeriod.getMonth() + delta, 1);
-    UI.renderProgress(currentDate, viewPeriod, calScale);
+    renderWeekIfOpen();
   }
 
   /** Cualquier celda del calendario lleva a ese día en la vista Hoy. */
@@ -1171,7 +1215,7 @@
         viewPeriod = calScale === 'year'
           ? new Date(viewPeriod.getFullYear(), 0, 1)
           : U.startOfMonth(U.fromKey(currentDate));
-        UI.renderProgress(currentDate, viewPeriod, calScale);
+        renderWeekIfOpen();
       });
     });
 
@@ -1220,7 +1264,44 @@
       S.setSettings({ effects: !S.getSettings().effects });
     });
 
+    // Los ajustes de apariencia se aplican ya, sin esperar al repintado:
+    // un cambio de aspecto que tarda en verse parece que no ha funcionado.
+    els.setControls.addEventListener('change', function () {
+      UI.applyControls(els.setControls.value);
+      S.setSettings({ controls: els.setControls.value });
+    });
+    els.setTheme.addEventListener('change', function () {
+      UI.applyTheme(els.setTheme.value);
+      S.setSettings({ theme: els.setTheme.value });
+      // El acento se aclara sobre oscuro y se oscurece sobre claro.
+      UI.applyAccent(S.getSettings().accent);
+    });
+    els.setFontSize.addEventListener('change', function () {
+      UI.applyFontSize(els.setFontSize.value);
+      S.setSettings({ fontSize: els.setFontSize.value });
+    });
+    els.setBackup.addEventListener('change', function () {
+      S.setSettings({ backupDays: Number(els.setBackup.value) });
+    });
+
+    const toggle = function (node, key) {
+      node.addEventListener('click', function () {
+        const patch = {};
+        patch[key] = node.getAttribute('aria-checked') !== 'true';
+        S.setSettings(patch);
+      });
+    };
+    toggle(els.setHideDone, 'hideDone');
+    toggle(els.setDayBar, 'showDayBar');
+    toggle(els.setShowFreeze, 'showFreeze');
+    toggle(els.setShowNotes, 'showNotes');
+
+    els.btnResetProgress.addEventListener('click', resetProgressOnly);
+
     els.archiveList.addEventListener('click', function (e) {
+      const abrir = e.target.closest('[data-open]');
+      if (abrir) { openHabit(abrir.dataset.open); return; }
+
       const btn = e.target.closest('[data-restore]');
       if (!btn) return;
       const habit = S.getHabit(btn.dataset.restore);
@@ -1241,7 +1322,7 @@
 
     // La gráfica se dibuja al ancho real, así que hay que rehacerla al redimensionar
     window.addEventListener('resize', U.debounce(function () {
-      if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate, viewPeriod, calScale);
+      if (!UI.els.views.week.hidden) renderWeekIfOpen();
     }, 200));
   }
 
@@ -1306,6 +1387,11 @@
     S.load();
     S.subscribe(onStoreEvent);
 
+    // El registro de ascensos nace aquí, no en el almacén: quien ya tenía
+    // nivel antes de la 1.6.3 empieza a contar desde él, y así la primera
+    // subida no rellena de golpe fechas que nunca se guardaron.
+    S.initLevelLogFrom(St.levelInfo(S.getGame().points).level);
+
     UI.applyAccent(S.getSettings().accent);
     renderAll();
     bind();
@@ -1323,6 +1409,9 @@
     } else if (err && err.type === 'unavailable') {
       UI.toast('El navegador bloquea el almacenamiento: los cambios no se guardarán.',
                { type: 'error', icon: '⚠️' });
+    } else {
+      // Solo si no hay ya un aviso más urgente en pantalla.
+      checkBackupReminder();
     }
   }
 

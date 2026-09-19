@@ -81,10 +81,12 @@ HT.ui = (function () {
       'doneCount', 'totalCount', 'dayProgress', 'dayProgressFill',
       'prevDay', 'nextDay', 'btnToday',
       'btnPickDay', 'dayPicker', 'dpPrev', 'dpNext', 'dpLabel', 'dpGrid', 'dpToday',
-      'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeHint', 'dayNote',
+      'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeLabel', 'freezeHint', 'dayNote',
       'statWeek', 'statMonth', 'statStreak', 'statBest',
       'levelPanel', 'lvNumber', 'lvRank', 'lvRankLetter', 'lvBar', 'lvFill', 'lvXp', 'lvRemaining',
+      'lvGhost', 'lvAhead', 'statWeekGhost', 'statWeekAhead', 'statMonthGhost', 'statMonthAhead',
       'attrList', 'statQuests', 'statTrophies',
+      'ascents', 'ascentsCount', 'ascentsList', 'ascentsNote',
       'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList',
@@ -104,6 +106,9 @@ HT.ui = (function () {
       'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
       'setStartWeek', 'setAccent', 'btnResetAccent', 'setNotifications', 'setEffects',
+      'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup', 'backupHint',
+      'setHideDone', 'setDayBar', 'setShowFreeze', 'setShowNotes',
+      'btnResetProgress', 'noteCard',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
@@ -209,16 +214,109 @@ HT.ui = (function () {
     els.lvRankLetter.textContent = info.rank.letter;
     els.levelPanel.dataset.rank = info.rank.id;
 
-    els.lvXp.textContent = fmtNum.format(info.xp) + ' / ' + fmtNum.format(info.next) + ' EXP';
-    els.lvRemaining.textContent = fmtNum.format(info.remaining) + ' EXP para subir de nivel';
+    // La cifra tiene que contar lo mismo que la barra. Antes ponía la EXP
+    // total contra la del siguiente nivel ("100 / 250") mientras la barra
+    // medía el avance dentro del nivel: al entrar en un nivel se leía
+    // "100 / 250" con la barra a cero, que parecía una barra rota.
+    els.lvXp.textContent = fmtNum.format(info.into) + ' / ' + fmtNum.format(info.needed) + ' EXP';
+    els.lvRemaining.textContent = fmtNum.format(info.remaining) +
+      ' EXP para subir · ' + fmtNum.format(info.xp) + ' en total';
 
     els.lvFill.style.setProperty('--pct', info.pct);
     els.lvBar.setAttribute('aria-valuenow', info.pct);
+
+    // Previsión: hasta dónde llegaría la barra cumpliendo lo que falta hoy.
+    const pend = St.pendingToday(U.todayKey());
+    const previsto = pend.xp
+      ? U.clamp(Math.round(((info.into + pend.xp) / info.needed) * 100), info.pct, 100)
+      : 0;
+
+    els.lvGhost.hidden = !pend.xp;
+    els.lvGhost.style.setProperty('--pct', previsto);
+
+    els.lvAhead.hidden = !pend.xp;
+    els.lvAhead.textContent = pend.xp
+      ? '+' + fmtNum.format(pend.xp) + ' EXP si cumples ' +
+        (pend.habits === 1 ? 'el que falta hoy' : 'los ' + pend.habits + ' que faltan hoy')
+      : '';
+
     els.lvBar.setAttribute(
       'aria-valuetext',
       fmtNum.format(info.into) + ' de ' + fmtNum.format(info.needed) +
-      ' EXP del nivel ' + info.level + ' · rango ' + info.rank.letter + ', ' + info.rank.name
+      ' EXP del nivel ' + info.level + ' · rango ' + info.rank.letter + ', ' + info.rank.name +
+      (pend.xp ? ' · ' + fmtNum.format(pend.xp) + ' EXP disponibles hoy' : '')
     );
+  }
+
+  /**
+   * Los ascensos, del más reciente al más antiguo. Es lo único de Progreso
+   * que mira al pasado en vez de al presente, así que va plegado: se consulta
+   * de vez en cuando, no cada día.
+   */
+  function renderAscents() {
+    const log = S.getLevelLog();
+    const base = Math.max(0, Number(S.getGame().levelLogFrom) || 0);
+
+    els.ascentsCount.textContent = String(log.length);
+    els.ascentsList.textContent = '';
+
+    if (!log.length) {
+      els.ascentsList.appendChild(el('li', {
+        class: 'ascent ascent--empty',
+        text: base > 0
+          ? 'Nada apuntado todavía: tu próxima subida será la primera con fecha.'
+          : 'Aún no has subido de nivel. El primer ascenso se apuntará aquí.'
+      }));
+    } else {
+      const hoy = U.todayKey();
+      const anio = U.fromKey(hoy).getFullYear();
+      const frag = document.createDocumentFragment();
+
+      log.slice().reverse().forEach(function (entry) {
+        const rank = St.rankForLevel(entry.level);
+        // Un ascenso estrena rango si el nivel anterior pertenecía a otro.
+        const nuevoRango = St.rankForLevel(entry.level - 1).id !== rank.id;
+
+        const item = el('li', { class: 'ascent', 'data-rank': rank.id });
+        item.appendChild(el('span', {
+          class: 'ascent__letter', 'aria-hidden': 'true', text: rank.letter
+        }));
+
+        const main = el('div', { class: 'ascent__main' });
+        main.appendChild(el('p', { class: 'ascent__level', text: 'Nivel ' + entry.level }));
+        if (nuevoRango) {
+          main.appendChild(el('p', { class: 'ascent__rank', text: 'Nuevo rango · ' + rank.name }));
+        }
+        item.appendChild(main);
+
+        const fecha = U.fromKey(entry.date);
+        const dias = U.daysBetween(entry.date, hoy);
+        let etiqueta = U.formatShort(fecha);
+        // El año solo estorba mientras sea el actual.
+        if (fecha.getFullYear() !== anio) etiqueta += ' ' + fecha.getFullYear();
+        if (dias === 0) etiqueta = 'Hoy';
+        else if (dias === 1) etiqueta = 'Ayer';
+
+        item.appendChild(el('time', {
+          class: 'ascent__date',
+          datetime: entry.date,
+          title: U.formatLong(fecha),
+          text: etiqueta
+        }));
+
+        frag.appendChild(item);
+      });
+
+      els.ascentsList.appendChild(frag);
+    }
+
+    // Quien ya tenía nivel antes de que existiera el registro merece saber
+    // por qué su historia empieza a medias, en vez de pensar que se ha perdido.
+    els.ascentsNote.hidden = base < 1;
+    if (base >= 1) {
+      els.ascentsNote.textContent = 'El registro arranca en el nivel ' + base +
+        ': las subidas anteriores no llegaron a guardarse.';
+    }
   }
 
   /**
@@ -455,7 +553,10 @@ HT.ui = (function () {
     }
 
     if (habit.type === 'quantity' && habit.target.entry === 'manual') {
-      controls.appendChild(el('input', {
+      // El campo va con su unidad al lado: antes era una caja con un "0" y
+      // no decía qué había que escribir.
+      const field = el('div', { class: 'amount-field' });
+      field.appendChild(el('input', {
         type: 'number',
         class: 'input habit-card__amount',
         'data-action': 'amount',
@@ -465,6 +566,10 @@ HT.ui = (function () {
         placeholder: '0',
         'aria-label': habit.name + ': escribe el total en ' + habit.target.unit
       }));
+      field.appendChild(el('span', {
+        class: 'amount-field__unit', 'aria-hidden': 'true', text: habit.target.unit
+      }));
+      controls.appendChild(field);
     }
 
     // Stepper de cantidad y de fallos: mismo esqueleto, distinto significado.
@@ -502,9 +607,18 @@ HT.ui = (function () {
 
   // Texto del badge por estado. El color lo pone el CSS con data-state.
   const BADGE = {
-    done: 'Hecho', partial: 'En marcha', pending: 'Pendiente',
-    clean: 'Sin caer', warn: 'Ojo', critical: 'Al límite'
+    done: 'Hecho', partial: 'En marcha', pending: 'Pendiente', clean: 'Sin'
   };
+
+  /**
+   * Texto del badge. En los hábitos a evitar no se usa una palabra vaga:
+   * se dice el número de fallos, que es el dato y no admite interpretación.
+   */
+  function badgeText(habit, state, value) {
+    if (state !== 'warn' && state !== 'critical') return BADGE[state];
+    const fallos = St.failsOf(value);
+    return fallos + (fallos === 1 ? ' fallo' : ' fallos');
+  }
 
   /** Vuelca el estado del día sobre una tarjeta ya construida. */
   function paintCard(li, habit, dateKey) {
@@ -518,7 +632,7 @@ HT.ui = (function () {
     li.classList.toggle('is-done', state === 'done');
     li.style.setProperty('--card-pct', pct);
 
-    $('.badge', li).textContent = BADGE[state];
+    $('.badge', li).textContent = badgeText(habit, state, value);
     $('.progress__fill', li).style.setProperty('--pct', pct);
     $('.habit-card__pct', li).textContent = pct + '%';
 
@@ -614,6 +728,29 @@ HT.ui = (function () {
     return head;
   }
 
+  /** El cajón de los cumplidos: plegado, con su cuenta, y abrible. */
+  function doneDrawer(hechos, dateKey) {
+    const box = el('details', { class: 'done-drawer' });
+
+    const head = el('summary', { class: 'done-drawer__head' });
+    head.appendChild(el('span', { class: 'done-drawer__check', 'aria-hidden': 'true', text: '✓' }));
+    head.appendChild(el('span', {
+      class: 'done-drawer__label',
+      text: hechos.length + (hechos.length === 1 ? ' hábito cumplido' : ' hábitos cumplidos')
+    }));
+    box.appendChild(head);
+
+    const list = el('ul', { class: 'habit-list' });
+    hechos.sort(byName).forEach(function (habit) {
+      const card = buildCard(habit, dateKey);
+      cardIndex[habit.id] = card;
+      list.appendChild(card);
+    });
+
+    box.appendChild(list);
+    return box;
+  }
+
   /** Reconstruye la lista entera. Solo al añadir, editar, borrar o cambiar de día. */
   function renderHabitList(dateKey) {
     const habits = S.getHabitsForDate(dateKey);
@@ -621,15 +758,37 @@ HT.ui = (function () {
 
     Object.keys(cardIndex).forEach(function (k) { delete cardIndex[k]; });
 
+    // Con "apartar cumplidos" activo, los hechos salen de sus secciones y se
+    // juntan al final en un cajón plegado. Siguen ahí para poder desmarcarlos.
+    const apartar = S.getSettings().hideDone;
+    const hechos = [];
+
     groupByCategory(habits).forEach(function (group, i) {
+      const pendientes = apartar
+        ? group.habits.filter(function (h) {
+            // Los de evitar nunca se apartan: están "cumplidos" desde las
+            // 00:00 y esconderlos sería quitar de en medio justo el botón
+            // que hay que poder pulsar si caes.
+            if (St.isAvoid(h)) return true;
+
+            const done = St.isComplete(h, S.getLog(h.id, dateKey));
+            if (done) hechos.push(h);
+            return !done;
+          })
+        : group.habits;
+
+      if (!pendientes.length) return;
+
       const titleId = 'catGroup' + i;
       const section = el('section', { class: 'cat-group', 'aria-labelledby': titleId });
       if (group.cat.color) section.style.setProperty('--cat-color', group.cat.color);
 
+      // La cabecera sigue contando el grupo entero: si dijera "0 de 0" al
+      // apartar los hechos, parecería que esa categoría no existe hoy.
       section.appendChild(groupHead(group, dateKey, titleId));
 
       const list = el('ul', { class: 'habit-list' });
-      group.habits.forEach(function (habit) {
+      pendientes.forEach(function (habit) {
         const card = buildCard(habit, dateKey);
         cardIndex[habit.id] = card;
         list.appendChild(card);
@@ -638,6 +797,8 @@ HT.ui = (function () {
       section.appendChild(list);
       frag.appendChild(section);
     });
+
+    if (hechos.length) frag.appendChild(doneDrawer(hechos, dateKey));
 
     els.habitList.textContent = '';
     els.habitList.appendChild(frag);
@@ -695,12 +856,14 @@ HT.ui = (function () {
     const freezes = S.getGame().freezes;
     const frozen = S.isFrozen(dateKey);
 
-    // Solo tiene sentido ofrecerlo si ese día quedó algo sin cumplir.
-    const relevant = day.total > 0 && (frozen || !day.perfect);
+    // Solo tiene sentido ofrecerlo si ese día quedó algo sin cumplir, y si
+    // el usuario no lo ha apagado en Ajustes.
+    const relevant = S.getSettings().showFreeze && day.total > 0 && (frozen || !day.perfect);
     els.dayActions.hidden = !relevant;
 
     if (relevant) {
-      els.btnFreeze.textContent = frozen ? 'Descongelar día' : 'Congelar día';
+      // Solo la etiqueta: el botón lleva el copo dentro y textContent lo borraría.
+      els.freezeLabel.textContent = frozen ? 'Descongelar día' : 'Congelar día';
       els.btnFreeze.disabled = !frozen && freezes <= 0;
       els.btnFreeze.classList.toggle('is-on', frozen);
 
@@ -709,7 +872,7 @@ HT.ui = (function () {
         : freezes > 0
           ? 'Te quedan ' + freezes + (freezes === 1 ? ' comodín' : ' comodines') +
             '. Salvan las rachas de un día flojo.'
-          : 'Sin comodines. Recuperas uno al empezar cada mes.';
+          : 'Sin comodines. Recuperas uno cada semana, hasta 4.';
     }
 
     if (document.activeElement !== els.dayNote) els.dayNote.value = S.getNote(dateKey);
@@ -776,24 +939,65 @@ HT.ui = (function () {
     requestAnimationFrame(paso);
   }
 
-  function renderProgress(dateKey, period, scale) {
-    const weekStart = S.getSettings().weekStart;
+  /**
+   * Progreso: quién eres. Nivel, atributos, rachas y logros.
+   * El calendario y la gráfica viven en Histórico desde la 1.6.0 — eran
+   * series temporales metidas en una pantalla de personaje.
+   */
+  function renderProgress(dateKey) {
     renderLevelPanel();
-    const week = St.weekRate(dateKey, weekStart);
-    const month = St.monthRate(dateKey);
-
-    setStat(els.statWeek, week.total ? week.pct + '%' : '—');
-    setStat(els.statMonth, month.total ? month.pct + '%' : '—');
     setStat(els.statStreak, String(St.topStreak(dateKey)));
     setStat(els.statBest, String(S.getGame().bestStreak));
     // Misiones = veces que se ha cumplido un hábito. Logros = los ya ganados.
     setStat(els.statQuests, String(St.totalCompletions()));
     setStat(els.statTrophies, S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length);
     renderAttributes(dateKey);
+    renderAscents();
+
+    renderStreakList(dateKey);
+    renderAvoidList(dateKey);
+    renderAchievements();
+  }
+
+  /**
+   * Pinta el tramo gris de una ficha de cumplimiento: dónde quedaría el
+   * porcentaje si se cumplieran los `faltan` hábitos que quedan hoy.
+   *
+   * El día de hoy ya está dentro del total del periodo —lo que falta no
+   * engorda el denominador—, así que la cuenta es directa.
+   */
+  function aheadStat(ghost, hint, rate, faltan) {
+    const hay = faltan > 0 && rate.total > 0;
+    const pct = hay ? Math.round(((rate.done + faltan) / rate.total) * 100) : 0;
+
+    ghost.hidden = !hay;
+    ghost.style.setProperty('--pct', pct);
+
+    hint.hidden = !hay || pct === rate.pct;
+    hint.textContent = hay ? 'Hasta ' + pct + '% si cumples hoy' : '';
+  }
+
+  /**
+   * La parte de Histórico que depende del periodo: cumplimiento de la semana
+   * y del mes, calendario y gráfica de evolución.
+   */
+  function renderHistory(dateKey, period, scale) {
+    const weekStart = S.getSettings().weekStart;
+    const week = St.weekRate(dateKey, weekStart);
+    const month = St.monthRate(dateKey);
+
+    setStat(els.statWeek, week.total ? week.pct + '%' : '—');
+    setStat(els.statMonth, month.total ? month.pct + '%' : '—');
 
     // Las barras muestran el mismo dato que la cifra, no uno nuevo
     els.statWeekBar.style.setProperty('--pct', week.total ? week.pct : 0);
     els.statMonthBar.style.setProperty('--pct', month.total ? month.pct : 0);
+
+    // Previsión: solo tiene sentido mirando el día de hoy. En un periodo
+    // pasado no queda nada por cumplir, así que no se pinta nada.
+    const pend = dateKey === U.todayKey() ? St.pendingToday(dateKey) : { habits: 0, xp: 0 };
+    aheadStat(els.statWeekGhost, els.statWeekAhead, week, pend.habits);
+    aheadStat(els.statMonthGhost, els.statMonthAhead, month, pend.habits);
 
     const yearMode = scale === 'year';
     const today = U.todayKey();
@@ -830,9 +1034,6 @@ HT.ui = (function () {
 
     if (!vacio) renderChart(series, scale, periodLabel);
     else els.chartReadout.textContent = 'Sin registros en este periodo.';
-    renderStreakList(dateKey);
-    renderAvoidList(dateKey);
-    renderAchievements();
   }
 
   /** Una celda de día del calendario general. `dayStats` es caro: se calcula una vez. */
@@ -882,6 +1083,15 @@ HT.ui = (function () {
     done: 'cumplido', pending: 'pendiente', missed: 'sin cumplir',
     frozen: 'día congelado', future: 'aún por llegar', off: 'no toca'
   };
+
+  /** El glifo de cada celda. Lo pinta el CSS desde data-mark. */
+  function WEEK_MARK(state, parcial) {
+    if (state === 'done') return '✓';
+    if (state === 'frozen') return '❄';
+    if (parcial) return '•';
+    if (state === 'missed') return '✕';
+    return '';                      // pendiente y futuro van en blanco
+  }
 
   /**
    * Lo acumulado de los hábitos por cantidad en la semana mostrada. La
@@ -963,7 +1173,7 @@ HT.ui = (function () {
 
         if (cell.state === 'off') {
           frag.appendChild(el('div', {
-            class: 'week-cell', 'data-state': 'off', 'data-level': '0',
+            class: 'week-cell', 'data-state': 'off', 'data-level': '0', 'data-mark': '–',
             title: label, 'aria-label': label, role: 'img'
           }));
           return;
@@ -973,12 +1183,18 @@ HT.ui = (function () {
           ? label + ' · ' + Math.round(cell.ratio * 100) + '%'
           : label;
 
+        // A medias = empezado pero sin llegar a la meta. Merece su propio
+        // símbolo: con solo el relleno no se distingue de un día en blanco.
+        const parcial = cell.state !== 'done' && cell.ratio > 0;
+
         const btn = el('button', {
           type: 'button',
           class: 'week-cell',
           'data-state': cell.state,
           'data-level': String(cell.level),
           'data-date': cell.key,
+          'data-partial': parcial ? 'true' : null,
+          'data-mark': WEEK_MARK(cell.state, parcial),
           title: detail,
           'aria-label': detail
         });
@@ -1965,6 +2181,25 @@ HT.ui = (function () {
     const s = S.getSettings();
     els.setStartWeek.value = String(s.weekStart);
     els.setAccent.value = s.accent;
+    els.setControls.value = s.controls;
+    els.setTheme.value = s.theme;
+    els.setFontSize.value = s.fontSize;
+    els.setBackup.value = String(s.backupDays);
+    els.setHideDone.setAttribute('aria-checked', s.hideDone ? 'true' : 'false');
+    els.setDayBar.setAttribute('aria-checked', s.showDayBar ? 'true' : 'false');
+    els.setShowFreeze.setAttribute('aria-checked', s.showFreeze ? 'true' : 'false');
+    els.setShowNotes.setAttribute('aria-checked', s.showNotes ? 'true' : 'false');
+
+    applyControls(s.controls);
+    applyTheme(s.theme);
+    applyFontSize(s.fontSize);
+    applyDayLayout(s);
+
+    const last = S.getGame().lastExport;
+    els.backupHint.textContent = !last
+      ? 'Todavía no has exportado ninguna copia.'
+      : 'Última copia: ' + U.formatShort(U.fromKey(last)) +
+        ' · hace ' + U.daysBetween(last, U.todayKey()) + ' días.';
     els.setNotifications.setAttribute('aria-checked', s.notificationsEnabled ? 'true' : 'false');
     els.setEffects.setAttribute('aria-checked', s.effects ? 'true' : 'false');
     renderArchived();
@@ -2018,35 +2253,108 @@ HT.ui = (function () {
     });
   }
 
+  /**
+   * Todos los hábitos, activos y archivados, agrupados por categoría y en
+   * orden alfabético igual que en Hoy. Es el único sitio desde el que se
+   * llega a un hábito archivado sin restaurarlo antes.
+   */
   function renderArchived() {
-    const archived = S.getArchivedHabits();
-    els.archivedCard.hidden = archived.length === 0;
-    if (!archived.length) return;
+    const todos = S.getHabits(true);
+    const activos = todos.filter(function (h) { return !h.archived; }).length;
+
+    const guardados = todos.length - activos;
+    els.allHabitsCount.textContent = todos.length + (todos.length === 1 ? ' hábito' : ' hábitos') +
+      (guardados ? ' · ' + guardados + (guardados === 1 ? ' archivado' : ' archivados') : '');
 
     const frag = document.createDocumentFragment();
-    archived.forEach(function (habit) {
-      const item = el('li', { class: 'archive-item' });
-      item.appendChild(el('span', { 'aria-hidden': 'true', text: habit.icon }));
-      item.appendChild(el('span', { text: habit.name }));
-      item.appendChild(el('button', {
-        type: 'button', class: 'btn btn--ghost', 'data-restore': habit.id,
-        'aria-label': 'Restaurar ' + habit.name, text: 'Restaurar'
-      }));
-      frag.appendChild(item);
+
+    // Cada categoría va plegada: con trece hábitos la tarjeta ocupaba media
+    // pantalla de Ajustes. Se despliega la que interese y ya está.
+    groupByCategory(todos).forEach(function (group) {
+      const wrap = el('li');
+      const box = el('details', { class: 'archive-group' });
+      if (group.cat.color) box.style.setProperty('--cat-color', group.cat.color);
+
+      const head = el('summary', { class: 'archive-group__head' });
+      head.appendChild(el('span', { class: 'archive-group__icon', 'aria-hidden': 'true', text: group.cat.icon }));
+      head.appendChild(el('span', { class: 'archive-group__name', text: group.cat.name }));
+      head.appendChild(el('span', { class: 'archive-group__count', text: String(group.habits.length) }));
+      box.appendChild(head);
+
+      const list = el('ul', { class: 'archive-group__list' });
+
+      group.habits.forEach(function (habit) {
+        const item = el('li', { class: 'archive-item' + (habit.archived ? ' is-archived' : '') });
+
+        const open = el('button', {
+          type: 'button', class: 'archive-item__open', 'data-open': habit.id,
+          'aria-label': 'Ver la ficha de ' + habit.name
+        });
+        open.appendChild(el('span', { class: 'archive-item__icon', 'aria-hidden': 'true', text: habit.icon }));
+        open.appendChild(el('span', { class: 'archive-item__name', text: habit.name }));
+        if (habit.archived) {
+          open.appendChild(el('span', { class: 'archive-item__tag', text: 'Archivado' }));
+        }
+        item.appendChild(open);
+
+        if (habit.archived) {
+          item.appendChild(el('button', {
+            type: 'button', class: 'btn btn--ghost', 'data-restore': habit.id,
+            'aria-label': 'Restaurar ' + habit.name, text: 'Restaurar'
+          }));
+        }
+        list.appendChild(item);
+      });
+
+      box.appendChild(list);
+      wrap.appendChild(box);
+      frag.appendChild(wrap);
     });
 
     els.archiveList.textContent = '';
     els.archiveList.appendChild(frag);
   }
 
+  /* ── Apariencia ───────────────────────────────────────────
+     Tres atributos en <html> y el CSS hace el resto. Nada de clases
+     repartidas por los componentes. ─────────────────────────── */
+
+  function applyControls(mode) {
+    document.documentElement.dataset.controls = mode === 'compact' ? 'compact' : 'comfy';
+  }
+
+  function applyTheme(theme) {
+    const claro = theme === 'light';
+    document.documentElement.dataset.theme = claro ? 'light' : 'dark';
+
+    // La barra del navegador en el móvil tiene que seguir al tema.
+    const meta = $('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', claro ? '#f5f6fa' : '#0b0d12');
+  }
+
+  function applyFontSize(size) {
+    document.documentElement.dataset.font = size === 'large' ? 'large' : 'normal';
+  }
+
+  /** Qué partes de Hoy se muestran. */
+  function applyDayLayout(s) {
+    els.dayProgress.hidden = !s.showDayBar;
+    els.noteCard.hidden = !s.showNotes;
+    // El de congelar además depende de si ese día hay algo que salvar, así
+    // que aquí solo se marca la preferencia y renderDayExtras decide.
+    document.documentElement.dataset.freeze = s.showFreeze ? 'on' : 'off';
+  }
+
   /** El color elegido en Ajustes deriva el acento y los 4 niveles del heatmap. */
   function applyAccent(hex) {
     const root = document.documentElement.style;
+    const claro = document.documentElement.dataset.theme === 'light';
+
     root.setProperty('--accent', hex);
-    root.setProperty('--accent-hover', lighten(hex, 0.16));
-    // Aclarado para que el acento siga cumpliendo contraste como texto,
-    // sea cual sea el color que elija el usuario.
-    root.setProperty('--accent-text', lighten(hex, 0.42));
+    root.setProperty('--accent-hover', claro ? darken(hex, 0.14) : lighten(hex, 0.16));
+    // Se ajusta para que el acento siga cumpliendo contraste como texto: se
+    // aclara sobre fondo oscuro y se oscurece sobre fondo claro.
+    root.setProperty('--accent-text', claro ? darken(hex, 0.28) : lighten(hex, 0.42));
     root.setProperty('--accent-soft', rgba(hex, 0.16));
     root.setProperty('--heat-1', rgba(hex, 0.28));
     root.setProperty('--heat-2', rgba(hex, 0.50));
@@ -2061,6 +2369,13 @@ HT.ui = (function () {
 
   function rgba(hex, alpha) {
     return 'rgb(' + channels(hex).join(' ') + ' / ' + alpha + ')';
+  }
+
+  /** Mezcla hacia el negro, para el tema claro. */
+  function darken(hex, amount) {
+    return 'rgb(' + channels(hex).map(function (c) {
+      return Math.round(c * (1 - amount));
+    }).join(' ') + ')';
   }
 
   /** Mezcla hacia el blanco para el estado hover. */
@@ -2356,10 +2671,12 @@ HT.ui = (function () {
     readExerciseForm: readExerciseForm,
     renderDayPicker: renderDayPicker, toggleDayPicker: toggleDayPicker,
     isDayPickerOpen: isDayPickerOpen,
-    renderProgress: renderProgress, renderLevelPanel: renderLevelPanel,
+    renderProgress: renderProgress, renderHistory: renderHistory,
+    renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,
-    renderSettings: renderSettings, applyAccent: applyAccent,
+    renderSettings: renderSettings, applyAccent: applyAccent, applyControls: applyControls,
+    applyTheme: applyTheme, applyFontSize: applyFontSize,
     openModal: openModal, closeModal: closeModal,
     toggleEmojiPicker: toggleEmojiPicker, markSelectedEmoji: markSelectedEmoji,
     syncTypeFields: syncTypeFields, setReminder: setReminder, isReminderOn: isReminderOn,

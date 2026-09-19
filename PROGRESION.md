@@ -5,7 +5,13 @@ un par de párrafos; esto es el detalle completo, pensado para consultarlo cuand
 haya que tocar la curva, añadir una recompensa o entender por qué la XP no se
 duplica.
 
-Versión de la app al escribirlo: **1.0.0**.
+Versión de la app al escribirlo: **1.0.0**. Revisado en la **1.6.3** para añadir
+el registro de ascensos.
+
+> **Pendiente de repasar**: las cifras de XP de la sección 5, la lista de rangos
+> de la 4 y el orden de bloques de la 1 son los de la 1.0.0 y se quedaron atrás
+> con las recalibraciones posteriores. Lo que sí sigue vigente es todo lo
+> estructural: la curva, la cadena de la experiencia y por qué no se duplica.
 
 ---
 
@@ -59,9 +65,14 @@ manda y el rango la acompaña. El rango nunca sustituye al nivel.
    Nivel    Rango   Barra de XP
 ```
 
-**Solo se guarda `game.points`.** El nivel, el rango y el porcentaje se calculan
-al vuelo en cada pintado. Consecuencia práctica: cambiar la curva de experiencia
-no obliga a migrar nada y no puede corromper datos de nadie.
+**Del estado presente solo se guarda `game.points`.** El nivel, el rango y el
+porcentaje se calculan al vuelo en cada pintado. Consecuencia práctica: cambiar
+la curva de experiencia no obliga a migrar nada y no puede corromper datos de
+nadie.
+
+La única excepción es `game.levelLog`, y lo es por necesidad: la XP guarda
+*cuánta* llevas, no *cuándo* la ganaste, así que la fecha de un ascenso no se
+puede deducir de nada. Es un dato histórico, no un estado derivado.
 
 ---
 
@@ -222,6 +233,27 @@ La **presentación** es `UI.showLevelUp()`: aviso, destello en la chapa de la
 cabecera y confeti si los efectos están activos. Están separadas a propósito —
 cambiar la celebración no toca la regla de cuándo se ha subido.
 
+### El registro de ascensos (1.6.3)
+
+`onLevelUp()` apunta la fecha antes de celebrar nada, en `game.levelLog`: un
+apunte `{ level, date }` por nivel, que Progreso enseña plegado bajo *Ascensos*.
+
+Tres reglas lo mantienen honesto:
+
+1. **Solo la primera vez.** La XP es simétrica —desmarcar un hábito la retira—,
+   así que se puede cruzar el mismo umbral varias veces. Un nivel ya apuntado no
+   se repite ni se borra.
+2. **Sin huecos.** Si un bonus grande sube dos niveles de una tacada, se apuntan
+   los dos con la misma fecha, en vez de dejar un nivel sin registrar.
+3. **Sin inventar el pasado.** `game.levelLogFrom` guarda el nivel desde el que
+   el registro es fiable. La app lo fija al arrancar por primera vez con esta
+   versión, con el nivel que ya tuviera el usuario, para que la siguiente subida
+   no rellene de golpe fechas que nunca se guardaron. Cuando vale más de 0, la
+   tarjeta lo dice en vez de disimularlo.
+
+`resetProgress()` lo vacía junto con la XP: sin nivel, las fechas contarían una
+historia que ya no existe.
+
 ---
 
 ## 8. Migración desde versiones anteriores
@@ -247,6 +279,7 @@ distintos, mismos datos.
 | Curva, rangos y tabla de recompensas | `js/stats.js`, sección *Niveles y rangos* |
 | Reparto de XP y detección de subida | `js/app.js`, `grantXp()` |
 | Almacenamiento (`game.points`) | `js/store.js` |
+| Registro de ascensos | `js/store.js`, `recordLevelUp()` · `js/ui.js`, `renderAscents()` |
 | Pintado del panel y celebración | `js/ui.js`, `renderLevelPanel()` y `showLevelUp()` |
 | Marcado del panel | `index.html`, dentro de `#view-progress` |
 | Estilos | `css/styles.css`, sección 8d |

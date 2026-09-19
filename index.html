@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es" data-theme="dark">
 <head>
   <meta charset="UTF-8">
@@ -99,21 +99,24 @@
         </div>
 
         <div class="day-actions" id="dayActions" hidden>
-          <button type="button" class="btn btn--ghost" id="btnFreeze">Congelar día</button>
+          <button type="button" class="btn btn--frost" id="btnFreeze">
+            <span class="btn__snow" aria-hidden="true">❄️</span>
+            <span id="freezeLabel">Congelar día</span>
+          </button>
           <p class="day-actions__hint" id="freezeHint"></p>
         </div>
 
-        <article class="card note-card">
+        <article class="card note-card" id="noteCard">
           <label class="field__label" for="dayNote">Notas del día</label>
           <textarea class="input input--area" id="dayNote" rows="3" maxlength="500"
                     placeholder="¿Cómo ha ido? Qué te ha ayudado, qué te ha frenado…"></textarea>
         </article>
       </section>
 
-      <!-- ─── Vista: Semana ─── -->
+      <!-- ─── Vista: Histórico ─── -->
       <section class="view" id="view-week" aria-labelledby="titleWeek" hidden>
         <div class="view__head">
-          <h1 class="view__title" id="titleWeek">Semana</h1>
+          <h1 class="view__title" id="titleWeek">Histórico</h1>
           <button type="button" class="btn btn--ghost" id="btnThisWeek" hidden>Esta semana</button>
         </div>
 
@@ -132,14 +135,105 @@
           </div>
 
           <ul class="week-legend">
-            <li><span class="week-cell" data-level="4" aria-hidden="true"></span> Cumplido</li>
-            <li><span class="week-cell" data-level="2" aria-hidden="true"></span> A medias</li>
+            <li><span class="week-cell" data-level="4" data-state="done" data-mark="✓" aria-hidden="true"></span> Cumplido</li>
+            <li><span class="week-cell" data-level="2" data-partial="true" data-mark="•" aria-hidden="true"></span> A medias</li>
             <li><span class="week-cell" data-level="0" data-state="pending" aria-hidden="true"></span> Pendiente</li>
-            <li><span class="week-cell" data-level="0" data-state="missed" aria-hidden="true"></span> Sin cumplir</li>
-            <li><span class="week-cell" data-level="0" data-state="frozen" aria-hidden="true"></span> Congelado</li>
-            <li><span class="week-cell" data-level="0" data-state="off" aria-hidden="true"></span> No toca</li>
+            <li><span class="week-cell" data-level="0" data-state="missed" data-mark="✕" aria-hidden="true"></span> Sin cumplir</li>
+            <li><span class="week-cell" data-level="0" data-state="frozen" data-mark="❄" aria-hidden="true"></span> Congelado</li>
+            <li><span class="week-cell" data-level="0" data-state="off" data-mark="–" aria-hidden="true"></span> No toca</li>
           </ul>
         </article>
+        <ul class="stat-grid" aria-label="Cumplimiento por periodo">
+            <li class="stat">
+              <p class="stat__value" id="statWeek">—</p>
+              <p class="stat__label">Esta semana</p>
+              <span class="stat__bar" aria-hidden="true">
+                <span class="stat__bar-ghost" id="statWeekGhost" hidden></span>
+                <span class="stat__bar-fill" id="statWeekBar"></span>
+              </span>
+              <p class="stat__ahead" id="statWeekAhead" hidden></p>
+            </li>
+            <li class="stat">
+              <p class="stat__value" id="statMonth">—</p>
+              <p class="stat__label">Este mes</p>
+              <span class="stat__bar" aria-hidden="true">
+                <span class="stat__bar-ghost" id="statMonthGhost" hidden></span>
+                <span class="stat__bar-fill" id="statMonthBar"></span>
+              </span>
+              <p class="stat__ahead" id="statMonthAhead" hidden></p>
+            </li>
+        </ul>
+
+          <article class="card" aria-labelledby="heatmapTitle">
+            <header class="card__head">
+              <h2 class="card__title" id="heatmapTitle">Calendario</h2>
+              <div class="seg seg--compact" role="radiogroup" aria-label="Escala del calendario">
+                <label class="seg__opt">
+                  <input type="radio" name="calScale" value="month" checked>
+                  <span>Mes</span>
+                </label>
+                <label class="seg__opt">
+                  <input type="radio" name="calScale" value="year">
+                  <span>Año</span>
+                </label>
+              </div>
+            </header>
+
+            <div class="month-nav">
+              <button type="button" class="icon-btn" id="prevPeriod" aria-label="Periodo anterior">‹</button>
+              <span class="month-nav__label" id="monthLabel" aria-live="polite">—</span>
+              <button type="button" class="icon-btn" id="nextPeriod" aria-label="Periodo siguiente">›</button>
+            </div>
+
+            <div class="heatmap" id="heatmap"></div>
+
+            <div class="year-scroll" id="yearScroll" hidden>
+              <div class="year-grid" id="yearGrid"></div>
+            </div>
+
+            <div class="blank" id="calendarEmpty" hidden>
+              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
+                <rect x="6" y="10" width="36" height="32" rx="4"/>
+                <path d="M15 5v8M33 5v8M6 20h36"/>
+                <path d="M16 29h4M28 29h4M16 36h4M28 36h4"/>
+              </svg>
+              <p class="blank__text" id="calendarEmptyText">Aún no hay datos este mes</p>
+            </div>
+
+            <footer class="heatmap__legend" id="heatmapLegend">
+              <span>Menos</span>
+              <span class="heat" data-level="0"></span>
+              <span class="heat" data-level="1"></span>
+              <span class="heat" data-level="2"></span>
+              <span class="heat" data-level="3"></span>
+              <span class="heat" data-level="4"></span>
+              <span>Más</span>
+            </footer>
+          </article>
+
+          <article class="card" aria-labelledby="chartTitle">
+            <header class="card__head">
+              <h2 class="card__title" id="chartTitle">Evolución</h2>
+            </header>
+            <p class="chart__readout" id="chartReadout" aria-live="polite">—</p>
+            <div class="chart" id="chart"></div>
+
+            <div class="blank" id="chartEmpty" hidden>
+              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
+                <path d="M7 41h34M7 41V9"/>
+                <path d="M14 41V30M23 41V22M32 41V26M41 41V16" stroke-dasharray="3 4"/>
+              </svg>
+              <p class="blank__text">Completa tu primer hábito para ver tu evolución</p>
+            </div>
+
+            <details class="chart__data" id="chartData">
+              <summary>Ver los datos</summary>
+              <div class="table-scroll">
+                <table class="data-table" id="chartTable"></table>
+              </div>
+            </details>
+          </article>
+
       </section>
 
       <!-- ─── Vista: Ejercicios ─── -->
@@ -214,11 +308,13 @@
 
             <div class="sys-level__bar" id="lvBar" role="progressbar"
                  aria-labelledby="lvTitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span class="sys-level__ghost" id="lvGhost" style="--pct:0" aria-hidden="true" hidden></span>
               <span class="sys-level__fill" id="lvFill" style="--pct:0"></span>
             </div>
 
             <p class="sys-level__xp" id="lvXp">0 / 100 EXP</p>
             <p class="sys-level__left" id="lvRemaining">100 EXP para subir de nivel</p>
+            <p class="sys-level__ahead" id="lvAhead" hidden></p>
           </article>
 
           <article class="card sys-attrs" aria-labelledby="attrsTitle">
@@ -231,91 +327,21 @@
           </article>
 
           <ul class="stat-grid" aria-label="Resumen de estadísticas">
-            <li class="stat">
-              <p class="stat__value" id="statWeek">—</p>
-              <p class="stat__label">Esta semana</p>
-              <span class="stat__bar" aria-hidden="true"><span class="stat__bar-fill" id="statWeekBar"></span></span>
-            </li>
-            <li class="stat">
-              <p class="stat__value" id="statMonth">—</p>
-              <p class="stat__label">Este mes</p>
-              <span class="stat__bar" aria-hidden="true"><span class="stat__bar-fill" id="statMonthBar"></span></span>
-            </li>
             <li class="stat"><p class="stat__value" id="statStreak">—</p><p class="stat__label">Racha actual</p></li>
             <li class="stat"><p class="stat__value" id="statBest">—</p><p class="stat__label">Mejor racha</p></li>
             <li class="stat"><p class="stat__value" id="statQuests">—</p><p class="stat__label">Misiones completadas</p></li>
             <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
 
-          <article class="card" aria-labelledby="heatmapTitle">
-            <header class="card__head">
-              <h2 class="card__title" id="heatmapTitle">Calendario</h2>
-              <div class="seg seg--compact" role="radiogroup" aria-label="Escala del calendario">
-                <label class="seg__opt">
-                  <input type="radio" name="calScale" value="month" checked>
-                  <span>Mes</span>
-                </label>
-                <label class="seg__opt">
-                  <input type="radio" name="calScale" value="year">
-                  <span>Año</span>
-                </label>
-              </div>
-            </header>
+          <details class="card ascents" id="ascents">
+            <summary class="ascents__head">
+              <h2 class="ascents__title">Ascensos</h2>
+              <span class="ascents__count" id="ascentsCount">0</span>
+            </summary>
+            <ol class="ascents__list" id="ascentsList" reversed></ol>
+            <p class="card__text card__text--tight" id="ascentsNote" hidden></p>
+          </details>
 
-            <div class="month-nav">
-              <button type="button" class="icon-btn" id="prevPeriod" aria-label="Periodo anterior">‹</button>
-              <span class="month-nav__label" id="monthLabel" aria-live="polite">—</span>
-              <button type="button" class="icon-btn" id="nextPeriod" aria-label="Periodo siguiente">›</button>
-            </div>
-
-            <div class="heatmap" id="heatmap"></div>
-
-            <div class="year-scroll" id="yearScroll" hidden>
-              <div class="year-grid" id="yearGrid"></div>
-            </div>
-
-            <div class="blank" id="calendarEmpty" hidden>
-              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
-                <rect x="6" y="10" width="36" height="32" rx="4"/>
-                <path d="M15 5v8M33 5v8M6 20h36"/>
-                <path d="M16 29h4M28 29h4M16 36h4M28 36h4"/>
-              </svg>
-              <p class="blank__text" id="calendarEmptyText">Aún no hay datos este mes</p>
-            </div>
-
-            <footer class="heatmap__legend" id="heatmapLegend">
-              <span>Menos</span>
-              <span class="heat" data-level="0"></span>
-              <span class="heat" data-level="1"></span>
-              <span class="heat" data-level="2"></span>
-              <span class="heat" data-level="3"></span>
-              <span class="heat" data-level="4"></span>
-              <span>Más</span>
-            </footer>
-          </article>
-
-          <article class="card" aria-labelledby="chartTitle">
-            <header class="card__head">
-              <h2 class="card__title" id="chartTitle">Evolución</h2>
-            </header>
-            <p class="chart__readout" id="chartReadout" aria-live="polite">—</p>
-            <div class="chart" id="chart"></div>
-
-            <div class="blank" id="chartEmpty" hidden>
-              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
-                <path d="M7 41h34M7 41V9"/>
-                <path d="M14 41V30M23 41V22M32 41V26M41 41V16" stroke-dasharray="3 4"/>
-              </svg>
-              <p class="blank__text">Completa tu primer hábito para ver tu evolución</p>
-            </div>
-
-            <details class="chart__data" id="chartData">
-              <summary>Ver los datos</summary>
-              <div class="table-scroll">
-                <table class="data-table" id="chartTable"></table>
-              </div>
-            </details>
-          </article>
 
           <article class="card" aria-labelledby="streaksTitle">
             <header class="card__head"><h2 class="card__title" id="streaksTitle">Rachas por hábito</h2></header>
@@ -448,6 +474,35 @@
             </button>
           </div>
           <div class="field-row">
+            <span class="field-row__text">
+              <label for="setControls">Tamaño de los controles</label>
+              <span class="field-row__hint">Cómo de grandes son las casillas y los campos en Hoy.</span>
+            </span>
+            <select id="setControls" class="input input--select field-row__controls">
+              <option value="comfy">Cómodo</option>
+              <option value="compact">Compacto</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setTheme">Tema</label>
+              <span class="field-row__hint">Progreso mantiene su ventana oscura en los dos.</span>
+            </span>
+            <select id="setTheme" class="input input--select field-row__controls">
+              <option value="dark">Oscuro</option>
+              <option value="light">Claro</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setFontSize">Tamaño de letra</label>
+            </span>
+            <select id="setFontSize" class="input input--select field-row__controls">
+              <option value="normal">Normal</option>
+              <option value="large">Grande</option>
+            </select>
+          </div>
+          <div class="field-row">
             <span id="effectsLabel">Efectos al completar</span>
             <button type="button" class="switch" id="setEffects"
                     role="switch" aria-checked="true" aria-labelledby="effectsLabel">
@@ -456,21 +511,83 @@
           </div>
         </article>
 
-        <article class="card" id="archivedCard" hidden>
-          <header class="card__head"><h2 class="card__title">Hábitos archivados</h2></header>
-          <p class="card__text">No aparecen en Hoy, pero conservan todo su histórico.</p>
+        <article class="card">
+          <header class="card__head"><h2 class="card__title">La pantalla Hoy</h2></header>
+          <p class="card__text">Qué se ve mientras marcas los hábitos del día.</p>
+
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="hideDoneLabel">Apartar los ya cumplidos</span>
+              <span class="field-row__hint">Se agrupan al final, plegados, para ver solo lo que falta.</span>
+            </span>
+            <button type="button" class="switch" id="setHideDone"
+                    role="switch" aria-checked="false" aria-labelledby="hideDoneLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span id="dayBarLabel">Barra de progreso del día</span>
+            <button type="button" class="switch" id="setDayBar"
+                    role="switch" aria-checked="true" aria-labelledby="dayBarLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span id="freezeSwLabel">Comodín de congelar día</span>
+            <button type="button" class="switch" id="setShowFreeze"
+                    role="switch" aria-checked="true" aria-labelledby="freezeSwLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span id="notesSwLabel">Notas del día</span>
+            <button type="button" class="switch" id="setShowNotes"
+                    role="switch" aria-checked="true" aria-labelledby="notesSwLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+        </article>
+
+        <article class="card" id="archivedCard">
+          <header class="card__head">
+            <h2 class="card__title">Todos tus hábitos</h2>
+            <span class="card__count" id="allHabitsCount">—</span>
+          </header>
+          <p class="card__text">
+            Toca cualquiera para ver su ficha. Los archivados no salen en Hoy,
+            pero conservan todo su histórico.
+          </p>
           <ul class="archive-list" id="archiveList"></ul>
         </article>
 
         <article class="card">
           <header class="card__head"><h2 class="card__title">Tus datos</h2></header>
           <p class="card__text">Todo se guarda en este navegador. Exporta una copia para no perderla.</p>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setBackup">Avisarme si no exporto</label>
+              <span class="field-row__hint" id="backupHint">—</span>
+            </span>
+            <select id="setBackup" class="input input--select field-row__controls">
+              <option value="7">Cada semana</option>
+              <option value="14">Cada 2 semanas</option>
+              <option value="30">Cada mes</option>
+              <option value="0">Nunca</option>
+            </select>
+          </div>
+
           <div class="btn-row">
             <button type="button" class="btn" id="btnExportJson">Exportar JSON</button>
             <button type="button" class="btn" id="btnExportCsv">Exportar CSV</button>
             <button type="button" class="btn" id="btnImport">Importar</button>
           </div>
+          <p class="card__text card__text--tight">
+            Reiniciar la progresión pone a cero la EXP, el nivel y los logros,
+            pero <strong>no toca tus hábitos ni su histórico</strong>. Borrar
+            todo sí se lo lleva absolutamente todo.
+          </p>
           <div class="btn-row">
+            <button type="button" class="btn" id="btnResetProgress">Reiniciar progresión</button>
             <button type="button" class="btn btn--danger" id="btnReset">Borrar todo</button>
           </div>
         </article>
@@ -506,7 +623,7 @@
         <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
           <rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 10h18M9.7 10v10.5M15.3 10v10.5"/>
         </svg>
-        <span>Semana</span>
+        <span>Histórico</span>
       </button>
       <button type="button" class="nav__item" data-view="exercises">
         <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
