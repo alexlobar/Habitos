@@ -1,5 +1,9 @@
 ﻿<!DOCTYPE html>
-<html lang="es" data-theme="dark">
+<!-- data-build tiene que coincidir con VERSION en js/utils.js. Es lo que
+     permite detectar que el navegador está sirviendo un index.html de una
+     versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
+     un solo botón que respondiera. -->
+<html lang="es" data-theme="dark" data-build="1.6.7">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -90,6 +94,14 @@
         </div>
 
         <div class="habit-groups" id="habitList"></div>
+
+        <!-- Recordatorio de lo que has apartado tú mismo: en pausa no sale
+             en ningún otro sitio de Hoy y es fácil olvidarse. -->
+        <button type="button" class="paused-note" id="pausedNote" hidden>
+          <span aria-hidden="true">⏸</span>
+          <span id="pausedNoteText">—</span>
+          <span class="paused-note__go" aria-hidden="true">›</span>
+        </button>
 
         <div class="empty-state" id="emptyToday" hidden>
           <p class="empty-state__icon" aria-hidden="true">◇</p>
@@ -262,6 +274,18 @@
           </header>
 
           <p class="session__summary" id="sessionSummary">—</p>
+
+          <!-- Vive fuera de la lista a propósito: la lista se reconstruye
+               entera con cada serie y se llevaría por delante el contador. -->
+          <div class="rest" id="restBar" hidden>
+            <span class="rest__label">Descanso</span>
+            <span class="rest__time" id="restTime" role="timer" aria-live="off">0:00</span>
+            <span class="rest__track" aria-hidden="true">
+              <span class="rest__fill" id="restFill" style="--pct:100"></span>
+            </span>
+            <button type="button" class="btn btn--ghost rest__skip" id="restSkip">Saltar</button>
+          </div>
+
           <ul class="exercise-list" id="exerciseList"></ul>
 
           <div class="empty-state empty-state--inline" id="emptyWorkout" hidden>
@@ -269,7 +293,10 @@
           </div>
 
           <footer class="session__foot">
-            <button type="button" class="btn btn--primary" id="btnFinishSession">Terminar entreno</button>
+            <div class="btn-row">
+              <button type="button" class="btn btn--primary" id="btnFinishSession">Terminar entreno</button>
+              <button type="button" class="btn" id="btnRepeatLast" hidden>Repetir el último</button>
+            </div>
             <p class="session__hint" id="sessionHint"></p>
           </footer>
         </article>
@@ -333,10 +360,10 @@
             <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
 
-          <details class="card ascents" id="ascents">
-            <summary class="ascents__head">
-              <h2 class="ascents__title">Ascensos</h2>
-              <span class="ascents__count" id="ascentsCount">0</span>
+          <details class="card fold ascents" id="ascents">
+            <summary class="fold__head">
+              <h2 class="fold__title">Ascensos</h2>
+              <span class="fold__count" id="ascentsCount">0</span>
             </summary>
             <ol class="ascents__list" id="ascentsList" reversed></ol>
             <p class="card__text card__text--tight" id="ascentsNote" hidden></p>
@@ -353,10 +380,13 @@
             <ul class="streak-list" id="avoidList"></ul>
           </article>
 
-          <article class="card" aria-labelledby="achTitle">
-            <header class="card__head"><h2 class="card__title" id="achTitle">Logros</h2></header>
+          <details class="card fold" id="achCard">
+            <summary class="fold__head">
+              <h2 class="fold__title">Logros</h2>
+              <span class="fold__count" id="achCount">0</span>
+            </summary>
             <ul class="ach-grid" id="achievementGrid"></ul>
-          </article>
+          </details>
         </div>
       </section>
 
@@ -370,6 +400,12 @@
             <button type="button" class="icon-btn" id="btnEditFromHabit" title="Editar" aria-label="Editar hábito">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3.5 20.5l4.3-1 11-11-3.3-3.3-11 11z"/><path d="M13.2 6.6l3.3 3.3"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" id="btnPauseHabit" title="Pausar" aria-label="Pausar hábito">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7" y="5" width="3.5" height="14" rx="1"/>
+                <rect x="13.5" y="5" width="3.5" height="14" rx="1"/>
               </svg>
             </button>
             <button type="button" class="icon-btn" id="btnArchiveHabit" title="Archivar" aria-label="Archivar hábito">
@@ -393,6 +429,15 @@
             <p class="habit-hero__meta" id="habitMeta">—</p>
           </div>
         </article>
+
+        <div class="pause-banner" id="pauseBanner" hidden>
+          <span class="pause-banner__icon" id="pauseBannerIcon" aria-hidden="true">⏸</span>
+          <span class="pause-banner__text">
+            <strong id="pauseBannerTitle">En pausa</strong>
+            <span class="pause-banner__meta" id="pauseBannerMeta">—</span>
+          </span>
+          <button type="button" class="btn" id="btnResumeHabit">Reanudar</button>
+        </div>
 
         <ul class="stat-grid" aria-label="Estadísticas del hábito">
           <li class="stat"><p class="stat__value" id="hStreak">—</p><p class="stat__label">Racha actual</p></li>
@@ -450,13 +495,6 @@
         <article class="card">
           <header class="card__head"><h2 class="card__title">Preferencias</h2></header>
           <div class="field-row">
-            <label for="setStartWeek">La semana empieza en</label>
-            <select id="setStartWeek" class="input input--select">
-              <option value="1">Lunes</option>
-              <option value="0">Domingo</option>
-            </select>
-          </div>
-          <div class="field-row">
             <span class="field-row__text">
               <label for="setAccent">Color predeterminado</label>
               <span class="field-row__hint">Personaliza el color principal de la aplicación.</span>
@@ -479,8 +517,9 @@
               <span class="field-row__hint">Cómo de grandes son las casillas y los campos en Hoy.</span>
             </span>
             <select id="setControls" class="input input--select field-row__controls">
-              <option value="comfy">Cómodo</option>
               <option value="compact">Compacto</option>
+              <option value="comfy">Cómodo</option>
+              <option value="roomy">Amplio</option>
             </select>
           </div>
           <div class="field-row">
@@ -498,8 +537,10 @@
               <label for="setFontSize">Tamaño de letra</label>
             </span>
             <select id="setFontSize" class="input input--select field-row__controls">
+              <option value="small">Pequeña</option>
               <option value="normal">Normal</option>
               <option value="large">Grande</option>
+              <option value="xlarge">Muy grande</option>
             </select>
           </div>
           <div class="field-row">
@@ -526,6 +567,16 @@
             </button>
           </div>
           <div class="field-row">
+            <span class="field-row__text">
+              <span id="badgesLabel">Distintivos de estado</span>
+              <span class="field-row__hint">El "Pendiente / Hecho / Sin" de cada tarjeta.</span>
+            </span>
+            <button type="button" class="switch" id="setShowBadges"
+                    role="switch" aria-checked="true" aria-labelledby="badgesLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
             <span id="dayBarLabel">Barra de progreso del día</span>
             <button type="button" class="switch" id="setDayBar"
                     role="switch" aria-checked="true" aria-labelledby="dayBarLabel">
@@ -545,6 +596,24 @@
                     role="switch" aria-checked="true" aria-labelledby="notesSwLabel">
               <span class="switch__thumb"></span>
             </button>
+          </div>
+        </article>
+
+        <article class="card">
+          <header class="card__head"><h2 class="card__title">Entrenamiento</h2></header>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setRest">Descanso entre series</label>
+              <span class="field-row__hint">Arranca solo al apuntar una serie. Puedes saltártelo.</span>
+            </span>
+            <select id="setRest" class="input input--select field-row__controls">
+              <option value="0">Sin descanso</option>
+              <option value="30">30 segundos</option>
+              <option value="45">45 segundos</option>
+              <option value="60">1 minuto</option>
+              <option value="90">1 min 30 s</option>
+              <option value="120">2 minutos</option>
+            </select>
           </div>
         </article>
 
@@ -798,6 +867,38 @@
   </div>
 
   <!-- ══ MODAL: crear / editar ejercicio ══ -->
+  <div class="modal" id="pauseModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="pauseModalTitle">
+      <header class="modal__head">
+        <h2 class="modal__title" id="pauseModalTitle">Pausar hábito</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__body" id="pauseForm" novalidate>
+        <p class="card__text" id="pauseIntro">
+          Mientras esté en pausa no te lo pedirá ni contará como fallado, y tu racha
+          se queda donde está.
+        </p>
+
+        <fieldset class="reasons" id="pauseReasons">
+          <legend class="field__label">¿Por qué lo dejas?</legend>
+        </fieldset>
+
+        <div class="field" id="pauseNoteField" hidden>
+          <label class="field__label" for="pauseNote">Escríbelo</label>
+          <input class="input" type="text" id="pauseNote" maxlength="80"
+                 placeholder="Ej. mudanza" autocomplete="off">
+        </div>
+
+        <footer class="modal__foot">
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn btn--primary">Pausar</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="exerciseModal" hidden>
     <div class="modal__backdrop" data-close></div>
     <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="exModalTitle">

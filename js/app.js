@@ -513,10 +513,47 @@
       const exercise = S.getExercise(exerciseId);
       if (S.getSettings().effects) UI.buzz(20);
 
-      if (exercise && St.exerciseDone(exercise, S.getSets(currentDate, exerciseId))) {
-        UI.toast(exercise.name + ' completado.', { type: 'success', icon: '✓' });
-      }
+      const completo = exercise && St.exerciseDone(exercise, S.getSets(currentDate, exerciseId));
+      if (completo) UI.toast(exercise.name + ' completado.', { type: 'success', icon: '✓' });
+
+      // El descanso empieza al apuntar la serie, no al terminarla: es
+      // justo entonces cuando dejas la mancuerna y miras el reloj. No
+      // arranca si acabas de rematar el ejercicio, que ya no hay qué
+      // descansar antes de la siguiente serie.
+      if (!completo) UI.startRest(S.getSettings().restSeconds);
     }
+  }
+
+  /**
+   * Copia las series del último entreno de esta misma rutina. Solo aparece
+   * con la sesión en blanco, así que no puede duplicar nada: rellena y ya
+   * corriges a mano lo que hoy haya salido distinto.
+   */
+  function repeatLastSession() {
+    const routineId = S.routineForDate(currentDate);
+    const anterior = St.lastSessionOf(routineId, currentDate);
+    if (!anterior) {
+      UI.toast('No hay ningún entreno anterior de esta rutina.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    let copiadas = 0;
+    withWorkoutScoring(currentDate, function () {
+      S.getExercises(routineId).forEach(function (ex) {
+        (anterior.sets[ex.id] || []).forEach(function (value) {
+          if (S.addSet(currentDate, ex.id, value)) copiadas++;
+        });
+      });
+    });
+
+    if (!copiadas) {
+      UI.toast('Ese entreno no tiene series que copiar.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    UI.toast('Copiadas ' + copiadas + ' series del ' +
+             U.formatShort(U.fromKey(anterior.date)) + '. Corrige lo que cambie.',
+             { type: 'success', icon: '📋' });
   }
 
   /**
@@ -666,6 +703,44 @@
       UI.toast('"' + habit.name + '" archivado. Su histórico se conserva.', { icon: '🗄️' });
       closeHabit();
     }
+  }
+
+  /**
+   * Pausa un hábito con el motivo elegido. No se pregunta a confirmar: es
+   * reversible de un toque y sin pérdida, al revés que archivar o borrar.
+   */
+  function onPauseSubmit(e) {
+    e.preventDefault();
+
+    const data = UI.readPauseForm();
+    const habit = S.getHabit(data.habitId);
+    if (!habit) { UI.closePauseModal(); return; }
+
+    const pausa = S.pauseHabit(habit.id, data.reason, data.note);
+    UI.closePauseModal();
+
+    if (!pausa) {
+      UI.toast('Ese hábito ya estaba en pausa.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    UI.toast('"' + habit.name + '" en pausa · ' + UI.pauseLabel(pausa) +
+             '. Tu racha se queda como está.', { icon: '⏸' });
+  }
+
+  function resumeHabit(id) {
+    const habit = S.getHabit(id);
+    if (!habit) return;
+
+    const pausa = S.pauseInfo(habit);
+    if (!pausa) return;
+
+    const dias = U.daysBetween(pausa.from, today);
+    S.resumeHabit(id);
+
+    UI.toast('"' + habit.name + '" vuelve' +
+             (dias > 0 ? ' tras ' + dias + (dias === 1 ? ' día' : ' días') + ' en pausa' : '') + '.',
+             { type: 'success', icon: '▶' });
   }
 
   /* ── Comodines de racha ───────────────────────────────────── */
@@ -1083,6 +1158,8 @@
       S.setSessionRoutine(currentDate, els.routinePick.value);
     });
     els.btnFinishSession.addEventListener('click', toggleSession);
+    els.btnRepeatLast.addEventListener('click', repeatLastSession);
+    els.restSkip.addEventListener('click', UI.stopRest);
     els.btnManageWorkout.addEventListener('click', function () { UI.toggleWorkoutManager(); });
     els.routineTable.addEventListener('click', onRoutineTableClick);
     byId('btnNewExercise').addEventListener('click', function () { UI.openExerciseModal(null); });
@@ -1232,6 +1309,22 @@
       if (habit) UI.openModal(habit);
     });
     els.btnArchiveHabit.addEventListener('click', toggleArchive);
+    els.btnPauseHabit.addEventListener('click', function () {
+      const habit = S.getHabit(habitId);
+      if (habit) UI.openPauseModal(habit);
+    });
+    els.btnResumeHabit.addEventListener('click', function () { resumeHabit(habitId); });
+
+    els.pauseReasons.addEventListener('change', UI.syncPauseNote);
+    els.pauseForm.addEventListener('submit', onPauseSubmit);
+    els.pauseModal.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closePauseModal();
+    });
+    els.pauseModal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') UI.closePauseModal();
+    });
+
+    els.pausedNote.addEventListener('click', function () { UI.setView('settings'); });
     byId('btnDeleteFromHabit').addEventListener('click', function () { confirmDelete(habitId); });
     els.habitHeatmap.addEventListener('click', onCalendarClick);
 
@@ -1245,8 +1338,10 @@
     });
 
     // Ajustes
-    els.setStartWeek.addEventListener('change', function () {
-      S.setSettings({ weekStart: Number(els.setStartWeek.value) });
+    els.setRest.addEventListener('change', function () {
+      S.setSettings({ restSeconds: Number(els.setRest.value) });
+      // Cambiar la duración no alarga el descanso que ya esté corriendo:
+      // vale desde la siguiente serie.
     });
     els.setAccent.addEventListener('input', function () {
       UI.applyAccent(els.setAccent.value);
@@ -1292,6 +1387,7 @@
       });
     };
     toggle(els.setHideDone, 'hideDone');
+    toggle(els.setShowBadges, 'showBadges');
     toggle(els.setDayBar, 'showDayBar');
     toggle(els.setShowFreeze, 'showFreeze');
     toggle(els.setShowNotes, 'showNotes');
@@ -1301,6 +1397,9 @@
     els.archiveList.addEventListener('click', function (e) {
       const abrir = e.target.closest('[data-open]');
       if (abrir) { openHabit(abrir.dataset.open); return; }
+
+      const reanudar = e.target.closest('[data-resume]');
+      if (reanudar) { resumeHabit(reanudar.dataset.resume); return; }
 
       const btn = e.target.closest('[data-restore]');
       if (!btn) return;
@@ -1346,6 +1445,21 @@
     // Un service worker necesita origen seguro: abierto con file:// no aplica.
     if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
 
+    // Si ya había un service worker al cargar, el relevo puede pillar la
+    // página a medias: el anterior sirve de su caché lo que ya ha pedido y
+    // el nuevo borra esa caché, así que lo que falte se baja de la red ya
+    // actualizado. Resultado: index.html de una versión y .js de otra, y la
+    // app pintada sin manejadores. Recargar una vez al cambiar de dueño
+    // deja el conjunto coherente.
+    if (navigator.serviceWorker.controller) {
+      let recargando = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (recargando) return;      // el evento puede llegar más de una vez
+        recargando = true;
+        window.location.reload();
+      });
+    }
+
     navigator.serviceWorker.register('sw.js').catch(function (err) {
       console.warn('Service worker no registrado:', err);
     });
@@ -1382,6 +1496,29 @@
     main.appendChild(box);
   }
 
+  /**
+   * Avisa si el navegador ha mezclado versiones: un index.html de una y unos
+   * .js de otra. Pasa al actualizar, porque el service worker sirve de su
+   * caché lo que ya tiene y pide a la red lo que le falta, y el resultado
+   * puede ser mitad y mitad.
+   *
+   * Antes eso dejaba la app pintada y muerta, sin decir nada. Ahora lo dice,
+   * y con el arranque tolerante de UI.init() además sigue funcionando.
+   */
+  function checkBuildMatch() {
+    const html = document.documentElement.dataset.build || null;
+    const faltan = UI.getMissingIds();
+
+    if (html === U.version && !faltan.length) return;
+
+    console.error('Versiones descuadradas · index.html:', html, '· js:', U.version,
+                  '· elementos que faltan:', faltan);
+
+    UI.toast('El navegador ha mezclado versiones (' + (html || 'desconocida') +
+             ' y ' + U.version + '). Recarga forzando: Ctrl + Mayús + R.',
+             { type: 'error', icon: '⚠️', duration: 12000 });
+  }
+
   function boot() {
     UI.init();
     S.load();
@@ -1413,6 +1550,9 @@
       // Solo si no hay ya un aviso más urgente en pantalla.
       checkBackupReminder();
     }
+
+    // El último, porque es el que hay que ver aunque haya salido otro.
+    checkBuildMatch();
   }
 
   function start() {

@@ -17,6 +17,7 @@ HT.ui = (function () {
   const els = {};
   const cardIndex = {};     // habitId → nodo <li>, para repintar solo lo que cambia
   let lastFocused = null;
+  let missingIds = [];      // ids que no estaban en el HTML al arrancar
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -82,6 +83,10 @@ HT.ui = (function () {
       'prevDay', 'nextDay', 'btnToday',
       'btnPickDay', 'dayPicker', 'dpPrev', 'dpNext', 'dpLabel', 'dpGrid', 'dpToday',
       'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeLabel', 'freezeHint', 'dayNote',
+      'pausedNote', 'pausedNoteText',
+      'pauseModal', 'pauseForm', 'pauseReasons', 'pauseNoteField', 'pauseNote', 'pauseIntro',
+      'pauseModalTitle', 'pauseBanner', 'pauseBannerTitle', 'pauseBannerMeta', 'pauseBannerIcon',
+      'btnPauseHabit', 'btnResumeHabit',
       'statWeek', 'statMonth', 'statStreak', 'statBest',
       'levelPanel', 'lvNumber', 'lvRank', 'lvRankLetter', 'lvBar', 'lvFill', 'lvXp', 'lvRemaining',
       'lvGhost', 'lvAhead', 'statWeekGhost', 'statWeekAhead', 'statMonthGhost', 'statMonthAhead',
@@ -89,7 +94,7 @@ HT.ui = (function () {
       'ascents', 'ascentsCount', 'ascentsList', 'ascentsNote',
       'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
-      'avoidCard', 'avoidList',
+      'avoidCard', 'avoidList', 'achCard', 'achCount',
       'statWeekBar', 'statMonthBar',
       'chart', 'chartTitle', 'chartReadout', 'chartTable', 'chartEmpty', 'chartData',
       'calendarEmpty', 'calendarEmptyText', 'heatmapLegend',
@@ -98,6 +103,7 @@ HT.ui = (function () {
       'emojiPicker', 'btnEmoji',
       'sessionEyebrow', 'routineName', 'routinePick', 'sessionSummary', 'exerciseList',
       'emptyWorkout', 'btnFinishSession', 'sessionHint', 'btnManageWorkout',
+      'btnRepeatLast', 'restBar', 'restTime', 'restFill', 'restSkip',
       'workoutManager', 'routineTable',
       'exerciseModal', 'exerciseForm', 'exModalTitle', 'exNameError', 'btnDeleteExercise',
       'habitIcon', 'habitTitle', 'habitMeta', 'hStreak', 'hBest', 'hRate', 'hTotal',
@@ -105,9 +111,9 @@ HT.ui = (function () {
       'hSumDays', 'hSumsNote',
       'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
-      'setStartWeek', 'setAccent', 'btnResetAccent', 'setNotifications', 'setEffects',
+      'setAccent', 'btnResetAccent', 'setNotifications', 'setEffects', 'setRest',
       'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup', 'backupHint',
-      'setHideDone', 'setDayBar', 'setShowFreeze', 'setShowNotes',
+      'setHideDone', 'setShowBadges', 'setDayBar', 'setShowFreeze', 'setShowNotes',
       'btnResetProgress', 'noteCard',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
@@ -117,10 +123,18 @@ HT.ui = (function () {
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
-    // más abajo. Mejor decir cuál falta y dónde.
-    const missing = Object.keys(els).filter(function (id) { return !els[id]; });
-    if (missing.length) {
-      throw new Error('Faltan estos elementos en index.html: ' + missing.join(', '));
+    // más abajo. Antes esto lanzaba, y lanzar aquí mata la app entera: se
+    // quedaba pintada pero sin un solo manejador, que es peor que un error
+    // —parece que la pantalla no responde y no dice por qué—.
+    //
+    // Ahora cada hueco se rellena con un nodo suelto que no está en el
+    // documento. Lo que dependa de él no se verá, pero todo lo demás sigue
+    // funcionando, y la lista de lo que falta se enseña al arrancar.
+    missingIds = Object.keys(els).filter(function (id) { return !els[id]; });
+    missingIds.forEach(function (id) { els[id] = document.createElement('span'); });
+
+    if (missingIds.length) {
+      console.error('Faltan estos elementos en index.html: ' + missingIds.join(', '));
     }
 
     els.views = {
@@ -509,7 +523,9 @@ HT.ui = (function () {
     }));
     head.appendChild(title);
 
-    head.appendChild(el('span', { class: 'badge' }));
+    // El distintivo se puede apagar en Ajustes: es útil al principio y ruido
+    // cuando ya te sabes los colores. Si no está, paintCard no lo busca.
+    if (S.getSettings().showBadges) head.appendChild(el('span', { class: 'badge' }));
     li.appendChild(head);
 
     /* ── Barra de progreso ── */
@@ -632,7 +648,8 @@ HT.ui = (function () {
     li.classList.toggle('is-done', state === 'done');
     li.style.setProperty('--card-pct', pct);
 
-    $('.badge', li).textContent = badgeText(habit, state, value);
+    const badge = $('.badge', li);
+    if (badge) badge.textContent = badgeText(habit, state, value);
     $('.progress__fill', li).style.setProperty('--pct', pct);
     $('.habit-card__pct', li).textContent = pct + '%';
 
@@ -728,6 +745,91 @@ HT.ui = (function () {
     return head;
   }
 
+  /* ── Pausa ────────────────────────────────────────────────
+     Un hábito en pausa desaparece de Hoy, así que lo único que impide
+     olvidarse de él es este aviso al final de la lista. ──────────────── */
+
+  function renderPausedNote() {
+    const pausados = S.getHabits().filter(function (h) { return !!S.pauseInfo(h); });
+
+    els.pausedNote.hidden = !pausados.length;
+    if (!pausados.length) return;
+
+    els.pausedNoteText.textContent = pausados.length === 1
+      ? '"' + pausados[0].name + '" está en pausa'
+      : pausados.length + ' hábitos en pausa';
+  }
+
+  /** Texto de un tramo de pausa: el motivo, con lo escrito a mano si lo hay. */
+  function pauseLabel(pause) {
+    const motivo = U.pauseReasonById(pause.reason);
+    const nombre = motivo ? motivo.name : 'Otro';
+    return pause.note ? nombre + ' · ' + pause.note : nombre;
+  }
+
+  function openPauseModal(habit) {
+    els.pauseForm.dataset.habitId = habit.id;
+    els.pauseModalTitle.textContent = 'Pausar ' + habit.name;
+
+    // Lista de motivos, generada del catálogo para que añadir uno sea
+    // tocar utils.js y nada más.
+    const frag = document.createDocumentFragment();
+    U.PAUSE_REASONS.forEach(function (motivo, i) {
+      const label = el('label', { class: 'reason' });
+
+      const radio = el('input', {
+        type: 'radio', name: 'pauseReason', value: motivo.id, class: 'reason__input'
+      });
+      radio.checked = i === 0;
+
+      label.appendChild(radio);
+      label.appendChild(el('span', { class: 'reason__icon', 'aria-hidden': 'true', text: motivo.icon }));
+      label.appendChild(el('span', { class: 'reason__name', text: motivo.name }));
+      frag.appendChild(label);
+    });
+
+    // La leyenda se conserva: es la etiqueta del grupo de radios.
+    const legend = $('legend', els.pauseReasons);
+    els.pauseReasons.textContent = '';
+    if (legend) els.pauseReasons.appendChild(legend);
+    els.pauseReasons.appendChild(frag);
+
+    els.pauseNote.value = '';
+    syncPauseNote();
+
+    lastFocused = document.activeElement;
+    els.pauseModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    const primero = $('.reason__input', els.pauseReasons);
+    if (primero) primero.focus();
+  }
+
+  function closePauseModal() {
+    els.pauseModal.hidden = true;
+    document.body.style.overflow = '';
+    delete els.pauseForm.dataset.habitId;
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  /** El campo de texto solo aparece con "Otro": en los demás no aporta. */
+  function syncPauseNote() {
+    els.pauseNoteField.hidden = readPauseReason() !== 'otro';
+  }
+
+  function readPauseReason() {
+    const marcado = $('input[name="pauseReason"]:checked', els.pauseReasons);
+    return marcado ? marcado.value : 'otro';
+  }
+
+  function readPauseForm() {
+    return {
+      habitId: els.pauseForm.dataset.habitId || null,
+      reason: readPauseReason(),
+      note: els.pauseNote.value.trim()
+    };
+  }
+
   /** El cajón de los cumplidos: plegado, con su cuenta, y abrible. */
   function doneDrawer(hechos, dateKey) {
     const box = el('details', { class: 'done-drawer' });
@@ -802,6 +904,7 @@ HT.ui = (function () {
 
     els.habitList.textContent = '';
     els.habitList.appendChild(frag);
+    renderPausedNote();
 
     // Dos vacíos distintos: "aún no tienes hábitos" y "ese día no toca ninguno".
     const hasAny = S.getHabits().length > 0;
@@ -1262,6 +1365,19 @@ HT.ui = (function () {
     els.btnFinishSession.classList.toggle('btn--primary', !done);
     els.btnFinishSession.disabled = !exercises.length;
 
+    // "Repetir el último" solo con la sesión en blanco: si ya hay series,
+    // copiar las de la otra vez las sumaría a las de hoy en vez de
+    // sustituirlas, y eso no es lo que nadie espera de ese botón.
+    const anterior = exercises.length && !done && !summary.sets
+      ? St.lastSessionOf(routineId, dateKey)
+      : null;
+
+    els.btnRepeatLast.hidden = !anterior;
+    if (anterior) {
+      els.btnRepeatLast.textContent =
+        'Repetir el del ' + U.formatShort(U.fromKey(anterior.date));
+    }
+
     els.sessionHint.textContent = done
       ? 'Cuenta para tu racha. La próxima vez toca ' + nextRoutineName() + '.'
       : summary.sets
@@ -1269,9 +1385,90 @@ HT.ui = (function () {
         : 'Apunta al menos una serie para que el entreno cuente.';
   }
 
+  /* ── Descanso entre series ────────────────────────────────
+     Se guarda la hora de fin, no los segundos que quedan: así el contador
+     sigue siendo correcto aunque el móvil suspenda la pestaña y deje de
+     llamar al intervalo un rato. ──────────────────────────────────── */
+
+  let restTimer = null;
+  let restEnd = 0;
+  let restTotal = 0;
+
+  function fmtClock(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function startRest(seconds) {
+    const total = Math.floor(Number(seconds) || 0);
+    if (total <= 0) return;                     // "Sin descanso" en Ajustes
+
+    restTotal = total;
+    restEnd = Date.now() + total * 1000;
+
+    els.restBar.hidden = false;
+    els.restBar.removeAttribute('data-state');
+
+    clearInterval(restTimer);
+    restTimer = setInterval(tickRest, 250);
+    tickRest();
+  }
+
+  function tickRest() {
+    const left = Math.max(0, Math.ceil((restEnd - Date.now()) / 1000));
+
+    els.restTime.textContent = fmtClock(left);
+    els.restFill.style.setProperty('--pct', restTotal ? (left / restTotal) * 100 : 0);
+
+    if (left > 0) return;
+
+    clearInterval(restTimer);
+    restTimer = null;
+    els.restBar.dataset.state = 'done';
+    els.restTime.textContent = '¡Ya!';
+    if (S.getSettings().effects) buzz([90, 60, 90]);
+
+    // Se queda un momento para que se vea que ha terminado, y se va sola.
+    setTimeout(function () {
+      if (!restTimer) stopRest();
+    }, 4000);
+  }
+
+  function stopRest() {
+    clearInterval(restTimer);
+    restTimer = null;
+    els.restBar.hidden = true;
+    els.restBar.removeAttribute('data-state');
+  }
+
   function nextRoutineName() {
     const routine = S.getRoutine(S.suggestedRoutineId());
     return routine ? routine.name : 'ninguna';
+  }
+
+  /**
+   * La marca a batir de un ejercicio, o el aviso de que hoy la has batido.
+   *
+   * El récord se calcula SIN el día que se está mirando: si contara lo de
+   * hoy, en cuanto superases tu marca la fila diría que tu récord es lo que
+   * acabas de hacer y nunca se vería que lo has mejorado.
+   */
+  function recordLine(exercise, sets, dateKey) {
+    const record = St.exerciseRecord(exercise.id, dateKey);
+    if (!record.sessions) return null;          // primera vez: nada que batir
+
+    const unidad = unitOf(exercise);
+    const hoyTop = sets.length ? Math.max.apply(null, sets) : 0;
+    const superado = hoyTop > record.bestSet;
+
+    return el('p', {
+      class: 'exercise__record',
+      'data-new': superado ? 'true' : null,
+      text: superado
+        ? '¡Récord! ' + hoyTop + ' ' + unidad + ' · antes ' + record.bestSet
+        : 'Tu récord: ' + record.bestSet + ' ' + unidad
+    });
   }
 
   function buildExerciseRow(exercise, dateKey, locked) {
@@ -1284,7 +1481,14 @@ HT.ui = (function () {
     });
 
     const head = el('div', { class: 'exercise__head' });
-    head.appendChild(el('h3', { class: 'exercise__name', text: exercise.name }));
+
+    const title = el('div', { class: 'exercise__title' });
+    title.appendChild(el('h3', { class: 'exercise__name', text: exercise.name }));
+
+    const record = recordLine(exercise, sets, dateKey);
+    if (record) title.appendChild(record);
+    head.appendChild(title);
+
     head.appendChild(el('p', {
       class: 'exercise__target',
       text: sets.length + '/' + exercise.sets + ' × ' + exercise.target + ' ' + unitOf(exercise)
@@ -2027,6 +2231,10 @@ HT.ui = (function () {
 
     els.achievementGrid.textContent = '';
     els.achievementGrid.appendChild(frag);
+
+    // Plegado por defecto, así que la cuenta va en la cabecera: es lo que
+    // se quiere saber sin abrir.
+    els.achCount.textContent = unlocked.length + '/' + St.ACHIEVEMENTS.length;
   }
 
   /* ── Ficha de un hábito ───────────────────────────────────── */
@@ -2045,6 +2253,28 @@ HT.ui = (function () {
     return what + ' · ' + days + reminder;
   }
 
+  /**
+   * Cartel de pausa en la ficha. Dice desde cuándo y por qué: al volver a
+   * un hábito parado hace un mes, el motivo es la mitad de la decisión de
+   * si retomarlo o dejarlo ir.
+   */
+  function renderPauseBanner(habit, todayKey) {
+    const pausa = S.pauseInfo(habit);
+
+    els.pauseBanner.hidden = !pausa;
+    els.btnPauseHabit.hidden = !!pausa || habit.archived;
+
+    if (!pausa) return;
+
+    const dias = U.daysBetween(pausa.from, todayKey);
+    const motivo = U.pauseReasonById(pausa.reason);
+
+    els.pauseBannerIcon.textContent = motivo ? motivo.icon : '⏸';
+    els.pauseBannerTitle.textContent = 'En pausa · ' + pauseLabel(pausa);
+    els.pauseBannerMeta.textContent = 'Desde el ' + U.formatShort(U.fromKey(pausa.from)) +
+      (dias > 0 ? ' · ' + dias + (dias === 1 ? ' día' : ' días') : ' · hoy mismo');
+  }
+
   function renderHabitView(habit, monthDate, todayKey) {
     const weekStart = S.getSettings().weekStart;
 
@@ -2059,6 +2289,8 @@ HT.ui = (function () {
     const rate = St.habitRate(habit, todayKey, 30);
     els.hRate.textContent = rate.total ? rate.pct + '%' : '—';
     els.hTotal.textContent = St.habitTotal(habit);
+
+    renderPauseBanner(habit, todayKey);
 
     // Solo la etiqueta: el botón lleva un SVG dentro y textContent lo borraría.
     const archiveLabel = habit.archived ? 'Restaurar hábito' : 'Archivar hábito';
@@ -2179,13 +2411,14 @@ HT.ui = (function () {
 
   function renderSettings() {
     const s = S.getSettings();
-    els.setStartWeek.value = String(s.weekStart);
     els.setAccent.value = s.accent;
+    els.setRest.value = String(s.restSeconds);
     els.setControls.value = s.controls;
     els.setTheme.value = s.theme;
     els.setFontSize.value = s.fontSize;
     els.setBackup.value = String(s.backupDays);
     els.setHideDone.setAttribute('aria-checked', s.hideDone ? 'true' : 'false');
+    els.setShowBadges.setAttribute('aria-checked', s.showBadges ? 'true' : 'false');
     els.setDayBar.setAttribute('aria-checked', s.showDayBar ? 'true' : 'false');
     els.setShowFreeze.setAttribute('aria-checked', s.showFreeze ? 'true' : 'false');
     els.setShowNotes.setAttribute('aria-checked', s.showNotes ? 'true' : 'false');
@@ -2290,10 +2523,16 @@ HT.ui = (function () {
           type: 'button', class: 'archive-item__open', 'data-open': habit.id,
           'aria-label': 'Ver la ficha de ' + habit.name
         });
+        const pausa = S.pauseInfo(habit);
+
         open.appendChild(el('span', { class: 'archive-item__icon', 'aria-hidden': 'true', text: habit.icon }));
         open.appendChild(el('span', { class: 'archive-item__name', text: habit.name }));
         if (habit.archived) {
           open.appendChild(el('span', { class: 'archive-item__tag', text: 'Archivado' }));
+        } else if (pausa) {
+          open.appendChild(el('span', {
+            class: 'archive-item__tag archive-item__tag--pause', text: pauseLabel(pausa)
+          }));
         }
         item.appendChild(open);
 
@@ -2301,6 +2540,11 @@ HT.ui = (function () {
           item.appendChild(el('button', {
             type: 'button', class: 'btn btn--ghost', 'data-restore': habit.id,
             'aria-label': 'Restaurar ' + habit.name, text: 'Restaurar'
+          }));
+        } else if (pausa) {
+          item.appendChild(el('button', {
+            type: 'button', class: 'btn btn--ghost', 'data-resume': habit.id,
+            'aria-label': 'Reanudar ' + habit.name, text: 'Reanudar'
           }));
         }
         list.appendChild(item);
@@ -2319,8 +2563,12 @@ HT.ui = (function () {
      Tres atributos en <html> y el CSS hace el resto. Nada de clases
      repartidas por los componentes. ─────────────────────────── */
 
+  const CONTROLS = ['compact', 'comfy', 'roomy'];
+  const FONT_SIZES = ['small', 'normal', 'large', 'xlarge'];
+
   function applyControls(mode) {
-    document.documentElement.dataset.controls = mode === 'compact' ? 'compact' : 'comfy';
+    document.documentElement.dataset.controls =
+      CONTROLS.indexOf(mode) >= 0 ? mode : 'compact';
   }
 
   function applyTheme(theme) {
@@ -2333,7 +2581,8 @@ HT.ui = (function () {
   }
 
   function applyFontSize(size) {
-    document.documentElement.dataset.font = size === 'large' ? 'large' : 'normal';
+    document.documentElement.dataset.font =
+      FONT_SIZES.indexOf(size) >= 0 ? size : 'normal';
   }
 
   /** Qué partes de Hoy se muestran. */
@@ -2569,6 +2818,9 @@ HT.ui = (function () {
       life = 7000;      // hace falta tiempo real para leer y decidir
     }
 
+    // Un aviso puede pedir más tiempo si lo que cuenta no se lee de un vistazo.
+    if (o.duration > 0) life = o.duration;
+
     els.toastStack.appendChild(node);
 
     setTimeout(function () {
@@ -2662,13 +2914,17 @@ HT.ui = (function () {
 
   return {
     els: els, init: init, setView: setView,
+    getMissingIds: function () { return missingIds.slice(); },
     renderHeader: renderHeader, renderHabitList: renderHabitList, updateCard: updateCard,
     renderDayExtras: renderDayExtras, pulse: pulse,
     renderWeek: renderWeek,
     renderExercises: renderExercises, renderRoutineTable: renderRoutineTable,
+    startRest: startRest, stopRest: stopRest,
     toggleWorkoutManager: toggleWorkoutManager,
     openExerciseModal: openExerciseModal, closeExerciseModal: closeExerciseModal,
     readExerciseForm: readExerciseForm,
+    openPauseModal: openPauseModal, closePauseModal: closePauseModal,
+    readPauseForm: readPauseForm, syncPauseNote: syncPauseNote, pauseLabel: pauseLabel,
     renderDayPicker: renderDayPicker, toggleDayPicker: toggleDayPicker,
     isDayPickerOpen: isDayPickerOpen,
     renderProgress: renderProgress, renderHistory: renderHistory,

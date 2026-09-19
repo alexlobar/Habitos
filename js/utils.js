@@ -22,8 +22,8 @@ HT.utils = (function () {
      otro sitio donde aparece es CACHE en sw.js, porque un service worker
      no puede leer este archivo; si se desincronizan, Ajustes lo avisa en
      vez de callarse. ─────────────────────────────────────── */
-  const VERSION = '1.6.4';
-  const BUILD_DATE = '2026-09-19';
+  const VERSION = '1.6.7';
+  const BUILD_DATE = '2026-09-20';
 
   /* ── Colores predeterminados ──────────────────────────────
      Catálogo de acentos. Hoy solo se usa el primero, pero la tabla ya
@@ -56,6 +56,24 @@ HT.utils = (function () {
 
   function categoryById(id) {
     return CATEGORIES.filter(function (c) { return c.id === id; })[0] || null;
+  }
+
+  /* ── Motivos de pausa ─────────────────────────────────────
+     Catálogo cerrado salvo por 'otro', que guarda lo que escriba el
+     usuario. Tener el motivo sirve para algo más que decorar: al volver
+     dice por qué lo dejaste, y eso es la mitad de decidir si retomarlo.
+     ──────────────────────────────────────────────────────── */
+  const PAUSE_REASONS = [
+    { id: 'vacaciones', name: 'Vacaciones',       icon: '🏖️' },
+    { id: 'lesion',     name: 'Lesión',           icon: '🤕' },
+    { id: 'enfermedad', name: 'Enfermedad',       icon: '🤒' },
+    { id: 'carga',      name: 'Mucho trabajo',    icon: '💼' },
+    { id: 'cambio',     name: 'Cambio de rutina', icon: '🔁' },
+    { id: 'otro',       name: 'Otro',             icon: '✏️' }
+  ];
+
+  function pauseReasonById(id) {
+    return PAUSE_REASONS.filter(function (r) { return r.id === id; })[0] || null;
   }
 
   const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
@@ -247,6 +265,7 @@ HT.utils = (function () {
     version: VERSION, buildLabel: buildLabel,
     ACCENTS: ACCENTS, DEFAULT_ACCENT: DEFAULT_ACCENT, accentById: accentById,
     CATEGORIES: CATEGORIES, categoryById: categoryById,
+    PAUSE_REASONS: PAUSE_REASONS, pauseReasonById: pauseReasonById,
     toKey: toKey, fromKey: fromKey, isValidKey: isValidKey, todayKey: todayKey,
     addDays: addDays, addDaysKey: addDaysKey, daysBetween: daysBetween,
     startOfWeek: startOfWeek, startOfMonth: startOfMonth, daysInMonth: daysInMonth,

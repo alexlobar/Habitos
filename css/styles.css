@@ -132,6 +132,17 @@
 }
 
 /* ── 1c. TAMAÑO DE LETRA ──────────────────────────────────── */
+/* Cuatro escalones. Se redefinen los seis tamaños a la vez para que las
+   proporciones entre títulos, texto y cifras no cambien de un paso a otro:
+   lo que se mueve es la escala entera, no unos cuantos textos. */
+:root[data-font="small"] {
+  --fs-xs:  .6875rem;
+  --fs-sm:  .75rem;
+  --fs-md:  .875rem;
+  --fs-lg:  1rem;
+  --fs-xl:  1.25rem;
+  --fs-2xl: 1.5625rem;
+}
 :root[data-font="large"] {
   --fs-xs:  .8125rem;
   --fs-sm:  .875rem;
@@ -139,6 +150,14 @@
   --fs-lg:  1.1875rem;
   --fs-xl:  1.5rem;
   --fs-2xl: 1.9375rem;
+}
+:root[data-font="xlarge"] {
+  --fs-xs:  .875rem;
+  --fs-sm:  .9375rem;
+  --fs-md:  1.0625rem;
+  --fs-lg:  1.3125rem;
+  --fs-xl:  1.625rem;
+  --fs-2xl: 2.125rem;
 }
 
 /* ── 2. RESET ──────────────────────────────────────────────── */
@@ -941,6 +960,20 @@ button.habit-card__icon:active { transform: scale(.94); }
 [data-controls="compact"] .round-btn { width: 42px; height: 42px; }
 [data-controls="compact"] .habit-card .habit-card__amount { width: 4.75rem; min-height: 36px; }
 
+/* Tercer escalón, por encima de Cómodo: para manejar la app con una mano,
+   con guantes o sin mirar. Nada baja de 44px, que es el mínimo táctil. */
+[data-controls="roomy"] .check-btn { width: 64px; height: 64px; }
+[data-controls="roomy"] .check-btn svg { width: 32px; height: 32px; }
+[data-controls="roomy"] .round-btn { width: 64px; height: 64px; font-size: var(--fs-2xl); }
+[data-controls="roomy"] .habit-card .habit-card__amount {
+  width: 7.5rem;
+  min-height: 52px;
+  font-size: var(--fs-xl);
+}
+[data-controls="roomy"] .slot { padding: 12px var(--sp-5); font-size: var(--fs-md); }
+[data-controls="roomy"] .habit-card__controls { min-height: 66px; }
+[data-controls="roomy"] .habit-card { padding: var(--sp-4); }
+
 /* Campo para escribir el total del día a mano.
    Selector doble a propósito: `.input` se declara más abajo y, a igual
    especificidad, ganaría su width:100%. */
@@ -1172,6 +1205,7 @@ button.heat:disabled:hover { transform: none; }
   gap: var(--sp-3);
   margin-bottom: var(--sp-3);
 }
+.exercise__title { flex: 1; min-width: 0; }
 .exercise__name { font-size: var(--fs-md); font-weight: 600; }
 .exercise__target {
   flex: none;
@@ -1180,6 +1214,19 @@ button.heat:disabled:hover { transform: none; }
   font-variant-numeric: tabular-nums;
 }
 .exercise.is-done .exercise__target { color: var(--success); }
+
+/* Marca a batir del ejercicio. Debajo del nombre y en tenue: es contexto
+   mientras entrenas, no una cifra que compita con las series. */
+.exercise__record {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.exercise__record[data-new="true"] {
+  color: var(--streak);
+  font-weight: 600;
+}
 
 .exercise__sets { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
@@ -1221,6 +1268,131 @@ button.heat:disabled:hover { transform: none; }
   border-top: 1px solid var(--border);
 }
 .session__hint { flex: 1; min-width: 12rem; font-size: var(--fs-xs); color: var(--text-muted); }
+
+/* ── Pausa ────────────────────────────────────────────────
+   Un hábito en pausa desaparece de Hoy. Todo lo de aquí existe para que
+   eso no se convierta en olvidarlo. ─────────────────────────────── */
+
+.paused-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.paused-note:hover { border-color: var(--accent); color: var(--text); }
+.paused-note__go { margin-left: auto; font-size: var(--fs-lg); }
+
+.pause-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+.pause-banner__icon { flex: none; font-size: var(--fs-xl); }
+.pause-banner__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.pause-banner__text strong { font-size: var(--fs-sm); }
+.pause-banner__meta { font-size: var(--fs-xs); color: var(--text-muted); }
+
+.archive-item__tag--pause {
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  color: var(--warning);
+}
+
+/* Motivos: radios de verdad, pintados como filas grandes. Con el teclado
+   se recorren con las flechas sin que haya que programar nada. */
+.reasons {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  border: 0;
+}
+.reason {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.reason:hover { border-color: var(--border-strong); }
+.reason__input { accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
+.reason__icon { flex: none; font-size: var(--fs-lg); }
+.reason__name { flex: 1; min-width: 0; font-size: var(--fs-sm); }
+.reason:has(.reason__input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.reason:has(.reason__input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Descanso entre series ────────────────────────────────
+   Una franja fina con el tiempo que queda. No bloquea nada: puedes
+   seguir apuntando series con el contador en marcha. ──────────────── */
+.rest {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--frost) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--frost) 10%, transparent);
+}
+.rest__label {
+  flex: none;
+  font-size: var(--fs-xs);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.rest__time {
+  flex: none;
+  min-width: 3.2rem;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--frost);
+}
+.rest__track {
+  flex: 1;
+  min-width: 3rem;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.rest__fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  background: var(--frost);
+}
+.rest__skip { flex: none; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
+
+/* Al llegar a cero la franja avisa un momento antes de irse. */
+.rest[data-state="done"] {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+.rest[data-state="done"] .rest__time { color: var(--success); }
+.rest[data-state="done"] .rest__fill { background: var(--success); }
 
 /* Gestión de la tabla */
 .routine + .routine { margin-top: var(--sp-5); }
@@ -2260,25 +2432,25 @@ button.week-cell:disabled:hover { transform: none; }
   #view-progress .stat:nth-child(2) { animation-delay: 170ms; }
   #view-progress .stat:nth-child(3) { animation-delay: 210ms; }
   #view-progress .stat:nth-child(4) { animation-delay: 250ms; }
-  /* Ascensos entra con las fichas: es un <details>, así que no altera la
-     numeración por tipo de las tarjetas <article> que vienen detrás. */
+  /* Los dos desplegables son <details>, así que van por clase: :nth-of-type
+     cuenta por tipo de elemento y no los mezcla con los <article>. */
   #view-progress .ascents { animation-delay: 280ms; }
-  /* Tras mudar calendario y gráfica a Histórico quedan cinco tarjetas. */
+  /* Quedan cuatro <article>: nivel, estado, rachas y días sin. */
   #view-progress .progress-grid > .card:nth-of-type(3) { animation-delay: 300ms; }
   #view-progress .progress-grid > .card:nth-of-type(4) { animation-delay: 350ms; }
-  #view-progress .progress-grid > .card:nth-of-type(5) { animation-delay: 400ms; }
+  #view-progress #achCard { animation-delay: 400ms; }
 }
 @keyframes sys-boot {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
 
-/* ── Ascensos ─────────────────────────────────────────────
-   Cuándo se alcanzó cada nivel. Va plegado porque es historia, no
-   estado, y reutiliza la tabla de colores por rango del panel. ──── */
-.ascents { padding: 0; }
+/* ── Tarjeta plegable ─────────────────────────────────────
+   El mismo desplegable para Ascensos y Logros: cabecera con cuenta,
+   flecha propia y el contenido que cada uno traiga. ──────────────── */
+.fold { padding: 0; }
 
-.ascents__head {
+.fold__head {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -2286,11 +2458,11 @@ button.week-cell:disabled:hover { transform: none; }
   cursor: pointer;
   list-style: none;
 }
-.ascents__head::-webkit-details-marker { display: none; }
+.fold__head::-webkit-details-marker { display: none; }
 
-.ascents__title { flex: 1; font-size: var(--fs-md); font-weight: 650; }
+.fold__title { flex: 1; font-size: var(--fs-md); font-weight: 650; }
 
-.ascents__count {
+.fold__count {
   flex: none;
   min-width: 22px;
   padding: 1px 6px;
@@ -2302,7 +2474,7 @@ button.week-cell:disabled:hover { transform: none; }
 }
 
 /* Misma flecha propia que en el resto de desplegables de la app. */
-.ascents__head::after {
+.fold__head::after {
   content: "";
   flex: none;
   width: 7px;
@@ -2312,14 +2484,16 @@ button.week-cell:disabled:hover { transform: none; }
   transform: rotate(45deg) translate(-2px, -2px);
   transition: transform var(--dur) var(--ease);
 }
-.ascents[open] .ascents__head::after { transform: rotate(-135deg); }
+.fold[open] .fold__head::after { transform: rotate(-135deg); }
+
+.fold .ach-grid { padding: 0 var(--sp-4) var(--sp-4); }
 
 .ascents__list {
   display: grid;
   gap: 2px;
   padding: 0 var(--sp-3) var(--sp-3);
 }
-.ascents .card__text { padding: 0 var(--sp-4) var(--sp-4); margin: 0; }
+.fold .card__text { padding: 0 var(--sp-4) var(--sp-4); margin: 0; }
 
 .ascent {
   display: flex;

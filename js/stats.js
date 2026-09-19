@@ -99,6 +99,9 @@ HT.stats = (function () {
   /** ¿Este hábito "toca" ese día? */
   function isActiveOn(habit, dateKey) {
     if (habit.createdAt > dateKey) return false;
+    // Una pausa se comporta igual que un día que no toca: dayOutcome lo lee
+    // como 'skip', así que no cuenta como cumplido ni corta la racha.
+    if (S.isPausedOn(habit, dateKey)) return false;
     return habit.activeDays.indexOf(U.fromKey(dateKey).getDay()) >= 0;
   }
 
@@ -402,14 +405,20 @@ HT.stats = (function () {
     };
   }
 
-  /** Mejor serie y mejor sesión de un ejercicio, para ver si progresas. */
-  function exerciseRecord(exerciseId) {
+  /**
+   * Mejor serie y mejor sesión de un ejercicio, para ver si progresas.
+   * `exceptKey` deja fuera un día: pasando el de hoy se obtiene la marca a
+   * batir, que es lo que permite saber si lo de hoy es un récord nuevo.
+   */
+  function exerciseRecord(exerciseId, exceptKey) {
     let bestSet = 0;
     let bestSession = 0;
     let sessions = 0;
 
     const all = S.getState().sessions;
     Object.keys(all).forEach(function (dateKey) {
+      if (dateKey === exceptKey) return;
+
       const sets = all[dateKey].sets[exerciseId];
       if (!sets || !sets.length) return;
 
@@ -421,6 +430,28 @@ HT.stats = (function () {
     });
 
     return { bestSet: bestSet, bestSession: bestSession, sessions: sessions };
+  }
+
+  /**
+   * La última sesión con series de esa rutina anterior a `beforeKey`, que es
+   * lo que copia "Repetir el último". Se busca por rutina y no por el día de
+   * antes: si alternas rutinas, el entreno anterior no es el mismo trabajo.
+   */
+  function lastSessionOf(routineId, beforeKey) {
+    const all = S.getState().sessions;
+    let found = null;
+
+    Object.keys(all).forEach(function (dateKey) {
+      if (dateKey >= beforeKey) return;
+
+      const session = all[dateKey];
+      if (session.routineId !== routineId) return;
+      if (!Object.keys(session.sets).length) return;
+
+      if (!found || dateKey > found.date) found = { date: dateKey, sets: session.sets };
+    });
+
+    return found;
   }
 
   /* ── Rejilla semanal ──────────────────────────────────────
@@ -1020,6 +1051,7 @@ HT.stats = (function () {
     weekRate: weekRate, monthRate: monthRate, rateOver: rateOver, levelInfo: levelInfo,
     weekMatrix: weekMatrix,
     exerciseDone: exerciseDone, sessionSummary: sessionSummary, exerciseRecord: exerciseRecord,
+    lastSessionOf: lastSessionOf,
     monthSeries: monthSeries, yearSeries: yearSeries, seriesRate: seriesRate,
     habitRate: habitRate, habitTotal: habitTotal, habitSums: habitSums,
     habitSumOver: habitSumOver, logStreak: logStreak, habitValueSeries: habitValueSeries,

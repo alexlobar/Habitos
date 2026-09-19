@@ -11,12 +11,19 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 7;
+  const VERSION = 9;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   const MAX_NOTE = 500;
   const MAX_FREEZES = 4;
   const MAX_LEVEL_LOG = 200;
+  const MAX_PAUSES = 40;
+
+  /* Catálogos de las opciones con más de dos valores. Están aquí y no en el
+     HTML para que el saneado y el desplegable no puedan discrepar. */
+  const CONTROLS = ['compact', 'comfy', 'roomy'];
+  const FONT_SIZES = ['small', 'normal', 'large', 'xlarge'];
+  const REST_SECONDS = [0, 30, 45, 60, 90, 120];
   const MAX_SETS = 20;
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
@@ -188,10 +195,12 @@ HT.store = (function () {
     return {
       version: VERSION,
       settings: {
+        // weekStart se queda en el estado porque medio código lo lee, pero
+        // desde la 1.6.5 ya no es una opción: la semana empieza en lunes.
         weekStart: 1, accent: U.DEFAULT_ACCENT, notificationsEnabled: false,
-        effects: true, controls: 'comfy',
+        effects: true, controls: 'compact',
         theme: 'dark', fontSize: 'normal',
-        hideDone: false, backupDays: 14,
+        hideDone: true, showBadges: true, backupDays: 14, restSeconds: 60,
         showDayBar: true, showNotes: true, showFreeze: true
       },
       habits: habits,
@@ -293,8 +302,52 @@ HT.store = (function () {
         time: /^([01]\d|2[0-3]):[0-5]\d$/.test(rem.time) ? rem.time : '08:00'
       },
       createdAt: U.isValidKey(raw.createdAt) ? raw.createdAt : U.todayKey(),
-      archived: raw.archived === true
+      archived: raw.archived === true,
+      pauses: cleanPauses(raw.pauses)
     };
+  }
+
+  /**
+   * Tramos de pausa. Cada uno es [from, to): `from` incluido, `to` excluido
+   * —el día en que se reanudó— y `to: null` mientras siga en pausa.
+   *
+   * Se guardan los tramos pasados y no un simple "está en pausa" porque si
+   * al reanudar se borrara el rastro, aquellos días volverían a contar como
+   * fallados y la racha se rompería semanas después, sola.
+   */
+  function cleanPauses(raw) {
+    if (!Array.isArray(raw)) return [];
+
+    const out = [];
+
+    raw.forEach(function (p) {
+      if (!p || typeof p !== 'object') return;
+      if (!U.isValidKey(p.from)) return;
+
+      const to = U.isValidKey(p.to) ? p.to : null;
+      if (to !== null && to <= p.from) return;      // tramo vacío: no pasó nada
+
+      const reason = U.pauseReasonById(p.reason) ? p.reason : 'otro';
+
+      out.push({
+        from: p.from,
+        to: to,
+        reason: reason,
+        note: cleanName(p.note, '').slice(0, 80)
+      });
+    });
+
+    out.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : 0; });
+
+    // Como mucho un tramo abierto, y tiene que ser el último: dos pausas a
+    // la vez no significan nada y harían imposible saber cuál reanudar.
+    const abiertos = out.filter(function (p) { return p.to === null; });
+    if (abiertos.length > 1) {
+      abiertos.slice(0, -1).forEach(function (p) { p.to = abiertos[abiertos.length - 1].from; });
+    }
+
+    return out.filter(function (p) { return p.to === null || p.to > p.from; })
+              .slice(-MAX_PAUSES);
   }
 
   /** Normaliza el valor de un log según el tipo de hábito. */
@@ -472,20 +525,25 @@ HT.store = (function () {
     return {
       version: VERSION,
       settings: {
-        weekStart: Number(s.weekStart) === 0 ? 0 : 1,
+        // Fijo en lunes desde la 1.6.5: dejó de ser una opción y ya no se
+        // lee lo que hubiera guardado. Sigue en el estado porque lo usan el
+        // calendario, la rejilla de la semana y media docena de cálculos.
+        weekStart: 1,
         accent: HEX.test(s.accent) ? s.accent : U.DEFAULT_ACCENT,
         notificationsEnabled: s.notificationsEnabled === true,
         // Ausente en los datos de la v1: se activa por defecto.
         effects: s.effects !== false,
-        // Ausente antes de la 1.5.5: se estrena en cómodo, que es lo pedido.
-        controls: s.controls === 'compact' ? 'compact' : 'comfy',
+        controls: CONTROLS.indexOf(s.controls) >= 0 ? s.controls : 'compact',
         // Todos estos nacen en la 1.6.2. Cada uno cae del lado que deja la
         // app como estaba, para que actualizar no cambie nada sin pedirlo.
         theme: s.theme === 'light' ? 'light' : 'dark',
-        fontSize: s.fontSize === 'large' ? 'large' : 'normal',
-        hideDone: s.hideDone === true,
+        fontSize: FONT_SIZES.indexOf(s.fontSize) >= 0 ? s.fontSize : 'normal',
+        hideDone: s.hideDone !== false,
+        showBadges: s.showBadges !== false,
         backupDays: [0, 7, 14, 30].indexOf(Number(s.backupDays)) >= 0
           ? Number(s.backupDays) : 14,
+        restSeconds: REST_SECONDS.indexOf(Number(s.restSeconds)) >= 0
+          ? Number(s.restSeconds) : 60,
         showDayBar: s.showDayBar !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false
@@ -642,6 +700,17 @@ HT.store = (function () {
     });
   }
 
+  /**
+   * Migración a la v8: cambian dos valores de fábrica —controles compactos y
+   * apartar los cumplidos—, y un predeterminado nuevo no alcanza a quien ya
+   * tiene el viejo escrito en su almacén. Se aplica una sola vez; a partir de
+   * ahí manda lo que elija el usuario en Ajustes.
+   */
+  function migrateNewDefaults() {
+    state.settings.controls = 'compact';
+    state.settings.hideDone = true;
+  }
+
   /* ── Carga y guardado ─────────────────────────────────────── */
 
   function load() {
@@ -675,6 +744,7 @@ HT.store = (function () {
       if (incoming < 4) migrateToCategories();
       if (incoming < 5) migrateToScreenSlots();
       if (incoming < 6) migrateSeedTweaks();
+      if (incoming < 8) migrateNewDefaults();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);
@@ -759,8 +829,68 @@ HT.store = (function () {
   function getHabitsForDate(dateKey) {
     const dow = U.fromKey(dateKey).getDay();
     return getHabits().filter(function (h) {
-      return h.activeDays.indexOf(dow) >= 0 && h.createdAt <= dateKey;
+      return h.activeDays.indexOf(dow) >= 0 && h.createdAt <= dateKey && !isPausedOn(h, dateKey);
     });
+  }
+
+  /** ¿Estaba en pausa ese día? Se consulta por fecha, nunca "ahora mismo". */
+  function isPausedOn(habit, dateKey) {
+    if (!habit || !habit.pauses.length) return false;
+    return habit.pauses.some(function (p) {
+      return dateKey >= p.from && (p.to === null || dateKey < p.to);
+    });
+  }
+
+  /** El tramo abierto, si lo hay: es lo que se enseña y lo que se reanuda. */
+  function pauseInfo(habit) {
+    if (!habit || !habit.pauses.length) return null;
+    const last = habit.pauses[habit.pauses.length - 1];
+    return last.to === null ? last : null;
+  }
+
+  /**
+   * Pausa desde hoy. Un hábito en pausa no toca: ni suma cumplido ni cuenta
+   * como fallado, así que la racha se queda donde estaba en vez de romperse.
+   */
+  function pauseHabit(id, reason, note) {
+    const habit = getHabit(id);
+    if (!habit || pauseInfo(habit)) return null;
+
+    const entry = {
+      from: U.todayKey(),
+      to: null,
+      reason: U.pauseReasonById(reason) ? reason : 'otro',
+      note: cleanName(note, '').slice(0, 80)
+    };
+
+    habit.pauses.push(entry);
+    while (habit.pauses.length > MAX_PAUSES) habit.pauses.shift();
+
+    commit('habit:pause', { habitId: id, pause: entry });
+    return entry;
+  }
+
+  /**
+   * Reanuda hoy. El tramo se cierra con `to` = hoy —excluido—, así que hoy
+   * ya toca otra vez y los días de la pausa siguen sin contar para siempre.
+   */
+  function resumeHabit(id) {
+    const habit = getHabit(id);
+    if (!habit) return null;
+
+    const abierto = pauseInfo(habit);
+    if (!abierto) return null;
+
+    const hoy = U.todayKey();
+    if (hoy <= abierto.from) {
+      // Pausado y reanudado el mismo día: no llegó a pasar nada.
+      habit.pauses.pop();
+    } else {
+      abierto.to = hoy;
+    }
+
+    commit('habit:pause', { habitId: id, pause: null });
+    return habit;
   }
 
   function getLog(habitId, dateKey) {
@@ -1099,16 +1229,19 @@ HT.store = (function () {
   function setSettings(patch) {
     const next = Object.assign({}, state.settings, patch);
     state.settings = {
-      weekStart: Number(next.weekStart) === 0 ? 0 : 1,
+      weekStart: 1,
       accent: HEX.test(next.accent) ? next.accent : state.settings.accent,
       notificationsEnabled: next.notificationsEnabled === true,
       effects: next.effects !== false,
-      controls: next.controls === 'compact' ? 'compact' : 'comfy',
+      controls: CONTROLS.indexOf(next.controls) >= 0 ? next.controls : 'compact',
       theme: next.theme === 'light' ? 'light' : 'dark',
-      fontSize: next.fontSize === 'large' ? 'large' : 'normal',
-      hideDone: next.hideDone === true,
+      fontSize: FONT_SIZES.indexOf(next.fontSize) >= 0 ? next.fontSize : 'normal',
+      hideDone: next.hideDone !== false,
+      showBadges: next.showBadges !== false,
       backupDays: [0, 7, 14, 30].indexOf(Number(next.backupDays)) >= 0
         ? Number(next.backupDays) : 14,
+      restSeconds: REST_SECONDS.indexOf(Number(next.restSeconds)) >= 0
+        ? Number(next.restSeconds) : 60,
       showDayBar: next.showDayBar !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false
@@ -1244,6 +1377,8 @@ HT.store = (function () {
     getNote: getNote, isFrozen: isFrozen,
     addHabit: addHabit, updateHabit: updateHabit, deleteHabit: deleteHabit,
     restoreHabit: restoreHabit, setArchived: setArchived,
+    isPausedOn: isPausedOn, pauseInfo: pauseInfo,
+    pauseHabit: pauseHabit, resumeHabit: resumeHabit,
     setLog: setLog, toggleCheck: toggleCheck, addQuantity: addQuantity, toggleSlot: toggleSlot,
     setNote: setNote, freezeDay: freezeDay, unfreezeDay: unfreezeDay,
 
