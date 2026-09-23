@@ -250,9 +250,29 @@ svg { display: block; }
   margin-inline: auto;
 }
 
-.brand { display: flex; align-items: center; gap: var(--sp-2); }
-.brand__mark { color: var(--accent-text); font-size: var(--fs-xl); line-height: 1; }
-.brand__name { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -.01em; }
+.brand__mark { flex: none; color: var(--accent-text); font-size: var(--fs-xl); line-height: 1; }
+
+/* El día, en grande y en el sitio donde antes estaba el nombre de la app.
+   La fecha completa va debajo en pequeño: el día de la semana es lo que se
+   busca de un vistazo, el número solo cuando dudas. */
+.day-head { min-width: 0; padding: 0 var(--sp-1); line-height: 1.15; }
+.day-head__name {
+  display: block;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* `capitalize` pondría "Lunes, 15 De Septiembre": en español solo va la primera */
+.day-head__name::first-letter { text-transform: uppercase; }
+.day-head__meta {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 
 .level-badge {
   display: flex;
@@ -290,30 +310,49 @@ svg { display: block; }
   font-size: var(--fs-xs);
   font-weight: 700;
 }
+
+/* La letra del rango, con el color de su tramo. Sale de la misma tabla
+   [data-rank] que el panel de Progreso, así que no hay colores repetidos.
+   Desde la 1.6.8 esta chapa es la puerta a Progreso: tiene que decir algo
+   más que un número. */
+.level-badge__rank {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--rank-color, var(--border-strong)) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--rank-color, var(--text-faint)) 16%, transparent);
+  color: var(--rank-color, var(--text));
+  font-family: var(--sys-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .level-badge__pts { font-size: var(--fs-xs); color: var(--text-muted); }
 .level-badge__pts strong { color: var(--text); }
+
+/* En pantallas estrechas manda el día: la EXP se va y quedan nivel y rango,
+   que es lo que hace reconocible el botón. */
+@media (max-width: 420px) {
+  .level-badge__pts { display: none; }
+  .level-badge { padding-right: var(--sp-2); }
+}
 
 .day-summary {
   max-width: var(--content-max);
   margin: var(--sp-3) auto 0;
 }
-.day-summary__row {
+/* La cuenta se pone en línea con la barra: al subir el día a la cabecera
+   esta fila se quedaba con un "6/9" suelto ocupando un renglón entero. */
+.day-summary__bar {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-2);
 }
-.day-summary__date {
-  overflow: hidden;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* `capitalize` pondría "Lunes, 15 De Septiembre": en español solo va la primera */
-.day-summary__date::first-letter { text-transform: uppercase; }
-.day-summary__count { font-size: var(--fs-sm); color: var(--text-muted); }
+.day-summary__bar .progress { flex: 1; }
+.day-summary__count { flex: none; font-size: var(--fs-sm); color: var(--text-muted); }
 .day-summary__count strong { color: var(--text); font-size: var(--fs-md); }
 
 /* Navegación de días: el futuro queda deshabilitado */
@@ -1268,6 +1307,102 @@ button.heat:disabled:hover { transform: none; }
   border-top: 1px solid var(--border);
 }
 .session__hint { flex: 1; min-width: 12rem; font-size: var(--fs-xs); color: var(--text-muted); }
+
+/* ── Notas ────────────────────────────────────────────────
+   Lo escrito manda: la fecha y el resultado del día son el marco, no el
+   contenido. Por eso el texto va a tamaño de lectura y lo demás en
+   pequeño encima. ───────────────────────────────────────────────── */
+
+/* Crece con lo que se escribe; la altura la pone el JS. Sin resize manual
+   porque pelearía con el cálculo automático. */
+.note-grow { resize: none; overflow: hidden; min-height: 4.5rem; }
+
+.notes-search { margin-bottom: var(--sp-4); }
+
+.notes-list { display: grid; gap: var(--sp-3); }
+
+.note-entry {
+  display: block;
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.note-entry:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+.note-entry__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.note-entry__date {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.note-entry__date::first-letter { text-transform: uppercase; }
+
+.note-entry__tag {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.note-entry__tag[data-state="perfect"] {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+.note-entry__tag[data-state="low"] {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+.note-entry__tag[data-state="frozen"] {
+  background: color-mix(in srgb, var(--frost) 16%, transparent);
+  color: var(--frost);
+}
+
+.note-entry__text {
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── Estado de la copia ───────────────────────────────────
+   Tres estados con su color: nunca exportada, fuera de plazo, al día.
+   El botón va dentro, porque de nada sirve avisar si la solución está
+   en otra tarjeta. ──────────────────────────────────────────────── */
+.backup {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--backup-color, var(--border));
+  border-left: 3px solid var(--backup-color, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--backup-color, var(--border)) 9%, transparent);
+}
+.backup[data-state="ok"]    { --backup-color: var(--success); }
+.backup[data-state="late"]  { --backup-color: var(--warning); }
+.backup[data-state="never"] { --backup-color: var(--danger); }
+
+.backup__icon { flex: none; font-size: var(--fs-xl); line-height: 1; }
+.backup__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.backup__title { font-size: var(--fs-sm); color: var(--backup-color, var(--text)); }
+.backup__hint { font-size: var(--fs-xs); color: var(--text-muted); }
+.backup__action { flex: none; }
 
 /* ── Pausa ────────────────────────────────────────────────
    Un hábito en pausa desaparece de Hoy. Todo lo de aquí existe para que

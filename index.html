@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="1.6.7">
+<html lang="es" data-theme="dark" data-build="1.7.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -25,56 +25,60 @@
 
     <!-- ══ CABECERA ══ -->
     <header class="app-header">
+      <!-- El día manda en la cabecera: es el dato que cambia y el único que
+           se toca a diario. El nombre de la app no hacía falta aquí — ya está
+           en el icono con el que se abre. -->
       <div class="app-header__top">
-        <div class="brand">
+        <div class="day-nav">
           <span class="brand__mark" aria-hidden="true">◈</span>
-          <span class="brand__name">Hábitos</span>
+
+          <button type="button" class="icon-btn" id="prevDay" aria-label="Día anterior">‹</button>
+
+          <h2 class="day-head" id="todayLabel">
+            <time class="day-head__name" id="todayTime" datetime="">—</time>
+            <span class="day-head__meta" id="todayMeta">—</span>
+          </h2>
+
+          <button type="button" class="icon-btn" id="nextDay" aria-label="Día siguiente">›</button>
+
+          <button type="button" class="icon-btn day-nav__pick" id="btnPickDay"
+                  aria-expanded="false" aria-controls="dayPicker"
+                  title="Elegir un día" aria-label="Elegir un día del calendario">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>
+              <path d="M8 3v4M16 3v4M3.5 10h17"/>
+            </svg>
+          </button>
+
+          <div class="daypicker" id="dayPicker" role="dialog"
+               aria-label="Elegir un día" hidden>
+            <div class="daypicker__nav">
+              <button type="button" class="icon-btn" id="dpPrev" aria-label="Mes anterior">‹</button>
+              <span class="daypicker__label" id="dpLabel" aria-live="polite">—</span>
+              <button type="button" class="icon-btn" id="dpNext" aria-label="Mes siguiente">›</button>
+            </div>
+            <div class="daypicker__grid" id="dpGrid"></div>
+            <button type="button" class="btn btn--ghost daypicker__today" id="dpToday">Ir a hoy</button>
+          </div>
         </div>
 
-        <button type="button" class="level-badge" id="levelBadge"
+        <button type="button" class="level-badge" id="levelBadge" data-rank="e"
                 aria-label="Nivel 0, 0 de XP. Ver progreso">
           <span class="level-badge__ring" id="levelRing" style="--ring-pct:0">
             <span class="level-badge__num" id="levelNum">0</span>
           </span>
+          <span class="level-badge__rank" id="levelRankLetter" aria-hidden="true">E</span>
           <span class="level-badge__pts"><strong id="pointsValue">0</strong> XP</span>
         </button>
       </div>
 
       <div class="day-summary">
-        <div class="day-summary__row">
-          <div class="day-nav">
-            <button type="button" class="icon-btn" id="prevDay" aria-label="Día anterior">‹</button>
-            <p class="day-summary__date" id="todayLabel">
-              <time id="todayTime" datetime="">—</time>
-            </p>
-            <button type="button" class="icon-btn" id="nextDay" aria-label="Día siguiente">›</button>
-
-            <button type="button" class="icon-btn day-nav__pick" id="btnPickDay"
-                    aria-expanded="false" aria-controls="dayPicker"
-                    title="Elegir un día" aria-label="Elegir un día del calendario">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>
-                <path d="M8 3v4M16 3v4M3.5 10h17"/>
-              </svg>
-            </button>
-
-            <div class="daypicker" id="dayPicker" role="dialog"
-                 aria-label="Elegir un día" hidden>
-              <div class="daypicker__nav">
-                <button type="button" class="icon-btn" id="dpPrev" aria-label="Mes anterior">‹</button>
-                <span class="daypicker__label" id="dpLabel" aria-live="polite">—</span>
-                <button type="button" class="icon-btn" id="dpNext" aria-label="Mes siguiente">›</button>
-              </div>
-              <div class="daypicker__grid" id="dpGrid"></div>
-              <button type="button" class="btn btn--ghost daypicker__today" id="dpToday">Ir a hoy</button>
-            </div>
+        <div class="day-summary__bar">
+          <div class="progress" role="progressbar" aria-labelledby="todayLabel"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="dayProgress">
+            <div class="progress__fill" id="dayProgressFill" style="--pct:0"></div>
           </div>
           <p class="day-summary__count"><strong id="doneCount">0</strong>/<span id="totalCount">0</span></p>
-        </div>
-
-        <div class="progress" role="progressbar" aria-labelledby="todayLabel"
-             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="dayProgress">
-          <div class="progress__fill" id="dayProgressFill" style="--pct:0"></div>
         </div>
 
         <button type="button" class="day-back" id="btnToday" hidden>Volver a hoy</button>
@@ -120,7 +124,7 @@
 
         <article class="card note-card" id="noteCard">
           <label class="field__label" for="dayNote">Notas del día</label>
-          <textarea class="input input--area" id="dayNote" rows="3" maxlength="500"
+          <textarea class="input input--area note-grow" id="dayNote" rows="3"
                     placeholder="¿Cómo ha ido? Qué te ha ayudado, qué te ha frenado…"></textarea>
         </article>
       </section>
@@ -316,9 +320,42 @@
         </div>
       </section>
 
+      <!-- ─── Vista: Notas ─── -->
+      <section class="view view--stack" id="view-notes" aria-labelledby="titleNotes" hidden>
+        <div class="view__head">
+          <h1 class="view__title" id="titleNotes">Notas</h1>
+          <span class="card__count" id="notesCount">—</span>
+        </div>
+
+        <article class="card">
+          <label class="field__label" for="notesToday" id="notesTodayLabel">Escribe hoy</label>
+          <textarea class="input input--area note-grow" id="notesToday" rows="3"
+                    placeholder="¿Cómo ha ido el día? Qué te ha ayudado, qué te ha frenado…"></textarea>
+        </article>
+
+        <div class="notes-search">
+          <input class="input" type="search" id="notesSearch" autocomplete="off"
+                 placeholder="Buscar en tus notas" aria-label="Buscar en tus notas">
+        </div>
+
+        <ul class="notes-list" id="notesList"></ul>
+
+        <div class="empty-state" id="emptyNotes" hidden>
+          <p class="empty-state__icon" aria-hidden="true">✎</p>
+          <h2 class="empty-state__title" id="emptyNotesTitle">Aún no hay notas</h2>
+          <p class="empty-state__text" id="emptyNotesText">
+            Lo que escribas cada día se queda aquí, junto a cómo te fue.
+            Dentro de unos meses es lo que te dirá por qué una racha se rompió.
+          </p>
+        </div>
+      </section>
+
       <!-- ─── Vista: Progreso ─── -->
       <section class="view" id="view-progress" aria-labelledby="titleProgress" hidden>
         <div class="view__head">
+          <button type="button" class="btn btn--ghost" id="btnBackFromProgress">
+            <span aria-hidden="true">‹</span> Volver
+          </button>
           <h1 class="view__title" id="titleProgress">Progreso</h1>
         </div>
 
@@ -505,13 +542,6 @@
             </span>
           </div>
           <div class="field-row">
-            <span id="notifLabel">Recordatorios</span>
-            <button type="button" class="switch" id="setNotifications"
-                    role="switch" aria-checked="false" aria-labelledby="notifLabel">
-              <span class="switch__thumb"></span>
-            </button>
-          </div>
-          <div class="field-row">
             <span class="field-row__text">
               <label for="setControls">Tamaño de los controles</label>
               <span class="field-row__hint">Cómo de grandes son las casillas y los campos en Hoy.</span>
@@ -608,11 +638,12 @@
             </span>
             <select id="setRest" class="input input--select field-row__controls">
               <option value="0">Sin descanso</option>
-              <option value="30">30 segundos</option>
-              <option value="45">45 segundos</option>
-              <option value="60">1 minuto</option>
               <option value="90">1 min 30 s</option>
               <option value="120">2 minutos</option>
+              <option value="150">2 min 30 s</option>
+              <option value="180">3 minutos</option>
+              <option value="240">4 minutos</option>
+              <option value="300">5 minutos</option>
             </select>
           </div>
         </article>
@@ -632,10 +663,22 @@
         <article class="card">
           <header class="card__head"><h2 class="card__title">Tus datos</h2></header>
           <p class="card__text">Todo se guarda en este navegador. Exporta una copia para no perderla.</p>
+
+          <!-- El estado de la copia era una línea gris bajo un ajuste. Es el
+               dato que dice si todo tu histórico está a un clic de perderse,
+               así que ahora ocupa su sitio y lleva el color del riesgo. -->
+          <div class="backup" id="backupStatus" data-state="never">
+            <span class="backup__icon" id="backupIcon" aria-hidden="true">💾</span>
+            <span class="backup__text">
+              <strong class="backup__title" id="backupTitle">—</strong>
+              <span class="backup__hint" id="backupHint">—</span>
+            </span>
+            <button type="button" class="btn backup__action" id="btnBackupNow">Exportar ahora</button>
+          </div>
+
           <div class="field-row">
             <span class="field-row__text">
               <label for="setBackup">Avisarme si no exporto</label>
-              <span class="field-row__hint" id="backupHint">—</span>
             </span>
             <select id="setBackup" class="input input--select field-row__controls">
               <option value="7">Cada semana</option>
@@ -700,11 +743,13 @@
         </svg>
         <span>Ejercicios</span>
       </button>
-      <button type="button" class="nav__item" data-view="progress">
+      <!-- Progreso salió de la barra en la 1.7.0: se abre desde la chapa del
+           rango, que está siempre a la vista en la cabecera. -->
+      <button type="button" class="nav__item" data-view="notes">
         <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+          <path d="M5.5 3.5h13v17h-13z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>
         </svg>
-        <span>Progreso</span>
+        <span>Notas</span>
       </button>
       <button type="button" class="nav__item" data-view="settings">
         <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -845,16 +890,6 @@
           </div>
         </fieldset>
 
-        <div class="field">
-          <div class="field-row field-row--tight">
-            <label class="field__label" for="fReminder">Recordatorio</label>
-            <button type="button" class="switch" id="fReminderSwitch" role="switch" aria-checked="false"
-                    aria-label="Activar recordatorio">
-              <span class="switch__thumb"></span>
-            </button>
-          </div>
-          <input class="input" type="time" id="fReminder" name="reminderTime" value="08:00" disabled>
-        </div>
       </form>
 
       <footer class="modal__foot">

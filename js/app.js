@@ -18,7 +18,7 @@
   let weekAnchor = today;                        // cualquier día de la semana mostrada
   let habitId = null;                            // hábito abierto en la ficha
   let habitMonth = U.startOfMonth(new Date());
-  let reminderTimers = [];
+  let noteQuery = '';                            // filtro del buscador de Notas
 
   /* ── Repintado coalescido ─────────────────────────────────
      Un solo clic puede disparar varios eventos del store
@@ -27,7 +27,7 @@
 
   const dirty = {
     all: false, header: false, progress: false, week: false, workout: false,
-    extras: false, habit: false, cards: {}
+    extras: false, habit: false, notes: false, cards: {}
   };
   let frame = null;
 
@@ -50,6 +50,7 @@
       if (dirty.workout) renderExercisesIfOpen();
       if (dirty.progress && !UI.els.views.progress.hidden) UI.renderProgress(currentDate);
       if (dirty.habit) renderHabitIfOpen();
+      if (dirty.notes) renderNotesIfOpen();
     }
 
     dirty.all = false;
@@ -59,6 +60,7 @@
     dirty.workout = false;
     dirty.extras = false;
     dirty.habit = false;
+    dirty.notes = false;
     dirty.cards = {};
   }
 
@@ -71,6 +73,7 @@
     renderExercisesIfOpen();
     if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate);
     renderHabitIfOpen();
+    renderNotesIfOpen();
   }
 
   function renderExercisesIfOpen() {
@@ -114,10 +117,14 @@
         dirty.week = true;
         dirty.extras = true;
         dirty.habit = true;
+        // La etiqueta de cada nota dice cómo fue ese día, así que marcar
+        // un hábito también la cambia.
+        dirty.notes = true;
         break;
       case 'note:change':
         dirty.extras = true;
         dirty.progress = true;
+        dirty.notes = true;
         break;
       case 'session:change':
       case 'workout:change':
@@ -782,7 +789,6 @@
     }
 
     UI.closeModal();
-    scheduleReminders();
     syncProgressState();
   }
 
@@ -796,7 +802,6 @@
     const snapshot = S.deleteHabit(id);
     UI.closeModal();
     if (habitId === id) closeHabit();
-    scheduleReminders();
 
     UI.toast('"' + habit.name + '" eliminado.', {
       icon: '🗑️',
@@ -804,7 +809,6 @@
         label: 'Deshacer',
         onClick: function () {
           if (S.restoreHabit(snapshot)) {
-            scheduleReminders();
             UI.toast('Hábito restaurado con su histórico.', { type: 'success', icon: '↩' });
           }
         }
@@ -830,73 +834,17 @@
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
-  /* ── Recordatorios ────────────────────────────────────────
-     Sin service worker no hay notificaciones con la pestaña
-     cerrada: se programan timers para los avisos que quedan
-     hoy y se reprograman al cambiar de día. ───────────────── */
+  /* ── Recordatorios: retirados en la 1.6.8 ─────────────────
+     Una página web solo puede avisar mientras está abierta, así que el
+     recordatorio de las 8:00 no llegaba nunca si la app estaba cerrada —
+     que es justo cuando haría falta. Era una promesa que no se podía
+     cumplir, y se ha quitado entera: interruptor, hora por hábito y los
+     timers que lo programaban.
 
-  function clearReminders() {
-    reminderTimers.forEach(clearTimeout);
-    reminderTimers = [];
-  }
-
-  function scheduleReminders() {
-    clearReminders();
-
-    if (!S.getSettings().notificationsEnabled) return;
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-    const now = new Date();
-
-    S.getHabitsForDate(today).forEach(function (habit) {
-      if (!habit.reminder.enabled) return;
-
-      const parts = habit.reminder.time.split(':');
-      const when = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
-                            Number(parts[0]), Number(parts[1]), 0, 0);
-      const delay = when - now;
-      if (delay <= 0) return;
-
-      reminderTimers.push(setTimeout(function () {
-        // Si para entonces ya está hecho, no molestamos.
-        if (St.isComplete(habit, S.getLog(habit.id, U.todayKey()))) return;
-        try {
-          new Notification(habit.icon + '  ' + habit.name, {
-            body: 'Aún no lo has marcado hoy.',
-            tag: 'habit-' + habit.id
-          });
-        } catch (err) {
-          console.warn('No se pudo notificar:', err);
-        }
-      }, delay));
-    });
-  }
-
-  function toggleNotifications() {
-    if (S.getSettings().notificationsEnabled) {
-      S.setSettings({ notificationsEnabled: false });
-      clearReminders();
-      UI.toast('Recordatorios desactivados.');
-      return;
-    }
-
-    if (!('Notification' in window)) {
-      UI.toast('Este navegador no admite notificaciones.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-
-    Notification.requestPermission().then(function (permission) {
-      if (permission !== 'granted') {
-        UI.renderSettings();
-        UI.toast('Permiso denegado. Actívalo en los ajustes del navegador.',
-                 { type: 'error', icon: '⚠️' });
-        return;
-      }
-      S.setSettings({ notificationsEnabled: true });
-      scheduleReminders();
-      UI.toast('Recordatorios activados.', { type: 'success', icon: '🔔' });
-    });
-  }
+     Los campos `settings.notificationsEnabled` y `habit.reminder` siguen
+     saneándose en el almacén, vacíos y sin uso: quitarlos obligaría a una
+     migración y no gana nada. Si algún día hay un service worker que pueda
+     avisar de verdad, el hueco está. ───────────────────────────────── */
 
   /* ── Exportación e importación ────────────────────────────── */
 
@@ -1029,7 +977,6 @@
         S.replaceState(parsed);
         UI.applyAccent(S.getSettings().accent);
         closeHabit();
-        scheduleReminders();
         UI.toast('Datos importados.', { type: 'success', icon: '↑' });
       };
       reader.onerror = function () {
@@ -1050,7 +997,6 @@
     UI.applyAccent(S.getSettings().accent);
     currentDate = today;
     closeHabit();
-    scheduleReminders();
     UI.toast('Todo restablecido.');
   }
 
@@ -1071,7 +1017,6 @@
     viewPeriod = U.startOfMonth(U.fromKey(key));
     dirty.all = true;
     scheduleFlush();
-    scheduleReminders();
   }
 
   function scheduleMidnight() {
@@ -1093,6 +1038,16 @@
   function showWeek() {
     UI.setView('week');
     renderWeekIfOpen();
+  }
+
+  function showNotes() {
+    UI.setView('notes');
+    renderNotesIfOpen();
+  }
+
+  function renderNotesIfOpen() {
+    if (UI.els.views.notes.hidden) return;
+    UI.renderNotes(currentDate, noteQuery);
   }
 
   function stepWeek(delta) {
@@ -1126,6 +1081,7 @@
         if (btn.dataset.view === 'progress') showProgress();
         else if (btn.dataset.view === 'week') showWeek();
         else if (btn.dataset.view === 'exercises') showExercises();
+        else if (btn.dataset.view === 'notes') showNotes();
         else UI.setView(btn.dataset.view);
       });
     });
@@ -1243,8 +1199,28 @@
     // Extras del día
     els.btnFreeze.addEventListener('click', toggleFreeze);
     const saveNote = U.debounce(function () { S.setNote(currentDate, els.dayNote.value); }, 400);
-    els.dayNote.addEventListener('input', saveNote);
+    els.dayNote.addEventListener('input', function () { UI.growField(els.dayNote); saveNote(); });
     els.dayNote.addEventListener('blur', function () { S.setNote(currentDate, els.dayNote.value); });
+
+    // Notas. El campo de arriba escribe siempre en hoy, se esté mirando el
+    // día que se esté mirando: un diario se escribe en presente.
+    const saveToday = U.debounce(function () { S.setNote(today, els.notesToday.value); }, 400);
+    els.notesToday.addEventListener('input', function () { UI.growField(els.notesToday); saveToday(); });
+    els.notesToday.addEventListener('blur', function () { S.setNote(today, els.notesToday.value); });
+
+    els.notesSearch.addEventListener('input', U.debounce(function () {
+      noteQuery = els.notesSearch.value;
+      renderNotesIfOpen();
+    }, 200));
+
+    els.notesList.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-day]');
+      if (!btn) return;
+      goToDate(btn.dataset.day);
+      UI.setView('today');
+    });
+
+    els.btnBackFromProgress.addEventListener('click', function () { UI.setView('today'); });
 
     // Alta de hábitos
     byId('btnAddHabit').addEventListener('click', function () { UI.openModal(null); });
@@ -1256,9 +1232,6 @@
     els.habitForm.addEventListener('submit', onFormSubmit);
     els.habitForm.addEventListener('change', function (e) {
       if (e.target.name === 'type' || e.target.name === 'entry') UI.syncTypeFields();
-    });
-    els.fReminderSwitch.addEventListener('click', function () {
-      UI.setReminder(!UI.isReminderOn());
     });
 
     // Selector de emojis
@@ -1354,7 +1327,6 @@
       UI.applyAccent(U.DEFAULT_ACCENT);
       UI.toast('Color predeterminado restaurado.', { type: 'success', icon: '✓' });
     });
-    els.setNotifications.addEventListener('click', toggleNotifications);
     els.setEffects.addEventListener('click', function () {
       S.setSettings({ effects: !S.getSettings().effects });
     });
@@ -1408,6 +1380,7 @@
       if (habit) UI.toast('"' + habit.name + '" restaurado.', { type: 'success', icon: '↩' });
     });
 
+    els.btnBackupNow.addEventListener('click', exportJson);
     byId('btnExportJson').addEventListener('click', exportJson);
     byId('btnExportCsv').addEventListener('click', exportCsv);
     byId('btnImport').addEventListener('click', importJson);
@@ -1534,7 +1507,6 @@
     bind();
 
     syncProgressState();
-    scheduleReminders();
     scheduleMidnight();
     linkManifest();
     registerServiceWorker();

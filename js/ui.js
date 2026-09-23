@@ -58,9 +58,12 @@ HT.ui = (function () {
 
   // La ficha de un hábito no tiene botón propio en la barra: mientras se
   // mira, "Hoy" sigue siendo la sección activa.
+  // Progreso ya no tiene botón en la barra: se entra por la chapa del rango.
+  // Como ningún `data-view` vale 'progress', no se marca nada, igual que
+  // pasa con la ficha de un hábito.
   const NAV_OF_VIEW = {
-    today: 'today', week: 'week', exercises: 'exercises', progress: 'progress',
-    habit: 'today', settings: 'settings'
+    today: 'today', week: 'week', exercises: 'exercises', notes: 'notes',
+    progress: 'progress', habit: 'today', settings: 'settings'
   };
 
   // Iconos sugeridos. Se guardan como array y no como una cadena para
@@ -78,7 +81,8 @@ HT.ui = (function () {
 
   function init() {
     [
-      'levelBadge', 'levelRing', 'levelNum', 'pointsValue', 'todayTime', 'todayLabel',
+      'levelBadge', 'levelRing', 'levelNum', 'levelRankLetter', 'pointsValue',
+      'todayTime', 'todayMeta', 'todayLabel',
       'doneCount', 'totalCount', 'dayProgress', 'dayProgressFill',
       'prevDay', 'nextDay', 'btnToday',
       'btnPickDay', 'dayPicker', 'dpPrev', 'dpNext', 'dpLabel', 'dpGrid', 'dpToday',
@@ -111,15 +115,18 @@ HT.ui = (function () {
       'hSumDays', 'hSumsNote',
       'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
-      'setAccent', 'btnResetAccent', 'setNotifications', 'setEffects', 'setRest',
-      'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup', 'backupHint',
+      'setAccent', 'btnResetAccent', 'setEffects', 'setRest',
+      'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup',
+      'backupStatus', 'backupIcon', 'backupTitle', 'backupHint', 'btnBackupNow',
       'setHideDone', 'setShowBadges', 'setDayBar', 'setShowFreeze', 'setShowNotes',
-      'btnResetProgress', 'noteCard',
+      'btnResetProgress', 'noteCard', 'btnBackFromProgress',
+      'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
+      'emptyNotes', 'emptyNotesTitle', 'emptyNotesText',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
       'fCategory', 'limitField', 'fLimit',
-      'fName', 'fNameError', 'fReminder', 'fReminderSwitch'
+      'fName', 'fNameError'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -143,6 +150,7 @@ HT.ui = (function () {
       exercises: $('#view-exercises'),
       progress: $('#view-progress'),
       habit: $('#view-habit'),
+      notes: $('#view-notes'),
       settings: $('#view-settings')
     };
     els.navItems = U.$$('.nav__item');
@@ -179,6 +187,11 @@ HT.ui = (function () {
     view.style.animation = 'none';
     void view.offsetWidth;
     view.style.animation = '';
+
+    // Un campo oculto mide scrollHeight 0, así que si su contenido cambió
+    // mientras la vista no se veía, se habría quedado del alto mínimo. Aquí
+    // ya está visible y se puede medir de verdad.
+    U.$$('.note-grow', view).forEach(growField);
   }
 
   /* ── Cabecera ─────────────────────────────────────────────── */
@@ -189,8 +202,11 @@ HT.ui = (function () {
     const info = St.levelInfo(S.getGame().points);
     const isToday = dateKey === todayKey;
 
-    els.todayTime.textContent = isToday ? 'Hoy · ' + U.formatLong(date) : U.formatLong(date);
+    // Arriba el día de la semana; debajo la fecha, y "Hoy" solo cuando lo es
+    // —si no, un "sábado" a secas no dice si estás mirando este o el pasado—.
+    els.todayTime.textContent = U.weekdayLong(date);
     els.todayTime.setAttribute('datetime', dateKey);
+    els.todayMeta.textContent = (isToday ? 'Hoy · ' : '') + U.formatShort(date);
 
     // No se registra en el futuro: no tendría sentido marcar mañana.
     els.nextDay.disabled = isToday;
@@ -204,6 +220,8 @@ HT.ui = (function () {
     els.dayProgress.setAttribute('aria-valuetext', day.done + ' de ' + day.total + ' hábitos');
 
     els.levelNum.textContent = info.level;
+    els.levelRankLetter.textContent = info.rank.letter;
+    els.levelBadge.dataset.rank = info.rank.id;
     els.pointsValue.textContent = info.xp;
     els.levelRing.style.setProperty('--ring-pct', info.pct);
     els.levelBadge.setAttribute(
@@ -978,7 +996,102 @@ HT.ui = (function () {
           : 'Sin comodines. Recuperas uno cada semana, hasta 4.';
     }
 
-    if (document.activeElement !== els.dayNote) els.dayNote.value = S.getNote(dateKey);
+    if (document.activeElement !== els.dayNote) {
+      els.dayNote.value = S.getNote(dateKey);
+      growField(els.dayNote);
+    }
+  }
+
+  /* ── Notas ────────────────────────────────────────────────
+     Todo sale de state.notes, que existe desde la primera versión. Lo
+     único que pasaba es que solo se veía la del día que estuvieras
+     mirando: lo escrito estaba ahí y era invisible. ─────────────────── */
+
+  /**
+   * Un campo de texto que crece con lo que se escribe. Se pone la altura a
+   * `auto` antes de medir porque scrollHeight nunca encoge por su cuenta:
+   * sin eso, al borrar líneas el campo se quedaría grande para siempre.
+   */
+  function growField(node) {
+    node.style.height = 'auto';
+    node.style.height = node.scrollHeight + 'px';
+  }
+
+  /** Cómo fue ese día, en corto. Es lo que le da contexto a lo escrito. */
+  function noteDayTag(dateKey) {
+    if (S.isFrozen(dateKey)) return { text: 'Día congelado', state: 'frozen' };
+
+    const day = St.dayStats(dateKey);
+    if (!day.total) return null;
+
+    if (day.perfect) return { text: 'Día perfecto · ' + day.done + ' de ' + day.total, state: 'perfect' };
+    return { text: day.done + ' de ' + day.total, state: day.pct >= 50 ? 'ok' : 'low' };
+  }
+
+  function renderNotes(dateKey, query) {
+    const hoy = U.todayKey();
+    const notes = S.getState().notes;
+    const busca = (query || '').trim().toLowerCase();
+
+    // El campo de arriba escribe siempre en HOY, mires el día que mires:
+    // es un diario, y lo que se escribe se escribe ahora.
+    if (document.activeElement !== els.notesToday) {
+      els.notesToday.value = S.getNote(hoy);
+      growField(els.notesToday);
+    }
+
+    const claves = Object.keys(notes)
+      .filter(function (k) { return !busca || notes[k].toLowerCase().indexOf(busca) >= 0; })
+      .sort()
+      .reverse();
+
+    const total = Object.keys(notes).length;
+    els.notesCount.textContent = busca
+      ? claves.length + ' de ' + total
+      : total + (total === 1 ? ' nota' : ' notas');
+
+    const frag = document.createDocumentFragment();
+
+    claves.forEach(function (key) {
+      const item = el('li');
+      const btn = el('button', {
+        type: 'button', class: 'note-entry', 'data-day': key,
+        'aria-label': 'Ver el ' + U.formatLong(U.fromKey(key))
+      });
+
+      const head = el('div', { class: 'note-entry__head' });
+
+      const dias = U.daysBetween(key, hoy);
+      const cuando = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : U.formatLong(U.fromKey(key));
+      head.appendChild(el('span', { class: 'note-entry__date', text: cuando }));
+
+      const tag = noteDayTag(key);
+      if (tag) {
+        head.appendChild(el('span', {
+          class: 'note-entry__tag', 'data-state': tag.state, text: tag.text
+        }));
+      }
+
+      btn.appendChild(head);
+      btn.appendChild(el('p', { class: 'note-entry__text', text: notes[key] }));
+      item.appendChild(btn);
+      frag.appendChild(item);
+    });
+
+    els.notesList.textContent = '';
+    els.notesList.appendChild(frag);
+
+    // Dos vacíos distintos: no haber escrito nunca, y no encontrar nada.
+    els.notesList.hidden = !claves.length;
+    els.emptyNotes.hidden = claves.length > 0;
+
+    if (!claves.length) {
+      els.emptyNotesTitle.textContent = busca ? 'Sin resultados' : 'Aún no hay notas';
+      els.emptyNotesText.textContent = busca
+        ? 'Ninguna nota contiene "' + query.trim() + '".'
+        : 'Lo que escribas cada día se queda aquí, junto a cómo te fue. ' +
+          'Dentro de unos meses es lo que te dirá por qué una racha se rompió.';
+    }
   }
 
   /* ── Celdas del calendario ────────────────────────────────── */
@@ -2249,8 +2362,7 @@ HT.ui = (function () {
     else if (habit.type === 'schedule') what = habit.slots.map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
     else what = 'Check diario';
 
-    const reminder = habit.reminder.enabled ? ' · recordatorio a las ' + habit.reminder.time : '';
-    return what + ' · ' + days + reminder;
+    return what + ' · ' + days;
   }
 
   /**
@@ -2428,15 +2540,45 @@ HT.ui = (function () {
     applyFontSize(s.fontSize);
     applyDayLayout(s);
 
-    const last = S.getGame().lastExport;
-    els.backupHint.textContent = !last
-      ? 'Todavía no has exportado ninguna copia.'
-      : 'Última copia: ' + U.formatShort(U.fromKey(last)) +
-        ' · hace ' + U.daysBetween(last, U.todayKey()) + ' días.';
-    els.setNotifications.setAttribute('aria-checked', s.notificationsEnabled ? 'true' : 'false');
+    renderBackupStatus(s);
     els.setEffects.setAttribute('aria-checked', s.effects ? 'true' : 'false');
     renderArchived();
     renderBuildInfo();
+  }
+
+  /**
+   * Estado de la copia de seguridad, con su color. "Fuera de plazo" se mide
+   * contra el aviso que haya elegido el usuario; con los avisos en "Nunca"
+   * se enseña el dato sin regañar, porque ahí no hay plazo que incumplir.
+   */
+  function renderBackupStatus(s) {
+    const last = S.getGame().lastExport;
+    const dias = last ? U.daysBetween(last, U.todayKey()) : null;
+    const tarde = s.backupDays > 0 && dias !== null && dias >= s.backupDays;
+
+    let estado = 'ok';
+    if (!last) estado = 'never';
+    else if (tarde) estado = 'late';
+
+    els.backupStatus.dataset.state = estado;
+
+    if (!last) {
+      els.backupIcon.textContent = '⚠️';
+      els.backupTitle.textContent = 'Sin ninguna copia';
+      els.backupHint.textContent = 'Si este navegador pierde sus datos, no hay de dónde recuperarlos.';
+      return;
+    }
+
+    const cuando = dias === 0 ? 'hoy'
+      : dias === 1 ? 'ayer'
+      : 'hace ' + dias + ' días';
+
+    els.backupIcon.textContent = tarde ? '⚠️' : '💾';
+    // Sin plazo no se puede decir "al día": no hay contra qué compararlo.
+    els.backupTitle.textContent = tarde ? 'Copia atrasada'
+      : s.backupDays > 0 ? 'Copia al día' : 'Última copia';
+    els.backupHint.textContent = 'La última la exportaste ' + cuando +
+      ', el ' + U.formatShort(U.fromKey(last)) + '.';
   }
 
   /**
@@ -2679,10 +2821,8 @@ HT.ui = (function () {
         c.checked = habit.activeDays.indexOf(Number(c.value)) >= 0;
       });
 
-      setReminder(habit.reminder.enabled, habit.reminder.time);
     } else {
       U.$$('input[name="days"]', form).forEach(function (c) { c.checked = true; });
-      setReminder(false, '08:00');
     }
 
     syncTypeFields();
@@ -2720,16 +2860,6 @@ HT.ui = (function () {
     els.stepField.hidden = !entry || entry.value !== 'stepper';
   }
 
-  function setReminder(enabled, time) {
-    els.fReminderSwitch.setAttribute('aria-checked', enabled ? 'true' : 'false');
-    els.fReminder.disabled = !enabled;
-    if (time) els.fReminder.value = time;
-  }
-
-  function isReminderOn() {
-    return els.fReminderSwitch.getAttribute('aria-checked') === 'true';
-  }
-
   function showFieldError(message) {
     els.fNameError.textContent = message;
     els.fNameError.hidden = false;
@@ -2761,8 +2891,7 @@ HT.ui = (function () {
       color: field('color').value,
       category: els.fCategory.value || null,
       type: type,
-      activeDays: days,
-      reminder: { enabled: isReminderOn(), time: field('reminderTime').value || '08:00' }
+      activeDays: days
     };
 
     if (type === 'avoid') {
@@ -2928,6 +3057,7 @@ HT.ui = (function () {
     renderDayPicker: renderDayPicker, toggleDayPicker: toggleDayPicker,
     isDayPickerOpen: isDayPickerOpen,
     renderProgress: renderProgress, renderHistory: renderHistory,
+    renderNotes: renderNotes, growField: growField,
     renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,
@@ -2935,7 +3065,7 @@ HT.ui = (function () {
     applyTheme: applyTheme, applyFontSize: applyFontSize,
     openModal: openModal, closeModal: closeModal,
     toggleEmojiPicker: toggleEmojiPicker, markSelectedEmoji: markSelectedEmoji,
-    syncTypeFields: syncTypeFields, setReminder: setReminder, isReminderOn: isReminderOn,
+    syncTypeFields: syncTypeFields,
     readForm: readForm, toast: toast, celebrate: celebrate, buzz: buzz
   };
 })();

@@ -14,7 +14,12 @@ HT.store = (function () {
   const VERSION = 9;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
-  const MAX_NOTE = 500;
+  /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
+     se escribe de verdad en ellas. El tope que queda no está para limitar lo
+     que escribas —son unas 4.000 palabras por día— sino para que un pegado
+     accidental de medio megabyte no se coma la cuota del navegador y deje sin
+     poder guardar a todo lo demás. */
+  const MAX_NOTE = 20000;
   const MAX_FREEZES = 4;
   const MAX_LEVEL_LOG = 200;
   const MAX_PAUSES = 40;
@@ -23,7 +28,10 @@ HT.store = (function () {
      HTML para que el saneado y el desplegable no puedan discrepar. */
   const CONTROLS = ['compact', 'comfy', 'roomy'];
   const FONT_SIZES = ['small', 'normal', 'large', 'xlarge'];
-  const REST_SECONDS = [0, 30, 45, 60, 90, 120];
+  /* Descansos largos: por debajo de minuto y medio no se usaba el contador,
+     se miraba y ya. Los tramos cortos salieron en la 1.6.8. */
+  const REST_SECONDS = [0, 90, 120, 150, 180, 240, 300];
+  const DEFAULT_REST = 150;
   const MAX_SETS = 20;
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
@@ -34,24 +42,18 @@ HT.store = (function () {
 
   /* ── Estado inicial ───────────────────────────────────────── */
 
+  /**
+   * Los hábitos de partida se construyen con el MISMO saneado que los
+   * guardados. Antes se armaban a mano aquí, con su propia lista de campos,
+   * y eso se rompió en cuanto el esquema creció: `pauses` se añadió en la
+   * 1.6.6 al saneado y no a esta función, así que una instalación nueva
+   * nacía con hábitos sin ese campo y la app moría al arrancar.
+   *
+   * Con una sola definición de la forma de un hábito, añadir un campo no
+   * puede volver a dejar fuera a los de partida.
+   */
   function mkHabit(data, today) {
-    return {
-      id: U.uid('h'),
-      name: data.name,
-      icon: data.icon || '✨',
-      color: data.color || U.DEFAULT_ACCENT,
-      type: data.type,
-      category: data.category || null,
-      target: data.target || null,
-      slots: data.slots || null,
-      // Solo en 'avoid': fallos en un día a partir de los cuales el hábito
-      // se considera crítico.
-      limit: data.limit || null,
-      activeDays: data.activeDays || [0, 1, 2, 3, 4, 5, 6],
-      reminder: data.reminder || { enabled: false, time: '08:00' },
-      createdAt: today,
-      archived: false
-    };
+    return cleanHabit(Object.assign({ createdAt: today }, data));
   }
 
   /**
@@ -200,7 +202,7 @@ HT.store = (function () {
         weekStart: 1, accent: U.DEFAULT_ACCENT, notificationsEnabled: false,
         effects: true, controls: 'compact',
         theme: 'dark', fontSize: 'normal',
-        hideDone: true, showBadges: true, backupDays: 14, restSeconds: 60,
+        hideDone: true, showBadges: true, backupDays: 14, restSeconds: DEFAULT_REST,
         showDayBar: true, showNotes: true, showFreeze: true
       },
       habits: habits,
@@ -542,8 +544,10 @@ HT.store = (function () {
         showBadges: s.showBadges !== false,
         backupDays: [0, 7, 14, 30].indexOf(Number(s.backupDays)) >= 0
           ? Number(s.backupDays) : 14,
+        // Quien tuviera 30, 45 o 60 s cae solo al predeterminado nuevo: esos
+        // valores ya no existen y no hay a qué acercarlos sin inventar.
         restSeconds: REST_SECONDS.indexOf(Number(s.restSeconds)) >= 0
-          ? Number(s.restSeconds) : 60,
+          ? Number(s.restSeconds) : DEFAULT_REST,
         showDayBar: s.showDayBar !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false
@@ -835,7 +839,9 @@ HT.store = (function () {
 
   /** ¿Estaba en pausa ese día? Se consulta por fecha, nunca "ahora mismo". */
   function isPausedOn(habit, dateKey) {
-    if (!habit || !habit.pauses.length) return false;
+    // Se consulta en cada pintado y para cada hábito: si algún día llega uno
+    // con una forma inesperada, lo que no puede hacer es tumbar la app.
+    if (!habit || !habit.pauses || !habit.pauses.length) return false;
     return habit.pauses.some(function (p) {
       return dateKey >= p.from && (p.to === null || dateKey < p.to);
     });
@@ -843,7 +849,7 @@ HT.store = (function () {
 
   /** El tramo abierto, si lo hay: es lo que se enseña y lo que se reanuda. */
   function pauseInfo(habit) {
-    if (!habit || !habit.pauses.length) return null;
+    if (!habit || !habit.pauses || !habit.pauses.length) return null;
     const last = habit.pauses[habit.pauses.length - 1];
     return last.to === null ? last : null;
   }
@@ -1241,7 +1247,7 @@ HT.store = (function () {
       backupDays: [0, 7, 14, 30].indexOf(Number(next.backupDays)) >= 0
         ? Number(next.backupDays) : 14,
       restSeconds: REST_SECONDS.indexOf(Number(next.restSeconds)) >= 0
-        ? Number(next.restSeconds) : 60,
+        ? Number(next.restSeconds) : DEFAULT_REST,
       showDayBar: next.showDayBar !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false
