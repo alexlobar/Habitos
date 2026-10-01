@@ -81,6 +81,7 @@ HT.ui = (function () {
 
   function init() {
     [
+      'brandMark', 'streakChip', 'streakNum',
       'levelBadge', 'levelRing', 'levelNum', 'levelRankLetter', 'pointsValue',
       'todayTime', 'todayMeta', 'todayLabel',
       'doneCount', 'totalCount', 'dayProgress', 'dayProgressFill',
@@ -219,6 +220,8 @@ HT.ui = (function () {
     els.dayProgress.setAttribute('aria-valuenow', day.pct);
     els.dayProgress.setAttribute('aria-valuetext', day.done + ' de ' + day.total + ' hábitos');
 
+    renderStreakChip(todayKey);
+
     els.levelNum.textContent = info.level;
     els.levelRankLetter.textContent = info.rank.letter;
     els.levelBadge.dataset.rank = info.rank.id;
@@ -230,6 +233,43 @@ HT.ui = (function () {
       ' de XP. Faltan ' + info.remaining + ' para el nivel ' + (info.level + 1) +
       '. Ver progreso'
     );
+  }
+
+  /**
+   * El contador de constancia. Siempre se calcula sobre HOY, aunque estés
+   * mirando otro día: la racha es un dato del presente, no del día que
+   * tengas abierto en pantalla.
+   */
+  function renderStreakChip(todayKey) {
+    const dias = St.dayStreak(todayKey);
+    const riesgo = dias > 0 && St.streakAtRisk(todayKey);
+
+    // Con la racha a cero no se enseña un "0" apagado: se devuelve el rombo.
+    els.streakChip.hidden = dias === 0;
+    els.brandMark.hidden = dias > 0;
+    if (!dias) return;
+
+    els.streakNum.textContent = dias;
+    els.streakChip.dataset.state = riesgo ? 'risk' : 'on';
+    els.streakChip.setAttribute('aria-label',
+      dias + (dias === 1 ? ' día seguido' : ' días seguidos') + ' cumpliendo algo' +
+      (riesgo ? '. Hoy todavía no' : ''));
+    els.streakChip.title = riesgo
+      ? 'Hoy aún no has cumplido nada'
+      : dias + (dias === 1 ? ' día seguido' : ' días seguidos');
+  }
+
+  /** El mensaje que explica la racha al tocarla. */
+  function streakMessage(todayKey) {
+    const dias = St.dayStreak(todayKey);
+    if (!dias) return 'Cumple un hábito hoy y empieza la racha.';
+
+    const base = dias + (dias === 1 ? ' día seguido' : ' días seguidos') +
+      ' cumpliendo al menos un hábito.';
+
+    return St.streakAtRisk(todayKey)
+      ? base + ' Hoy todavía no: marca uno para no perderla.'
+      : base;
   }
 
   /* ── Nivel y rango ────────────────────────────────────────
@@ -3058,6 +3098,7 @@ HT.ui = (function () {
     isDayPickerOpen: isDayPickerOpen,
     renderProgress: renderProgress, renderHistory: renderHistory,
     renderNotes: renderNotes, growField: growField,
+    streakMessage: streakMessage,
     renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,

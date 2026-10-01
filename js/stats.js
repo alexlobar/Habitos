@@ -334,6 +334,67 @@ HT.stats = (function () {
     }, 0);
   }
 
+  /* ── Racha de constancia ──────────────────────────────────
+     La racha de la app entera, no la de un hábito suelto: días seguidos
+     cumpliendo ALGO. El listón es bajo a propósito. Una racha sirve para
+     no romper la cadena, y una que exige el día perfecto se rompe la
+     primera semana y deja de motivar; una que solo mide que abriste la
+     app no mide nada. "Al menos un hábito" es lo que distingue un día en
+     el que apareciste de uno en el que no. ───────────────────────────── */
+
+  /**
+   * Qué hace un día con la racha:
+   *   'done' la alarga · 'miss' la corta · 'skip' ni una cosa ni otra.
+   *
+   * Son neutros los días congelados —el comodín existe justo para eso— y
+   * aquellos en los que no tocaba ningún hábito, porque romper una racha
+   * por un domingo sin nada programado sería castigarte por tu propio
+   * calendario. Los hábitos a evitar no cuentan: están cumplidos desde las
+   * 00:00 y harían que la racha corriera sola.
+   */
+  function streakValue(dateKey) {
+    if (S.isFrozen(dateKey)) return 'skip';
+
+    const day = dayStats(dateKey);        // dayStats ya deja fuera los de evitar
+    if (!day.total) return 'skip';
+    return day.done > 0 ? 'done' : 'miss';
+  }
+
+  /** Primer día con algún hábito ya creado: por debajo no hay nada que mirar. */
+  function firstHabitDay() {
+    return S.getHabits(true).reduce(function (min, h) {
+      return !min || h.createdAt < min ? h.createdAt : min;
+    }, null);
+  }
+
+  function dayStreak(todayKey) {
+    const today = todayKey || U.todayKey();
+    const desde = firstHabitDay();
+    if (!desde) return 0;
+
+    let key = today;
+    // El día en curso no corta: hasta medianoche sigues a tiempo.
+    if (streakValue(key) === 'miss') key = U.addDaysKey(key, -1);
+
+    let count = 0;
+    for (let i = 0; i < MAX_LOOKBACK && key >= desde; i++) {
+      const value = streakValue(key);
+      if (value === 'miss') break;
+      if (value === 'done') count++;
+      key = U.addDaysKey(key, -1);
+    }
+    return count;
+  }
+
+  /**
+   * La racha está en juego cuando hay algo que perder y hoy todavía no has
+   * aportado nada. Es lo que pinta el contador en ámbar.
+   */
+  function streakAtRisk(todayKey) {
+    const today = todayKey || U.todayKey();
+    return streakValue(today) === 'miss' && dayStreak(today) >= 3;
+  }
+
   /* ── Porcentajes de cumplimiento ──────────────────────────── */
 
   function daysFromTo(firstKey, lastKey) {
@@ -1048,6 +1109,7 @@ HT.stats = (function () {
     dayStats: dayStats, pendingToday: pendingToday,
     heatLevel: heatLevel, habitDayLevel: habitDayLevel,
     currentStreak: currentStreak, bestStreak: bestStreak, topStreak: topStreak,
+    dayStreak: dayStreak, streakAtRisk: streakAtRisk,
     weekRate: weekRate, monthRate: monthRate, rateOver: rateOver, levelInfo: levelInfo,
     weekMatrix: weekMatrix,
     exerciseDone: exerciseDone, sessionSummary: sessionSummary, exerciseRecord: exerciseRecord,

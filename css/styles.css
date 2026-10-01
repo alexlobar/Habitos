@@ -252,6 +252,46 @@ svg { display: block; }
 
 .brand__mark { flex: none; color: var(--accent-text); font-size: var(--fs-xl); line-height: 1; }
 
+/* Contador de constancia. Ocupa el hueco del rombo, así que no añade ni un
+   píxel de ancho a una fila que en el móvil ya va justa. */
+.streak-chip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 2px var(--sp-2) 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--streak) 45%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--streak) 14%, transparent);
+  color: var(--streak);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.streak-chip:hover { background: color-mix(in srgb, var(--streak) 24%, transparent); }
+.streak-chip__icon { font-size: var(--fs-sm); line-height: 1; }
+.streak-chip__num {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* En juego: hoy todavía no has cumplido nada y hay racha que perder. */
+.streak-chip[data-state="risk"] {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+.streak-chip[data-state="risk"] .streak-chip__icon { opacity: .55; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .streak-chip[data-state="risk"] { animation: streak-pulse 2.8s var(--ease) infinite; }
+}
+@keyframes streak-pulse {
+  0%, 100% { border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
+  50%      { border-color: color-mix(in srgb, var(--warning) 20%, transparent); }
+}
+
 /* El día, en grande y en el sitio donde antes estaba el nombre de la app.
    La fecha completa va debajo en pequeño: el día de la semana es lo que se
    busca de un vistazo, el número solo cuando dudas. */

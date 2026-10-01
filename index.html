@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="1.7.0">
+<html lang="es" data-theme="dark" data-build="1.7.1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -30,7 +30,15 @@
            en el icono con el que se abre. -->
       <div class="app-header__top">
         <div class="day-nav">
-          <span class="brand__mark" aria-hidden="true">◈</span>
+          <!-- Contador de constancia. Ocupa el hueco del rombo porque el
+               rombo era decoración y esto es información; cuando no hay
+               racha que enseñar, vuelve el rombo. -->
+          <span class="brand__mark" id="brandMark" aria-hidden="true">◈</span>
+
+          <button type="button" class="streak-chip" id="streakChip" hidden>
+            <span class="streak-chip__icon" aria-hidden="true">🔥</span>
+            <span class="streak-chip__num" id="streakNum">0</span>
+          </button>
 
           <button type="button" class="icon-btn" id="prevDay" aria-label="Día anterior">‹</button>
 
