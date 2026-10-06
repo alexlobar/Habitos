@@ -3,22 +3,71 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
+Versión documentada: **1.7.2** · esquema de datos **v10**.
+
+El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
+documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
+
 ## Archivos
 
 ```
-index.html          Marcado completo (vistas, modal, navegación)
+index.html          Marcado completo: vistas, modales y navegación
 manifest.json       Metadatos PWA
 sw.js               Service worker (caché offline)
 icon.svg            Icono de la app
-css/styles.css      Estilos, en 13 secciones comentadas
-js/utils.js         Fechas, DOM y utilidades puras
-js/store.js         localStorage, CRUD y saneado de datos
-js/stats.js         Rachas, porcentajes, niveles y logros
-js/app.js           Orquestación: eventos, puntos, recordatorios, exportación
+.gitignore
+css/styles.css      Estilos, en secciones numeradas y comentadas
+js/utils.js         Fechas, DOM, catálogos (categorías, motivos) y la versión
+js/store.js         localStorage, saneado, migraciones y escritura de datos
+js/stats.js         Rachas, porcentajes, EXP, niveles, rangos y logros
+js/ui.js            Todo lo que toca el DOM: pintado de vistas y modales
+js/app.js           Orquestación: eventos, reparto de EXP, exportación, arranque
+README.md           Este documento
+PROGRESION.md       Referencia del sistema de progresión
 ```
 
 La dependencia va en una sola dirección: `utils → store → stats → ui → app`.
 Los `<script>` deben cargarse en ese orden.
+
+---
+
+## Las pantallas
+
+La barra de navegación tiene cinco secciones: **Hoy · Histórico · Ejercicios ·
+Notas · Ajustes**. Progreso no está en ella: se abre desde la chapa de nivel y
+rango de arriba a la derecha.
+
+**Cabecera.** El día que estás mirando en grande, con flechas para ir hacia
+atrás y un calendario para saltar a cualquier fecha. A la izquierda, el
+contador `◆` de la racha de cumplimiento; a la derecha, la chapa con nivel,
+rango y EXP. Debajo, la barra del día con su cuenta (`5/9`).
+
+**Hoy.** Los hábitos del día agrupados por categoría. Los ya cumplidos se
+apartan a un cajón plegado al final. Debajo: los hábitos en pausa, el botón
+*Anotar el día* y la nota del día.
+
+**Histórico.** La semana en rejilla (hábito × día), los totales de los hábitos
+por cantidad, el cumplimiento de la semana y del mes, el calendario en vista
+de mes o de año y la gráfica de evolución.
+
+**Ejercicios.** La rutina que toca, con sus ejercicios, las series apuntadas,
+el récord de cada uno y el contador de descanso entre series. *Gestionar*
+despliega la tabla para editar rutinas y ejercicios.
+
+**Notas.** Un campo para escribir la nota de hoy, un buscador y todas tus notas
+de día en orden, cada una con cómo fue ese día. Tocar una lleva a ese día.
+
+**Ajustes.** Apariencia, qué se ve en Hoy, entrenamiento, la lista de todos tus
+hábitos (con archivados y pausados), copia de seguridad y la información de la
+instalación.
+
+**Progreso** (desde la chapa). Nivel y rango, los cinco atributos, las dos
+rachas, el historial de ascensos, las rachas por hábito, los días sin caer en
+los hábitos a evitar y los logros.
+
+**Ficha de un hábito** (tocando su icono o su nombre). Estadísticas, totales,
+calendario del mes, cumplimiento por día de la semana y los botones de editar,
+pausar, archivar y eliminar.
 
 ---
 
@@ -29,9 +78,6 @@ Los `<script>` deben cargarse en ese orden.
 Doble clic en `index.html`. Funciona con `file://` porque los scripts son
 clásicos, no módulos ES (los módulos fallarían por CORS al abrir un archivo).
 
-Para tenerlo a mano: clic derecho en `index.html` → *Enviar a* → *Escritorio
-(crear acceso directo)*, o arrastra la pestaña a la barra de marcadores.
-
 Comprueba que guarda: marca un hábito, cierra el navegador y vuelve a abrir. Si
 sale el aviso "El navegador bloquea el almacenamiento", ese navegador no permite
 `localStorage` sobre `file://` — usa otro, o sírvelo desde `localhost`.
@@ -40,88 +86,70 @@ sale el aviso "El navegador bloquea el almacenamiento", ese navegador no permite
 
 Copiar la carpeta al teléfono **no sirve**: Android e iOS no permiten instalar
 una app desde archivos locales. Hace falta una URL `https://`. Los datos siguen
-siendo tuyos y locales — el servidor solo entrega HTML, CSS y JS la primera vez;
-tus hábitos nunca salen del móvil.
+siendo tuyos y locales — el servidor solo entrega HTML, CSS y JS; tus hábitos
+nunca salen del dispositivo.
 
 **Con GitHub Pages** (gratis, permanente):
 
-1. Crea una cuenta en [github.com](https://github.com) si no la tienes.
-2. Botón **+** arriba a la derecha → *New repository*. Nombre: `habitos`.
-   Marca **Public** y crea.
-3. En el repositorio vacío, pulsa *uploading an existing file*.
-4. Entra **dentro** de la carpeta `Habitos`, pulsa `Ctrl+A` y arrastra esa
-   selección: los archivos sueltos y las carpetas `css` y `js`.
+1. Crea un repositorio público en [github.com](https://github.com), por ejemplo
+   `habitos`.
+2. En el repositorio, *Add file → Upload files*.
+3. Entra **dentro** de la carpeta del proyecto, selecciona todo (`Ctrl+A`) y
+   arrástralo: los archivos sueltos y las carpetas `css` y `js`.
 
-   > No arrastres la carpeta `Habitos` entera desde fuera. Si lo haces, los
-   > archivos quedan un nivel más abajo, Pages no encuentra el `index.html` y
-   > la dirección acaba siendo `usuario.github.io/Habitos/Habitos/`.
+   > No arrastres la carpeta entera desde fuera. Si lo haces, los archivos
+   > quedan un nivel más abajo, Pages no encuentra el `index.html` y la
+   > dirección acaba siendo `usuario.github.io/habitos/Habitos/`.
 
-   Pulsa *Commit changes*.
-5. Pestaña **Settings** → **Pages** (menú izquierdo). En *Branch* elige `main`
-   y carpeta `/ (root)`. Guarda.
-6. Espera un minuto y recarga: aparecerá tu URL,
-   `https://TU-USUARIO.github.io/habitos/`.
+4. *Commit changes*.
+5. **Settings → Pages**: rama `main`, carpeta `/ (root)`. Guarda.
+6. Al minuto aparece la URL: `https://TU-USUARIO.github.io/habitos/`.
 
 En el móvil, abre esa URL y añádela a la pantalla de inicio:
 
 - **Android (Chrome)**: menú ⋮ → *Añadir a pantalla de inicio* o *Instalar app*.
 - **iPhone (Safari)**: botón compartir → *Añadir a pantalla de inicio*.
 
-Queda con su icono, a pantalla completa y funcionando sin conexión.
-
 > El repositorio es público: cualquiera puede ver el **código**, pero nadie
 > puede ver tus **datos**, que están solo en tu navegador.
 
-**Importante**: PC y móvil son instalaciones independientes y **no se
-sincronizan**. Para pasar datos de uno a otro: *Ajustes → Exportar JSON* en el
-origen y *Ajustes → Importar* en el destino.
+**PC y móvil son instalaciones independientes y no se sincronizan.** Para pasar
+datos de uno a otro: *Ajustes → Exportar JSON* en el origen y *Ajustes →
+Importar* en el destino. Importar **reemplaza** todo lo que haya en el destino.
 
-### Saber qué versión corre cada dispositivo
+### Publicar una versión nueva
 
-**Ajustes → Esta instalación** muestra tres datos: la versión (`v10 · 17/09/2026`),
-el origen (`Archivo local` o el dominio) y el estado de la caché offline. Si la
-caché guardada no coincide con la versión de la app, lo dice en ámbar con la
-instrucción para arreglarlo — es la causa habitual de "he subido los cambios y
-el móvil no los ve".
+1. Sube el número de versión en los **tres** sitios (ver abajo).
+2. En GitHub, *Add file → Upload files* y arrastra **la carpeta entera por
+   dentro**, igual que la primera vez. GitHub sustituye los archivos que
+   cambian.
+3. *Commit changes*.
 
-El número vive en `VERSION`, al principio de `js/utils.js`, **y hay que subirlo
-también en `CACHE` de `sw.js`**. Están en dos sitios a propósito: si se
-desincronizan, esa misma pantalla lo delata en lugar de callarse.
+**Sube siempre todos los archivos, no sueltos.** Un `index.html` de una versión
+con los `.js` de otra deja la app pintada pero sin responder. Desde la 1.6.7 la
+app lo detecta y lo avisa en pantalla, pero es mejor no llegar ahí.
 
-### Al cambiar el código
+### La versión, en tres sitios
 
-Si editas algo y ya lo tenías instalado como PWA, sube el número de `CACHE` en
-`sw.js` (`habitos-v1` → `habitos-v2`). Si no, el navegador seguirá sirviendo la
-versión antigua desde la caché. Es el error número uno con las PWA: juras que el
-cambio no funciona y lo que pasa es que estás viendo la copia vieja.
+| Dónde | Qué |
+|---|---|
+| `js/utils.js` | `VERSION` y `BUILD_DATE` — la fuente de verdad |
+| `sw.js` | `CACHE = 'habitos-vX.Y.Z'` — un service worker no puede leer `utils.js` |
+| `index.html` | `data-build="X.Y.Z"` en la etiqueta `<html>` |
 
----
+Los tres tienen que coincidir, y están separados a propósito para que un
+desajuste se note en vez de pasar en silencio:
 
-## Trabajar con Git
+- Si `data-build` no coincide con `VERSION`, al arrancar sale *"El navegador ha
+  mezclado versiones… Recarga forzando: Ctrl + Mayús + R"*.
+- Si la caché del service worker es de otra versión, **Ajustes → Esta
+  instalación** lo dice en ámbar con cómo arreglarlo. Es la causa habitual de
+  "he subido los cambios y el móvil no los ve".
+- Cuando el service worker nuevo releva al viejo con la página abierta, la app
+  se recarga sola una vez para no quedarse con archivos de dos versiones.
 
-Sin Git, cada cambio pisa el anterior y no hay vuelta atrás. Con Git tienes
-historial, puedes deshacer, y publicar en el móvil pasa a ser un botón.
-
-**Montarlo una vez:**
-
-1. Instala [GitHub Desktop](https://desktop.github.com) e inicia sesión con tu
-   cuenta de GitHub.
-2. *File → Add local repository* → elige esta carpeta. Te dirá que no es un
-   repositorio y te ofrecerá *create a repository*. Acepta.
-3. Deja el nombre `Habitos`, marca **Git ignore: None** (ya hay un `.gitignore`)
-   y pulsa *Create repository*.
-4. Pulsa *Publish repository*. Desmarca *Keep this code private* si quieres usar
-   GitHub Pages, que solo funciona con repositorios públicos en el plan gratuito.
-
-**El día a día:** editas archivos, y GitHub Desktop lista los cambios solo. Le
-escribes una frase de resumen abajo a la izquierda ("añadir vista de año"),
-pulsas *Commit to main* y luego *Push origin*. Eso es todo.
-
-**Para volver atrás:** en la pestaña *History* ves cada cambio. Clic derecho en
-uno → *Revert changes in commit* y lo deshace sin borrar el historial.
-
-Con el repositorio publicado, activar GitHub Pages (Settings → Pages → rama
-`main`, carpeta `/ (root)`) hace que cada *push* actualice también el móvil.
+Formato `MAYOR.MENOR.PARCHE`: parche para correcciones y retoques, menor para
+funcionalidad nueva compatible, mayor para rediseños o datos incompatibles.
 
 ---
 
@@ -129,124 +157,73 @@ Con el repositorio publicado, activar GitHub Pages (Settings → Pages → rama
 
 ### Colores y forma
 
-Todo el aspecto sale de las variables del bloque `:root` en `css/styles.css`.
-Cambiando estas diez repintas la app entera:
+Todo el aspecto sale de las variables del bloque `:root` en `css/styles.css`
+(sección 1). Las principales:
 
 | Variable | Qué controla |
 |---|---|
-| `--bg`, `--bg-elevated` | Fondo de la página y del modal |
-| `--surface`, `--surface-2`, `--surface-3` | Tarjetas, campos y estados hover |
+| `--bg`, `--bg-elevated` | Fondo de la página y de los paneles elevados |
+| `--surface`, `--surface-2`, `--surface-3`, `--card-bg` | Tarjetas, campos y hover |
 | `--border`, `--border-strong` | Separadores y bordes |
 | `--text`, `--text-muted`, `--text-faint` | Los tres niveles de texto |
-| `--accent` | Color principal (botones, nivel, heatmap) |
-| `--success`, `--warning`, `--danger`, `--streak` | Colores semánticos |
+| `--accent` y derivados | Color principal (lo reescribe `applyAccent()`) |
+| `--success`, `--warning`, `--danger`, `--streak`, `--frost` | Colores semánticos |
 
-Otras palancas: `--radius*` (redondeo), `--sp-1`…`--sp-6` (espaciado),
-`--fs-xs`…`--fs-2xl` (escala tipográfica), `--dur` y `--ease` (velocidad y
-curva de todas las animaciones), `--nav-h`, `--rail-w` y `--content-max`
-(métricas del layout).
+Otras palancas: `--radius*`, `--sp-1`…`--sp-6`, `--fs-xs`…`--fs-2xl`, `--dur` y
+`--ease`, `--nav-h`, `--rail-w` y `--content-max`.
 
-El acento también se cambia desde **Ajustes** sin tocar código: se guarda en
-`settings.accent` y se aplica como variable inline sobre `:root`, derivando de
-paso los cuatro niveles del heatmap.
+**El acento** se cambia desde Ajustes. `HT.utils.ACCENTS` lista los colores y
+`DEFAULT_ACCENT` es el de partida. `UI.applyAccent()` deriva de él
+`--accent-hover`, `--accent-text`, `--accent-soft` y la rampa `--heat-*`, y lo
+ajusta al tema: lo aclara sobre oscuro y lo oscurece sobre claro.
 
-### El tema de la pantalla Progreso
+**Tema claro** (sección 1b): solo redefine tokens; ningún componente sabe en qué
+tema está. **Tamaño de letra** (sección 1c): cuatro escalones que reescriben los
+seis `--fs-*` a la vez. **Tamaño de los controles**: compacto, cómodo o amplio,
+vía `data-controls` en `<html>`.
 
-Progreso tiene su propia piel, de panel de sistema RPG, y **está confinada al
-selector `#view-progress`** en la sección 8d del CSS. Las variables `--sys-*` y
-la rampa `--heat-*` se redefinen ahí dentro, así que ninguna otra pantalla
-hereda nada: el resto de la app mantiene el acento elegido en Ajustes. Para
+### El tema de Progreso
+
+Progreso tiene su propia piel de ventana del System, **confinada a
+`#view-progress`** en la sección 8d. Redefine sus `--sys-*`, su rampa
+`--heat-*` y también los tokens de texto y superficie, para que se vea igual en
+tema oscuro y en tema claro. Ninguna otra pantalla hereda nada de ahí; para
 quitar el tema basta con borrar ese bloque.
 
-El panel de nivel (`.sys-level`) vive en ese mismo bloque y reutiliza `.card`,
-así que hereda el filo y las esquinas del resto de paneles.
+Fuera de Progreso hay dos piezas que usan el mismo lenguaje a propósito: la
+chapa de rango de la cabecera (colores por tramo con `[data-rank]`) y el
+contador `◆` de la racha.
 
-### Breakpoints
+### Puntos de corte
 
-Tres, en la sección 13 del CSS:
+- **≤ 420px** — la chapa de la cabecera esconde la EXP y deja nivel y rango.
+- **< 768px** — dos tarjetas de hábito por fila, navegación inferior fija,
+  modales como hoja inferior.
+- **≥ 768px** — más aire entre tarjetas, estadísticas en fila de cuatro,
+  modales centrados.
+- **≥ 1024px** — la barra inferior pasa a raíl lateral reescribiendo las áreas
+  del grid de `.app-shell`, y las tarjetas se reparten en tantas columnas como
+  quepan (mínimo 320px cada una). No hay marcado duplicado.
+- **≥ 1440px** — el contenido gana ancho máximo.
 
-- **< 768px** — una columna, navegación inferior fija, modal como hoja inferior.
-- **≥ 768px** — dos columnas de hábitos, estadísticas en fila de 4, modal centrado.
-- **≥ 1024px** — la barra inferior se convierte en raíl lateral reescribiendo las
-  áreas del grid de `.app-shell`. No hay marcado duplicado para móvil y escritorio.
+### Catálogos
 
-### Iconos sugeridos
-
-En `EMOJI_GROUPS`, al principio de `js/ui.js`. Son arrays de emoji, no cadenas
-que luego se parten: `🏋️` ocupa dos unidades UTF-16 y `Array.from` lo rompería.
-El campo de texto sigue admitiendo cualquier emoji pegado a mano.
-
-### Tabla de ejercicios de partida
-
-En `seedWorkout()` de `js/store.js`. Es un array de `[rutina, [[nombre, tipo,
-series, objetivo], …]]` — añadir o cambiar ejercicios es editar esa lista. Solo
-se usa la primera vez; después manda lo guardado.
-
-### Hábitos por defecto
-
-En `defaultState()` de `js/store.js`. Solo se usan la primera vez que se abre la
-app; después manda lo guardado.
-
-### XP, niveles y rangos
-
-Todo vive en `js/stats.js` y ninguna vista repite estas cuentas: piden
-`St.levelInfo(xp)` y pintan lo que devuelve.
-
-| Constante | Qué es |
+| Qué | Dónde |
 |---|---|
-| `XP` | Tabla de recompensas: `habit` 10, `perfectDay` 5, `exercise` 10, `workout` 50, `allExercises` 25, `goal` 100. |
-| `XP_TABLE` | XP total con la que empieza cada nivel, del 1 al 10. |
-| `XP_STEP` (50) | Del 10 en adelante cada nivel cuesta `50·n` más que el anterior. La fórmula `25·n·(n+1) − 50` reproduce la tabla exacta, así que tabla y continuación empalman sin salto. |
-| `RANKS` | Tramos de rango. Añadir uno es añadir una fila: gana la última cuyo `from` no supera el nivel. |
-| `PERFECT_WEEK_MIN_DAYS` (5) | Días con actividad que exige "Semana perfecta". |
-| `ACHIEVEMENTS` | Los 9 logros. Añadir uno son dos pasos: una entrada aquí y su condición dentro de `earnedAchievements()`. |
+| Categorías de hábito | `CATEGORIES` en `js/utils.js` |
+| Motivos de pausa | `PAUSE_REASONS` en `js/utils.js` |
+| Motivos de un día flojo | `DAY_REASONS` en `js/utils.js` |
+| Iconos sugeridos | `EMOJI_GROUPS` al principio de `js/ui.js` |
+| Hábitos de partida | `defaultState()` y `AVOID_SEED` en `js/store.js` |
+| Tabla de ejercicios de partida | `seedWorkout()` en `js/store.js` |
+| Opciones con más de dos valores | `CONTROLS`, `FONT_SIZES`, `REST_SECONDS`, `STREAK_GOALS` en `js/store.js` |
 
-`levelInfo(xp)` devuelve nivel, rango, XP dentro del nivel, XP que falta y
-porcentaje. Cambiar la curva de experiencia es tocar `XP_TABLE` y `XP_STEP`, y
-nada más: el nivel **no se guarda**, se deriva de la XP, así que ningún cambio de
-curva puede corromper datos.
+Los catálogos de opciones están en el almacén y no solo en el HTML para que el
+saneado y el desplegable no puedan discrepar. Los iconos sugeridos son arrays de
+emoji, no cadenas que luego se parten: `🏋️` ocupa dos unidades UTF-16.
 
-**Dónde se guarda.** En `game.points` de `habitTracker.v1`. Conserva ese nombre
-porque es el que ya está escrito en el almacén de los usuarios.
-
-**Quién reparte.** `grantXp()` en `js/app.js`, único punto de entrada. Compara el
-nivel antes y después, así la subida se detecta una sola vez y sin depender de
-qué pantalla esté abierta. La presentación (`UI.showLevelUp`) va aparte: cambiar
-la celebración no toca la regla.
-
-**Por qué no se duplica.** `withScoring()` (hábitos) y `withWorkoutScoring()`
-(ejercicios) hacen una foto del estado, ejecutan la acción y pagan solo la
-diferencia. Repetir una acción ya cumplida vale 0, y deshacerla devuelve
-exactamente lo que dio. Sin eso, marcar y desmarcar en bucle sería una máquina de
-fabricar niveles.
-
-En `store.js`, `MAX_FREEZES` (3) limita los comodines acumulables; se gana uno al
-entrar en un mes nuevo.
-
-### Color predeterminado
-
-`HT.utils.ACCENTS` (en `js/utils.js`) lista los colores y `DEFAULT_ACCENT` marca
-cuál manda. Ese valor es la única fuente: `store.js` lo usa como color de partida
-y `UI.applyAccent()` deriva de él todos los tokens (`--accent`, `--accent-hover`,
-`--accent-text`, `--accent-soft` y la rampa `--heat-*`). Ningún componente
-escribe un color de marca a mano.
-
-Los valores de `:root` en el CSS son solo lo que se ve antes de que arranque el
-JS; en cuanto carga, `applyAccent()` los reescribe con el color guardado. Para
-añadir la paleta completa basta con pintar un selector sobre `ACCENTS` — la tabla
-ya tiene las cinco entradas.
-
-### Versión
-
-`VERSION` en `js/utils.js`, en formato `MAYOR.MENOR.PARCHE`. Es la fuente única y
-**no se sube sola**: se cambia a mano al publicar. El único otro sitio donde
-aparece es `CACHE` en `sw.js`, porque un service worker no puede leer ese
-archivo; si se desincronizan, Ajustes → *Esta instalación* lo avisa en vez de
-callarse.
-
-- Parche `1.0.1` — correcciones y retoques visuales.
-- Menor `1.1.0` — funcionalidad nueva compatible.
-- Mayor `2.0.0` — rediseño o cambio de datos incompatible.
+Los hábitos y la tabla de partida solo se usan la primera vez que se abre la
+app; después manda lo guardado.
 
 ---
 
@@ -256,33 +233,46 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 2,
+  "version": 10,
   "settings": {
-    "weekStart": 1, "accent": "#4361ee",
-    "notificationsEnabled": false, "effects": true
+    "accent": "#4361ee", "effects": true,
+    "theme": "dark",                  // "dark" | "light"
+    "fontSize": "normal",             // "small" | "normal" | "large" | "xlarge"
+    "controls": "compact",            // "compact" | "comfy" | "roomy"
+    "hideDone": true, "showBadges": true,
+    "showDayBar": true, "showNotes": true, "showFreeze": true,
+    "backupDays": 14,                 // aviso de copia: 0, 7, 14 o 30 días
+    "restSeconds": 150,               // 0, 90, 120, 150, 180, 240 o 300
+    "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"
+    "weekStart": 1,                   // fijo en lunes desde la 1.6.5
+    "notificationsEnabled": false     // sin uso desde la 1.6.8
   },
   "habits": [{
-    "id": "h_k3f9",
-    "name": "Leer",
-    "icon": "📖",
-    "color": "#e879f9",
-    "type": "quantity",              // "check" | "quantity" | "schedule" | "avoid"
+    "id": "h_k3f9", "name": "Lectura", "icon": "📖", "color": "#e879f9",
+    "category": "aprendizaje",        // "fisico" | "mental" | "aprendizaje" | "evitar" | null
+    "type": "quantity",               // "check" | "quantity" | "schedule" | "avoid"
     // solo quantity · entry: "stepper" (botones + y −) o "manual" (escribir el total)
-    "target": { "amount": 20, "unit": "min", "step": 5, "entry": "stepper" },
-    "slots": ["morning", "night"],                 // solo schedule
-    "activeDays": [1, 2, 3, 4, 5],                 // 0 = domingo
-    "reminder": { "enabled": true, "time": "08:00" },
+    "target": { "amount": 10, "unit": "páginas", "step": 1, "entry": "stepper" },
+    "slots": null,                    // schedule y avoid: "morning" | "afternoon" | "night"
+    "limit": null,                    // solo avoid: fallos del día hasta "crítico"
+    "activeDays": [0, 1, 2, 3, 4, 5, 6],   // 0 = domingo
     "createdAt": "2026-09-15",
-    "archived": false
+    "archived": false,
+    // tramos [from, to): "to" es el día en que se reanudó, null si sigue en pausa
+    "pauses": [{ "from": "2026-09-13", "to": "2026-09-19", "reason": "vacaciones", "note": "" }],
+    "reminder": { "enabled": false, "time": "08:00" }   // sin uso desde la 1.6.8
   }],
   "logs": {
-    // check → true | quantity → número | schedule → {morning:true}
-    // avoid → true, pero aquí true significa RECAÍDA, no logro: el día
-    // sin registro es el día limpio.
-    "h_k3f9": { "2026-09-15": 25 }
+    // check → true · quantity → número · schedule → { "night": true }
+    // avoid → número de fallos del día; con franjas, en cuáles se falló
+    "h_k3f9": { "2026-09-15": 12 }
   },
-  "notes":  { "2026-09-15": "Día raro, pero saqué el rato de leer." },
-  "frozen": { "2026-09-12": true },   // días salvados con un comodín
+  "notes": { "2026-09-15": "Día raro, pero saqué el rato de leer." },
+  "frozen": {
+    // marcas de día: el motivo es gratis; "skip": true cuesta un comodín
+    "2026-09-20": { "reason": "energia", "note": "", "skip": false },
+    "2026-09-12": { "reason": null,      "note": "", "skip": true }
+  },
 
   // Entrenamiento. Las rutinas se alternan en el orden del array.
   "routines":  [{ "id": "r_1", "name": "Empuje" }],
@@ -291,95 +281,141 @@ Una sola clave, `habitTracker.v1`:
   "sessions":  { "2026-09-16": { "routineId": "r_1", "done": true,
                                  "sets": { "e_1": [12, 11, 9] } } },
   "workout":   { "lastRoutineId": "r_1", "linkedHabitId": "h_xxx" },
+
   "game": {
-    // "points" es el acumulador de XP; nivel y rango se derivan, no se guardan
-    "points": 120, "achievements": ["first_step"], "bestStreak": 12,
-    "habitsCreated": 6, "freezes": 2, "freezeMonth": "2026-09"
+    "points": 1240,                   // acumulador de EXP; nivel y rango se derivan
+    "achievements": ["first_step"],
+    "bestStreak": 12,                 // mejor racha de un solo hábito
+    "habitsCreated": 0,               // los de partida no cuentan
+    "avoidXpPaid": 50,                // EXP de hitos de "evitar" ya cobrada
+    "lastExport": "2026-09-30",
+    "levelLog": [{ "level": 1, "date": "2026-09-16" }],
+    "levelLogFrom": 0,                // nivel desde el que el registro es fiable
+    "freezes": 2,                     // comodines disponibles (máx. 4)
+    "freezeWeek": "2026-09-28"        // lunes de la última recarga semanal
   }
 }
 ```
 
-La versión 2 añadió `notes`, `frozen`, `settings.effects` y los comodines; la 3,
-el bloque de entrenamiento. Los datos antiguos se leen sin problema:
-`cleanState()` rellena lo que falte con valores por defecto. La única migración
-con lógica propia es `migrateToWorkout()`, que crea la tabla de calistenia y el
-hábito "Entrenar" a quien venía de la v2 — y solo si no hay nada, para no
-repoblar una tabla que se vació a propósito.
+`logs` está indexado por hábito y luego por fecha, así que consultar un día es
+un acceso directo. Las fechas son `YYYY-MM-DD` **en hora local**:
+`toISOString()` convertiría a UTC y apuntaría en el día equivocado a quien marque
+un hábito de madrugada.
 
-`logs` está indexado por hábito y luego por fecha, así que consultar un día
-concreto es un acceso directo en lugar de un recorrido. Las fechas son
-`YYYY-MM-DD` **en hora local**: `toISOString()` convertiría a UTC y registraría
-en el día equivocado a quien marque un hábito de madrugada.
+`frozen` conserva su nombre aunque ya no signifique solo "congelado": es lo que
+está escrito en el almacén de todos los usuarios. El resto de la app no lo lee
+directamente — pregunta a `S.isFrozen()` (¿el día queda fuera de las rachas?) y
+a `S.getDayMark()` (la marca completa).
 
-Al arrancar, `cleanState()` valida todo lo que sale de `localStorage`. Si el JSON
-está roto, guarda el original en `habitTracker.corrupt-backup` y empieza de cero.
+### Saneado y migraciones
+
+Al arrancar, `cleanState()` valida todo lo que sale de `localStorage` y rellena
+lo que falte. Si el JSON está roto, guarda el original en
+`habitTracker.corrupt-backup` y empieza de cero.
+
+Después se ejecutan las migraciones que tocan, según la versión guardada:
+
+| Esquema | Migración | Qué hace |
+|---|---|---|
+| < 3 | `migrateToWorkout()` | Crea la tabla de calistenia y el hábito "Entrenar" |
+| < 4 | `migrateToCategories()` | Asigna categoría a los hábitos que existían |
+| < 5 | `migrateToScreenSlots()` | Pasa "Evitar pantallas" a franjas y convierte su histórico |
+| < 6 | `migrateSeedTweaks()` | Bandera para Japonés, tope 1 para Gula y Lujo |
+| < 8 | `migrateNewDefaults()` | Controles compactos y "apartar cumplidos" por defecto |
+
+Las versiones 7 (`levelLog`), 9 (`pauses`) y 10 (marcas de día) no necesitan
+migración propia: el saneado rellena los campos nuevos o, en el caso de la v10,
+lee el `true` antiguo de `frozen` como "salvado sin motivo".
+
+**Importar no ejecuta las migraciones**, solo el saneado. Comprobado que
+importar exportaciones de los esquemas 6 a 9 da el mismo resultado que
+cargarlas; con archivos anteriores no está verificado.
+
+Comprobado al arrancar: estados guardados con los esquemas 4 a 9 se cargan sin
+perder ningún dato (1.7.0), y el paso de la v9 a la v10 conserva los días
+congelados como "salvados sin motivo" (1.7.2).
 
 ---
 
 ## Cómo extender
 
-**Un tipo nuevo de hábito** — toca cuatro puntos: `cleanHabit()` y
-`cleanLogValue()` en `store.js` (validación), `isComplete()` y `progressOf()` en
-`stats.js` (cuándo cuenta como hecho), `buildCard()` y `paintCard()` en `ui.js`
-(cómo se pinta) y `onHabitListClick()` en `app.js` (qué hace al pulsar).
+**Un tipo nuevo de hábito** — `cleanHabit()` y `cleanLogValue()` en `store.js`
+(validación), `isComplete()` y `progressOf()` en `stats.js` (cuándo cuenta como
+hecho), `buildCard()` y `paintCard()` en `ui.js` (cómo se pinta) y el manejador
+de clics de la lista en `app.js`.
+
+**Un campo nuevo en un hábito** — solo en `cleanHabit()`. Los hábitos de partida
+también pasan por ahí (`mkHabit()` lo llama), así que no puede quedar fuera
+ninguno. Fue justo ese descuido lo que dejó la app sin arrancar en una
+instalación nueva entre la 1.6.6 y la 1.6.8.
 
 **Una vista nueva** — una `<section class="view">` en el HTML, un botón en `.nav`
-con su `data-view`, y una entrada en `els.views` dentro de `UI.init()`.
+con su `data-view` (o ninguno, como Progreso), una entrada en `els.views` y otra
+en `NAV_OF_VIEW` dentro de `ui.js`.
+
+**Un elemento nuevo en el HTML** — su `id` en la lista de `UI.init()`. Si falta
+en el HTML, la app ya no se cae: lo sustituye por un nodo suelto, sigue
+funcionando y lo dice en la consola y en pantalla.
+
+**Migrar el esquema** — subir `VERSION` en `store.js`, transformar en una función
+`migrateXxx()` y llamarla en `load()` con su `if (incoming < N)`.
 
 **Sincronización con un servidor** — `store.js` es la única capa que persiste.
 Sustituir `writeNow()` y `load()` por llamadas de red deja intacto el resto.
-
-**Migrar el esquema** — subir `VERSION` en `store.js` y transformar los datos
-antiguos dentro de `cleanState()` antes de validarlos.
 
 ---
 
 ## Decisiones que conviene conocer
 
-- **Escribir el valor es un modo de Cantidad, no un tipo aparte.** Un hábito de
-  pasos y uno de minutos guardan el mismo dato y se miden igual; lo único que
-  cambia es cómo lo introduces. Hacerlo un cuarto tipo habría duplicado la misma
-  lógica en el saneado, las rachas, el heatmap y la exportación.
-- **El entreno se contabiliza a través de un hábito, no en paralelo.** Cerrar la
-  sesión marca el hábito "Entrenar", y de ahí salen los puntos, la racha y el
-  heatmap. Así hay una sola contabilidad en vez de dos sistemas que se ignoran.
-  Si borras ese hábito, Ejercicios sigue funcionando pero deja de puntuar.
-- **Las rutinas van por rotación, no por día de la semana.** Al cerrar un
-  entreno pasa el turno a la siguiente. Si dejas de entrenar tres días, retomas
-  donde lo dejaste en vez de desalinearte.
-- **Una sesión cerrada se bloquea.** No se pueden añadir ni quitar series
-  mientras está cerrada: hay que reabrirla. Evita tocar por error el histórico
-  de un entreno ya terminado.
-- **La vista de Semana es plan y marcador a la vez.** La misma rejilla dice qué
-  hábito toca cada día y cómo llevas la semana. Separarlo en dos pantallas
-  obligaría a comparar de memoria.
-- **Editar, archivar y eliminar viven en la ficha del hábito.** Se entra tocando
-  su icono o su nombre en la tarjeta. Allí están los tres botones arriba a la
-  derecha: lápiz, caja y papelera.
-- **La gráfica distingue el cero del vacío.** Un día al 0% muestra su carril de
-  fondo vacío; un día sin hábitos, o que aún no ha llegado, no muestra nada. Son
-  dos cosas distintas y pintarlas igual sería mentir sobre el dato.
-- **Se puede registrar hacia atrás, nunca hacia delante.** Las flechas de la
-  cabecera y las celdas del calendario llevan a cualquier día pasado para
-  rellenarlo. El futuro está bloqueado: marcar mañana no significaría nada.
-- **Los comodines vuelven neutro un día, no lo aprueban.** Un día congelado no
-  cuenta como cumplido, pero tampoco corta la racha. Es la diferencia entre
-  perdonar un tropiezo y falsear el historial.
-- **Las rachas perdonan el día en curso.** Si hoy aún no has hecho ejercicio
-  sigues viendo tu racha, no un cero. Se rompe cuando el día termina sin marcar.
-- **Los días inactivos no rompen la racha.** Un hábito de lunes a viernes
+- **Dos rachas, porque miden cosas distintas.** La de *cumplimiento* exige un
+  mínimo de hábitos al día (ajustable); la de *registro* solo que apuntes algo,
+  aunque sea por qué el día salió mal. Un día malo contado con honestidad
+  mantiene la segunda y rompe la primera. Detalle en `PROGRESION.md`.
+- **Anotar el motivo es gratis; salvar el día cuesta un comodín.** Si salvar
+  fuera gratis, siempre habría un motivo y la racha no mediría nada. Los
+  comodines se recargan uno por semana, hasta cuatro.
+- **Pausar no es archivar.** Un hábito en pausa sale de Hoy y sus días no
+  cuentan ni a favor ni en contra, así que la racha se queda donde estaba. Se
+  guardan los tramos, no un "está en pausa": borrar el rastro al reanudar haría
+  que aquellos días contaran como fallados semanas después.
+- **El nivel no se guarda.** Se deriva de la EXP en cada pintado, así que cambiar
+  la curva nunca corrompe datos.
+- **La EXP se paga por diferencia.** Cada acción hace una foto antes y después y
+  paga solo lo que cambió. Repetir algo ya cumplido vale 0, y deshacer devuelve
+  exactamente lo que dio.
+- **Escribir el valor es un modo de Cantidad, no un tipo aparte.** Pasos y
+  minutos guardan el mismo dato; solo cambia cómo se introduce.
+- **El entreno se contabiliza a través de un hábito.** Cerrar la sesión marca
+  "Entrenar", y de ahí salen la EXP, la racha y el calendario. Una sola
+  contabilidad en vez de dos sistemas que se ignoran.
+- **Las rutinas van por rotación, no por día de la semana.** Si dejas de entrenar
+  tres días, retomas donde lo dejaste.
+- **Una sesión cerrada se bloquea.** Para tocar sus series hay que reabrirla.
+- **Se puede registrar hacia atrás, nunca hacia delante.** Marcar mañana no
+  significaría nada.
+- **Las rachas perdonan el día en curso.** Se rompen cuando el día termina sin
+  llegar al listón, no a las 00:01.
+- **Los días sin nada programado no rompen rachas.** Un hábito de lunes a viernes
   sobrevive al fin de semana.
-- **El heatmap valora el progreso parcial.** 20 de 30 minutos tiñen la celda;
-  no es todo o nada.
+- **El calendario valora el progreso parcial.** 20 de 30 minutos tiñen la celda.
+- **La gráfica distingue el cero del vacío.** Un día al 0% y un día sin hábitos
+  no se pintan igual.
 - **Cambiar el tipo de un hábito borra su histórico.** Un `1500` reinterpretado
-  como check no significa nada, y prefiero perder el dato a mentir en las
-  estadísticas. La app avisa al guardar.
-- **Los recordatorios solo funcionan con la pestaña abierta.** Se programan con
-  `setTimeout`; avisar con la app cerrada exigiría Push API y un servidor.
+  como check no significa nada.
+- **El campo de Notas escribe siempre en hoy**, mires el día que mires: un
+  diario se escribe en presente. La nota de la pantalla Hoy escribe en el día que
+  tengas abierto.
+- **No hay recordatorios.** Una página web solo puede avisar mientras está
+  abierta, que es justo cuando no hace falta. Se quitaron en la 1.6.8 en vez de
+  prometer algo que no se podía cumplir.
 
 ## Limitaciones
 
 - Los datos son de este navegador y este dispositivo. Exporta a JSON para
-  moverlos o guardarlos.
+  moverlos o guardarlos; la propia app te avisa cuando hace tiempo que no lo
+  haces.
 - Borrar los datos de navegación borra el historial de hábitos.
-- Sin notificaciones en segundo plano (ver arriba).
+- Importar reemplaza, no fusiona.
+- Sin notificaciones de ningún tipo.
+- El icono de pantalla de inicio en iPhone necesita un PNG: iOS no admite el
+  `icon.svg` actual como `apple-touch-icon`.

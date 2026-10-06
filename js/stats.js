@@ -343,10 +343,31 @@ HT.stats = (function () {
      el que apareciste de uno en el que no. ───────────────────────────── */
 
   /**
-   * Qué hace un día con la racha:
+   * Cuántos hábitos hay que cumplir ese día para sostener la racha. Los
+   * modos proporcionales se calculan sobre los que tocaban ese día, que es
+   * lo que hace justa la comparación entre un miércoles con nueve y un
+   * domingo con tres.
+   */
+  function streakGoalFor(dateKey, total) {
+    const n = total === undefined ? dayStats(dateKey).total : total;
+    if (!n) return 0;
+
+    const modo = S.getSettings().streakGoal;
+    let meta;
+
+    if (modo === 'half') meta = Math.ceil(n / 2);
+    else if (modo === 'quarter') meta = Math.ceil(n / 4);
+    else meta = Number(modo) || 2;
+
+    // Nunca puede pedir más de los que hay, ni menos de uno.
+    return U.clamp(meta, 1, n);
+  }
+
+  /**
+   * Qué hace un día con la racha de hábitos:
    *   'done' la alarga · 'miss' la corta · 'skip' ni una cosa ni otra.
    *
-   * Son neutros los días congelados —el comodín existe justo para eso— y
+   * Son neutros los días salvados con un comodín —existe justo para eso— y
    * aquellos en los que no tocaba ningún hábito, porque romper una racha
    * por un domingo sin nada programado sería castigarte por tu propio
    * calendario. Los hábitos a evitar no cuentan: están cumplidos desde las
@@ -357,7 +378,36 @@ HT.stats = (function () {
 
     const day = dayStats(dateKey);        // dayStats ya deja fuera los de evitar
     if (!day.total) return 'skip';
-    return day.done > 0 ? 'done' : 'miss';
+    return day.done >= streakGoalFor(dateKey, day.total) ? 'done' : 'miss';
+  }
+
+  /* ── Racha de actividad ───────────────────────────────────
+     Mide presentarse, no rendir. Cuenta cualquier registro del día:
+     marcar un hábito, apuntar una cantidad o un fallo, una serie de
+     entreno, una nota... o el propio motivo de por qué el día fue malo.
+
+     Eso último es lo que la hace valiosa: un día malo, anotado con
+     honestidad, mantiene la racha. No premia fingir — premia aparecer y
+     contarlo. Y como la de hábitos sigue siendo estricta, las dos juntas
+     dicen cosas distintas en vez de repetirse. ───────────────────── */
+
+  function hasAnyRecord(dateKey) {
+    if (S.getDayMark(dateKey)) return true;
+    if (S.getNote(dateKey)) return true;
+
+    const session = S.getSession(dateKey);
+    if (session && Object.keys(session.sets).length) return true;
+
+    return S.getHabits(true).some(function (h) {
+      return S.getLog(h.id, dateKey) !== null;
+    });
+  }
+
+  function activityValue(dateKey) {
+    if (hasAnyRecord(dateKey)) return 'done';
+    // Mismo perdón que la otra racha: sin nada programado y sin registro,
+    // el día no cuenta ni a favor ni en contra.
+    return dayStats(dateKey).total ? 'miss' : 'skip';
   }
 
   /** Primer día con algún hábito ya creado: por debajo no hay nada que mirar. */
@@ -367,23 +417,34 @@ HT.stats = (function () {
     }, null);
   }
 
-  function dayStreak(todayKey) {
+  /** Recorre hacia atrás con la regla que se le pase. */
+  function streakOf(valueFn, todayKey) {
     const today = todayKey || U.todayKey();
     const desde = firstHabitDay();
     if (!desde) return 0;
 
     let key = today;
     // El día en curso no corta: hasta medianoche sigues a tiempo.
-    if (streakValue(key) === 'miss') key = U.addDaysKey(key, -1);
+    if (valueFn(key) === 'miss') key = U.addDaysKey(key, -1);
 
     let count = 0;
     for (let i = 0; i < MAX_LOOKBACK && key >= desde; i++) {
-      const value = streakValue(key);
+      const value = valueFn(key);
       if (value === 'miss') break;
       if (value === 'done') count++;
       key = U.addDaysKey(key, -1);
     }
     return count;
+  }
+
+  /** Días seguidos cumpliendo el listón de hábitos. */
+  function dayStreak(todayKey) {
+    return streakOf(streakValue, todayKey);
+  }
+
+  /** Días seguidos registrando algo, aunque fuera un mal día. */
+  function activityStreak(todayKey) {
+    return streakOf(activityValue, todayKey);
   }
 
   /**
@@ -525,7 +586,10 @@ HT.stats = (function () {
     if (isComplete(habit, S.getLog(habit.id, dateKey))) return 'done';
     if (S.isFrozen(dateKey)) return 'frozen';
     if (dateKey > today) return 'future';
-    return dateKey === today ? 'pending' : 'missed';
+    if (dateKey === today) return 'pending';
+    // Fallado, pero con motivo apuntado: no es lo mismo que un hueco sin
+    // explicación, y la rejilla no debería enseñarlos igual.
+    return S.getDayMark(dateKey) ? 'marked' : 'missed';
   }
 
   function weekMatrix(dateKeys, todayKey) {
@@ -1005,7 +1069,9 @@ HT.stats = (function () {
     { id: 'rank_x',       icon: '🌌', name: 'Fuera de escala',  hint: 'Alcanza el rango X' },
     { id: 'collector',    icon: '🗂️', name: 'Archimaestro',     hint: 'Crea 10 hábitos' },
     { id: 'points_1000',  icon: '⚡', name: 'Diez mil de EXP',  hint: 'Acumula 10 000 de EXP' },
-    { id: 'historian',    icon: '📝', name: 'Cronista',         hint: 'Escribe 10 notas de día' }
+    { id: 'historian',    icon: '📝', name: 'Cronista',         hint: 'Escribe 10 notas de día' },
+    // Premia aparecer, no rendir: es el único que se gana en los días malos.
+    { id: 'present_90',   icon: '🧭', name: 'Sin faltar un día', hint: '90 días seguidos registrando algo' }
   ];
 
   /** Nivel en el que empieza un rango. Los logros de rango lo leen de aquí
@@ -1074,6 +1140,8 @@ HT.stats = (function () {
     if (level >= rankFloor('s')) earned.push('rank_s');
     if (level >= rankFloor('x')) earned.push('rank_x');
 
+    if (activityStreak(today) >= 90) earned.push('present_90');
+
     if (game.habitsCreated >= 10) earned.push('collector');
     // Sube a 10 000 con la EXP nueva: 1000 se alcanzaba en cuatro días.
     // El `id` no cambia, así que a quien ya lo tuviera no se le retira.
@@ -1110,6 +1178,7 @@ HT.stats = (function () {
     heatLevel: heatLevel, habitDayLevel: habitDayLevel,
     currentStreak: currentStreak, bestStreak: bestStreak, topStreak: topStreak,
     dayStreak: dayStreak, streakAtRisk: streakAtRisk,
+    activityStreak: activityStreak, streakGoalFor: streakGoalFor,
     weekRate: weekRate, monthRate: monthRate, rateOver: rateOver, levelInfo: levelInfo,
     weekMatrix: weekMatrix,
     exerciseDone: exerciseDone, sessionSummary: sessionSummary, exerciseRecord: exerciseRecord,

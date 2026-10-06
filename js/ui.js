@@ -87,7 +87,12 @@ HT.ui = (function () {
       'doneCount', 'totalCount', 'dayProgress', 'dayProgressFill',
       'prevDay', 'nextDay', 'btnToday',
       'btnPickDay', 'dayPicker', 'dpPrev', 'dpNext', 'dpLabel', 'dpGrid', 'dpToday',
-      'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeLabel', 'freezeHint', 'dayNote',
+      'habitList', 'emptyToday', 'dayActions', 'btnFreeze', 'freezeLabel', 'freezeHint',
+      'freezeIcon', 'dayNote',
+      'dayModal', 'dayForm', 'dayModalTitle', 'dayIntro', 'dayReasons', 'dayNoteField',
+      'dayReasonNote', 'daySkip', 'daySkipRow', 'daySkipHint', 'btnClearDay',
+      'streakHabits', 'streakHabitsHint', 'streakActivity',
+      'setStreakGoal', 'streakGoalHint',
       'pausedNote', 'pausedNoteText',
       'pauseModal', 'pauseForm', 'pauseReasons', 'pauseNoteField', 'pauseNote', 'pauseIntro',
       'pauseModalTitle', 'pauseBanner', 'pauseBannerTitle', 'pauseBannerMeta', 'pauseBannerIcon',
@@ -252,24 +257,32 @@ HT.ui = (function () {
     els.streakNum.textContent = dias;
     els.streakChip.dataset.state = riesgo ? 'risk' : 'on';
     els.streakChip.setAttribute('aria-label',
-      dias + (dias === 1 ? ' día seguido' : ' días seguidos') + ' cumpliendo algo' +
+      dias + (dias === 1 ? ' día seguido' : ' días seguidos') + ' cumpliendo' +
       (riesgo ? '. Hoy todavía no' : ''));
-    els.streakChip.title = riesgo
-      ? 'Hoy aún no has cumplido nada'
-      : dias + (dias === 1 ? ' día seguido' : ' días seguidos');
+    els.streakChip.title = streakMessage(todayKey);
   }
 
-  /** El mensaje que explica la racha al tocarla. */
+  /** El mensaje que explica las dos rachas al tocar el contador. */
   function streakMessage(todayKey) {
-    const dias = St.dayStreak(todayKey);
-    if (!dias) return 'Cumple un hábito hoy y empieza la racha.';
+    const habitos = St.dayStreak(todayKey);
+    const actividad = St.activityStreak(todayKey);
+    const meta = St.streakGoalFor(todayKey);
 
-    const base = dias + (dias === 1 ? ' día seguido' : ' días seguidos') +
-      ' cumpliendo al menos un hábito.';
+    const partes = [];
+    partes.push(habitos
+      ? habitos + (habitos === 1 ? ' día cumpliendo' : ' días cumpliendo')
+      : 'Sin racha de cumplimiento');
+    if (actividad) partes.push(actividad + ' registrando');
 
-    return St.streakAtRisk(todayKey)
-      ? base + ' Hoy todavía no: marca uno para no perderla.'
-      : base;
+    const base = partes.join(' · ') + '.';
+
+    if (St.streakAtRisk(todayKey)) {
+      return base + ' Hoy te faltan ' + meta + ' ' +
+        (meta === 1 ? 'hábito' : 'hábitos') + ' para mantenerla.';
+    }
+    return habitos
+      ? base
+      : base + ' Cumple ' + meta + ' ' + (meta === 1 ? 'hábito' : 'hábitos') + ' hoy y empieza.';
   }
 
   /* ── Nivel y rango ────────────────────────────────────────
@@ -318,6 +331,24 @@ HT.ui = (function () {
       ' EXP del nivel ' + info.level + ' · rango ' + info.rank.letter + ', ' + info.rank.name +
       (pend.xp ? ' · ' + fmtNum.format(pend.xp) + ' EXP disponibles hoy' : '')
     );
+  }
+
+  /**
+   * Las dos rachas, juntas y con su regla a la vista. Separadas no se
+   * entenderían: una mide cumplir y la otra aparecer, y el valor está en
+   * verlas al lado para saber cuál de las dos estás fallando.
+   */
+  function renderStreakPair(dateKey) {
+    const hoy = U.todayKey();
+    const meta = St.streakGoalFor(hoy);
+
+    setStat(els.streakHabits, String(St.dayStreak(hoy)));
+    setStat(els.streakActivity, String(St.activityStreak(hoy)));
+
+    els.streakHabitsHint.textContent = meta
+      ? 'Días seguidos con al menos ' + meta + ' ' +
+        (meta === 1 ? 'hábito cumplido' : 'hábitos cumplidos') + '.'
+      : 'Días seguidos cumpliendo el listón del día.';
   }
 
   /**
@@ -1014,32 +1045,124 @@ HT.ui = (function () {
 
   function renderDayExtras(dateKey) {
     const day = St.dayStats(dateKey);
-    const freezes = S.getGame().freezes;
-    const frozen = S.isFrozen(dateKey);
+    const mark = S.getDayMark(dateKey);
 
     // Solo tiene sentido ofrecerlo si ese día quedó algo sin cumplir, y si
     // el usuario no lo ha apagado en Ajustes.
-    const relevant = S.getSettings().showFreeze && day.total > 0 && (frozen || !day.perfect);
+    const relevant = S.getSettings().showFreeze && day.total > 0 && (mark || !day.perfect);
     els.dayActions.hidden = !relevant;
 
     if (relevant) {
-      // Solo la etiqueta: el botón lleva el copo dentro y textContent lo borraría.
-      els.freezeLabel.textContent = frozen ? 'Descongelar día' : 'Congelar día';
-      els.btnFreeze.disabled = !frozen && freezes <= 0;
-      els.btnFreeze.classList.toggle('is-on', frozen);
+      const motivo = mark && mark.reason ? U.dayReasonById(mark.reason) : null;
 
-      els.freezeHint.textContent = frozen
-        ? 'Este día no romperá tus rachas.'
-        : freezes > 0
-          ? 'Te quedan ' + freezes + (freezes === 1 ? ' comodín' : ' comodines') +
-            '. Salvan las rachas de un día flojo.'
-          : 'Sin comodines. Recuperas uno cada semana, hasta 4.';
+      // Solo la etiqueta y el icono: textContent sobre el botón entero
+      // borraría los dos.
+      els.freezeIcon.textContent = motivo ? motivo.icon : mark ? '❄️' : '✎';
+      els.freezeLabel.textContent = mark ? 'Editar la nota del día' : 'Anotar el día';
+      els.btnFreeze.disabled = false;
+      els.btnFreeze.classList.toggle('is-on', !!mark);
+
+      els.freezeHint.textContent = mark
+        ? dayMarkSummary(mark)
+        : 'Di por qué no salió. Anotarlo es gratis; salvar el día cuesta un comodín.';
     }
 
     if (document.activeElement !== els.dayNote) {
       els.dayNote.value = S.getNote(dateKey);
       growField(els.dayNote);
     }
+  }
+
+  /* ── Marcar un día ────────────────────────────────────────── */
+
+  /** El motivo de un día en una línea, con su nota si la lleva. */
+  function dayMarkLabel(mark) {
+    if (!mark) return '';
+    const motivo = mark.reason ? U.dayReasonById(mark.reason) : null;
+    const nombre = motivo ? motivo.name : 'Día salvado';
+    return mark.note ? nombre + ' · ' + mark.note : nombre;
+  }
+
+  function dayMarkSummary(mark) {
+    return dayMarkLabel(mark) + (mark.skip
+      ? ' · no cuenta para las rachas.'
+      : ' · el día sigue contando.');
+  }
+
+  function openDayModal(dateKey) {
+    const mark = S.getDayMark(dateKey);
+    const freezes = S.getGame().freezes;
+
+    els.dayForm.dataset.day = dateKey;
+    els.dayModalTitle.textContent = 'El ' + U.formatLong(U.fromKey(dateKey));
+
+    const frag = document.createDocumentFragment();
+    U.DAY_REASONS.forEach(function (motivo, i) {
+      const label = el('label', { class: 'reason' });
+      const radio = el('input', {
+        type: 'radio', name: 'dayReason', value: motivo.id, class: 'reason__input'
+      });
+      radio.checked = mark ? mark.reason === motivo.id : i === 0;
+
+      label.appendChild(radio);
+      label.appendChild(el('span', { class: 'reason__icon', 'aria-hidden': 'true', text: motivo.icon }));
+      label.appendChild(el('span', { class: 'reason__name', text: motivo.name }));
+      frag.appendChild(label);
+    });
+
+    const legend = $('legend', els.dayReasons);
+    els.dayReasons.textContent = '';
+    if (legend) els.dayReasons.appendChild(legend);
+    els.dayReasons.appendChild(frag);
+
+    // Si venía salvado sin motivo (los días congelados de antes), ninguno
+    // queda marcado y el usuario elige uno ahora si quiere.
+    if (mark && !mark.reason) {
+      U.$$('input[name="dayReason"]', els.dayReasons).forEach(function (r) { r.checked = false; });
+    }
+
+    els.dayReasonNote.value = mark ? mark.note : '';
+    syncDayNote();
+
+    const yaSalvado = !!(mark && mark.skip);
+    els.daySkip.checked = yaSalvado;
+    els.daySkip.disabled = !yaSalvado && freezes <= 0;
+    els.daySkipHint.textContent = yaSalvado
+      ? 'Al quitarlo recuperas el comodín.'
+      : freezes > 0
+        ? 'Te quedan ' + freezes + (freezes === 1 ? ' comodín' : ' comodines') + '.'
+        : 'Sin comodines. Recuperas uno cada semana, hasta 4.';
+
+    els.btnClearDay.hidden = !mark;
+
+    lastFocused = document.activeElement;
+    els.dayModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    const primero = $('.reason__input', els.dayReasons);
+    if (primero) primero.focus();
+  }
+
+  function closeDayModal() {
+    els.dayModal.hidden = true;
+    document.body.style.overflow = '';
+    delete els.dayForm.dataset.day;
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  function syncDayNote() {
+    const marcado = $('input[name="dayReason"]:checked', els.dayReasons);
+    els.dayNoteField.hidden = !marcado || marcado.value !== 'otro';
+  }
+
+  function readDayForm() {
+    const marcado = $('input[name="dayReason"]:checked', els.dayReasons);
+    return {
+      dateKey: els.dayForm.dataset.day || null,
+      reason: marcado ? marcado.value : null,
+      note: els.dayReasonNote.value.trim(),
+      skip: els.daySkip.checked
+    };
   }
 
   /* ── Notas ────────────────────────────────────────────────
@@ -1208,6 +1331,7 @@ HT.ui = (function () {
     setStat(els.statQuests, String(St.totalCompletions()));
     setStat(els.statTrophies, S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length);
     renderAttributes(dateKey);
+    renderStreakPair(dateKey);
     renderAscents();
 
     renderStreakList(dateKey);
@@ -1344,6 +1468,7 @@ HT.ui = (function () {
   function WEEK_MARK(state, parcial) {
     if (state === 'done') return '✓';
     if (state === 'frozen') return '❄';
+    if (state === 'marked') return '·';
     if (parcial) return '•';
     if (state === 'missed') return '✕';
     return '';                      // pendiente y futuro van en blanco
@@ -2565,6 +2690,9 @@ HT.ui = (function () {
     const s = S.getSettings();
     els.setAccent.value = s.accent;
     els.setRest.value = String(s.restSeconds);
+    els.setStreakGoal.value = s.streakGoal;
+    els.streakGoalHint.textContent = 'Hoy tocan ' + St.dayStats(U.todayKey()).total +
+      ' hábitos: necesitas ' + St.streakGoalFor(U.todayKey()) + '.';
     els.setControls.value = s.controls;
     els.setTheme.value = s.theme;
     els.setFontSize.value = s.fontSize;
@@ -3094,6 +3222,8 @@ HT.ui = (function () {
     readExerciseForm: readExerciseForm,
     openPauseModal: openPauseModal, closePauseModal: closePauseModal,
     readPauseForm: readPauseForm, syncPauseNote: syncPauseNote, pauseLabel: pauseLabel,
+    openDayModal: openDayModal, closeDayModal: closeDayModal,
+    readDayForm: readDayForm, syncDayNote: syncDayNote, dayMarkLabel: dayMarkLabel,
     renderDayPicker: renderDayPicker, toggleDayPicker: toggleDayPicker,
     isDayPickerOpen: isDayPickerOpen,
     renderProgress: renderProgress, renderHistory: renderHistory,

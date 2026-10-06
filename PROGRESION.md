@@ -1,285 +1,458 @@
-# Sistema de progresión — XP, niveles y rangos
+# Sistema de progresión
 
-Documento de referencia del sistema de experiencia. El `README.md` lo resume en
-un par de párrafos; esto es el detalle completo, pensado para consultarlo cuando
-haya que tocar la curva, añadir una recompensa o entender por qué la XP no se
-duplica.
+Referencia completa de la EXP, los niveles, los rangos, los atributos, los
+logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
+consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
+qué una racha se ha roto.
 
-Versión de la app al escribirlo: **1.0.0**. Revisado en la **1.6.3** para añadir
-el registro de ascensos.
+Versión documentada: **1.7.2** · esquema de datos **v10**.
 
-> **Pendiente de repasar**: las cifras de XP de la sección 5, la lista de rangos
-> de la 4 y el orden de bloques de la 1 son los de la 1.0.0 y se quedaron atrás
-> con las recalibraciones posteriores. Lo que sí sigue vigente es todo lo
-> estructural: la curva, la cadena de la experiencia y por qué no se duplica.
+Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
+dato y pintan lo que reciben.
 
 ---
 
-## 1. La pantalla Progreso, de arriba abajo
+## 1. La pantalla Progreso
 
-| Orden | Bloque | Qué muestra | ¿Nuevo en 1.0.0? |
-|---|---|---|---|
-| 1 | Panel de nivel | Nivel, rango, barra, XP actual / necesaria, XP restante | **Sí** |
-| 2 | Cuatro fichas | Esta semana, este mes, racha actual, mejor racha | No |
-| 3 | Calendario | Mes o año, coloreado por intensidad de cumplimiento | No |
-| 4 | Evolución | Gráfica día a día o mes a mes, con tabla de datos | No |
-| 5 | Rachas por hábito | Racha actual y récord de cada hábito | No |
-| 6 | Logros | Nueve insignias, bloqueadas o desbloqueadas | No |
+Se abre tocando la chapa de nivel y rango de la cabecera (ya no está en la
+barra de navegación). De arriba abajo:
 
-El panel de nivel se insertó **encima** de lo que ya había. No se quitó ni se
-sustituyó ninguna estadística.
+| # | Bloque | Qué muestra |
+|---|---|---|
+| 1 | Panel de nivel | Nivel, rango, barra de EXP con previsión, EXP del nivel y total |
+| 2 | Estado del jugador | Los cinco atributos (sección 6) |
+| 3 | Tus dos rachas | Cumpliendo y registrando, cada una con su regla (sección 8) |
+| 4 | Cuatro fichas | Racha actual, mejor racha, misiones completadas, logros |
+| 5 | Ascensos | Plegado. Fecha en que alcanzaste cada nivel |
+| 6 | Rachas por hábito | Racha actual y récord de cada hábito |
+| 7 | Días sin | Solo si hay hábitos a evitar: días seguidos sin caer |
+| 8 | Logros | Plegado, con la cuenta en la cabecera (`3/15`) |
 
-### Dentro del panel de nivel
+### El panel de nivel
 
 ```
-                NIVEL
-                  1
-               NOVATO
-        ████████░░░░░░░░░░░░░░
-            125 / 250 XP
-      125 XP para subir de nivel
+                ESTADO
+              NIVEL  7
+            [E]  NOVATO
+     ████████████▒▒▒▒▒▒░░░░░░░░░
+             60 / 450 EXP
+     390 EXP para subir · 1.810 en total
+     +170 EXP si cumples los 4 que faltan hoy
 ```
 
-Nivel y rango se muestran **por separado**, con jerarquías distintas: la cifra
-manda y el rango la acompaña. El rango nunca sustituye al nivel.
+La cifra de EXP cuenta lo mismo que la barra: el avance **dentro del nivel**
+(`60 / 450`), no la EXP total contra la del siguiente nivel. El total va debajo.
+
+El tramo apagado (`▒`) es la **previsión**: dónde quedaría la barra si
+cumplieras todo lo que falta hoy, bono del día incluido. Si lo pendiente se sale
+del nivel, el tramo llega al final y el número real lo da el texto. Lo calcula
+`pendingToday()`.
 
 ---
 
 ## 2. La cadena de la experiencia
 
 ```
-   Acciones que dan XP
-   (hábito, ejercicio, entreno)
+   Acciones que dan EXP
+   (hábito, bono del día, ejercicio, entreno, hito de "evitar")
               │
               ▼
         grantXp()                  ← único punto de entrada  ·  js/app.js
               │
               ▼
-       game.points                 ← lo único que se guarda  ·  localStorage
+       game.points                 ← el acumulador que se guarda
               │
               ▼
-      levelInfo(xp)                ← consulta XP_TABLE y RANKS  ·  js/stats.js
+      levelInfo(xp)                ← XP_TABLE, XP_STEP y RANKS  ·  js/stats.js
               │
      ┌────────┼────────┐
      ▼        ▼        ▼
-   Nivel    Rango   Barra de XP
+   Nivel    Rango   Barra de EXP
 ```
 
-**Del estado presente solo se guarda `game.points`.** El nivel, el rango y el
-porcentaje se calculan al vuelo en cada pintado. Consecuencia práctica: cambiar
-la curva de experiencia no obliga a migrar nada y no puede corromper datos de
-nadie.
+**El nivel y el rango no se guardan.** Se derivan de `game.points` en cada
+pintado. Cambiar la curva no obliga a migrar nada y no puede corromper datos.
 
-La única excepción es `game.levelLog`, y lo es por necesidad: la XP guarda
-*cuánta* llevas, no *cuándo* la ganaste, así que la fecha de un ascenso no se
-puede deducir de nada. Es un dato histórico, no un estado derivado.
+La excepción es `game.levelLog`, y lo es por necesidad: la EXP guarda *cuánta*
+llevas, no *cuándo* la ganaste. La fecha de un ascenso no se puede deducir de
+nada, así que se apunta (sección 7).
 
 ---
 
-## 3. La curva de niveles
+## 3. Qué da EXP
 
-Definida en `js/stats.js`:
+Los valores están en `XP`, en `js/stats.js`. **Toda la EXP acaba en 0 o en 5**:
+los bonos se redondean con `round5()`.
 
-- `XP_TABLE` — los niveles 0 a 9, escritos a mano. **El índice del array es el
-  nivel**: se empieza en el 0, no en el 1.
-- `XP_STEP` (50) — el paso de la progresión a partir de ahí.
+| Acción | EXP |
+|---|---:|
+| Completar un hábito | **20** |
+| Día bueno: cumplir el 80% o más de los hábitos del día | **+25%** de lo ganado en hábitos ese día |
+| Día perfecto: cumplirlos todos | **+50%** de lo ganado en hábitos ese día |
+| Completar un ejercicio (todas sus series) | **10** |
+| Completar todos los ejercicios del día | **+50%** de lo ganado en ejercicios |
+| Cerrar el entrenamiento | **50** |
+| Cumplir un objetivo | 100 — *definido, sin acción que lo dispare* |
 
-| Nivel | XP total | Cuesta | Rango |
-|---:|---:|---:|---|
-| 0 | 0 | — | Novato |
-| 1 | 100 | 100 | Novato |
-| 2 | 250 | 150 | Novato |
-| 3 | 450 | 200 | Novato |
-| 4 | 700 | 250 | Novato |
-| 5 | 1.000 | 300 | Novato |
-| 6 | 1.350 | 350 | Novato |
-| 7 | 1.750 | 400 | Novato |
-| 8 | 2.200 | 450 | Novato |
-| 9 | 2.700 | 500 | Novato |
-| 10 | 3.250 | 550 | Aprendiz |
-| 11 | 3.850 | 600 | Aprendiz |
-| 20 | 11.500 | 1.050 | Combatiente |
-| 30 | 24.750 | 1.550 | Élite |
-| 40 | 43.000 | 2.050 | Maestro |
-| 50 | 66.250 | 2.550 | ??? |
+Los bonos son un porcentaje y no una cantidad fija para que escalen con lo que
+haces: un día perfecto con nueve hábitos vale más que uno con tres. Y tienen dos
+escalones para que fallar un hábito no tire por tierra la jornada entera.
 
-### Por qué hay tabla y fórmula a la vez
+Cerrar el entreno marca además el hábito "Entrenar", que paga sus 20 como
+cualquier otro.
 
-La columna "cuesta" sube siempre de 50 en 50: llegar al nivel *n* cuesta
-`50·(n+1)`. Esa regularidad permite que del nivel 9 en adelante no haga falta
-seguir escribiendo filas:
+### Un día de ejemplo
+
+Con los hábitos de partida tocan **9 al día** de lunes a sábado y 10 el domingo
+(los tres hábitos a evitar no cuentan).
+
+| Día | Cuenta | EXP |
+|---|---|---:|
+| 7 de 9 | 7 × 20 — por debajo del 80%, sin bono | 140 |
+| 8 de 9 | 160 + 25% (40) | 200 |
+| 9 de 9 | 180 + 50% (90) | 270 |
+| 9 de 9 con entreno de 4 ejercicios | 270 + 40 + 20 + 50 | 380 |
+
+### Hábitos a evitar
+
+No dan EXP a diario: su día empieza limpio a las 00:00, así que no hay ningún
+"pasó a cumplido" que premiar. Cobran por aguantar, por hábito:
+
+| Hito | EXP |
+|---|---:|
+| 7 días seguidos sin caer | +50 |
+| 30 días seguidos sin caer | +150 |
+| 100 días seguidos sin caer | +400 |
+
+En `AVOID_MILESTONES`. Se calculan sobre la **mejor racha histórica**, que nunca
+baja, y `game.avoidXpPaid` lleva la cuenta de lo ya cobrado. Un hito no se cobra
+dos veces, y una recaída no retira EXP ya ganada.
+
+---
+
+## 4. La curva de niveles
+
+Se empieza en el **nivel 0**: es la casilla de salida, aún no has ganado nada.
+
+- `XP_TABLE` — EXP total con la que empieza cada nivel del 0 al 9, escrita a
+  mano. El índice del array es el nivel.
+- `XP_STEP` (50) — el paso de la progresión.
+
+Subir al nivel *n* cuesta `50·(n+1)`: 100, 150, 200, 250… La fórmula cerrada
 
 ```
 xpForLevel(n) = 25 · n · (n + 3)
 ```
 
-Esa fórmula **reproduce las diez filas de la tabla al dígito**, así que tabla y
-continuación empalman sin escalón. La tabla se conserva porque es la que se lee
-de un vistazo; la fórmula es la que escala.
+reproduce la tabla al dígito, así que la tabla y la continuación empalman sin
+escalón. La tabla se conserva porque es la que se lee de un vistazo; la fórmula
+es la que escala.
 
-### Por qué se empieza en 0 y no en 1
-
-Porque el nivel 0 es la casilla de salida: aún no has ganado nada. Y de paso
-cuadra los rangos — antes Novato cubría nueve niveles y todos los demás diez;
-ahora todos cubren diez.
+| Nivel | EXP total | Cuesta | Rango |
+|---:|---:|---:|---|
+| 0 | 0 | — | E · Novato |
+| 1 | 100 | 100 | E |
+| 2 | 250 | 150 | E |
+| 5 | 1.000 | 300 | E |
+| 9 | 2.700 | 500 | E |
+| 10 | 3.250 | 550 | D · Aprendiz |
+| 20 | 11.500 | 1.050 | C · Combatiente |
+| 30 | 24.750 | 1.550 | B · Élite |
+| 40 | 43.000 | 2.050 | A · Maestro |
+| 50 | 66.250 | 2.550 | S · Soberano |
+| 60 | 94.500 | 3.050 | SS · Monarca |
+| 70 | 127.750 | 3.550 | SS+ · Monarca supremo |
+| 80 | 166.000 | 4.050 | SSS · Leyenda |
+| 90 | 209.250 | 4.550 | SSS+ · Leyenda eterna |
+| 100 | 257.500 | 5.050 | X · Fuera de escala |
 
 `levelFromXp()` hace el camino inverso: parte de la solución de la ecuación y
-después ajusta con un bucle corto, para que un redondeo de coma flotante nunca
-pueda devolver un nivel que no case con `xpForLevel()`. Comprobado en las 400
-fronteras hasta el nivel 200.
+ajusta con un bucle corto, para que un redondeo de coma flotante nunca devuelva
+un nivel que no case con `xpForLevel()`. Comprobado en las 400 fronteras hasta
+el nivel 200.
 
-### Cambiar la curva
+**Cambiar la curva** es tocar `XP_TABLE` y `XP_STEP`, y nada más.
 
-Se tocan `XP_TABLE` y `XP_STEP`, y nada más. Ninguna vista calcula niveles por su
-cuenta: todas piden `levelInfo(xp)` y pintan lo que devuelve.
+### Ritmo orientativo
+
+Con los hábitos de partida y sin contar los hitos de "evitar":
+
+| Ritmo diario | Rango S (nivel 50) | Rango X (nivel 100) |
+|---|---:|---:|
+| 200 EXP — días buenos | ~330 días | ~3 años y medio |
+| 270 EXP — días perfectos | ~245 días | ~2 años y medio |
+| 380 EXP — perfectos con entreno | ~175 días | ~1 año y 10 meses |
+
+Son cuentas a ritmo constante: cualquier cambio en el número de hábitos las
+mueve.
 
 ---
 
-## 4. Rangos
+## 5. Rangos
 
-| Niveles | Rango |
+| Niveles | Rango | Nombre |
+|---|---|---|
+| 0 – 9 | E | Novato |
+| 10 – 19 | D | Aprendiz |
+| 20 – 29 | C | Combatiente |
+| 30 – 39 | B | Élite |
+| 40 – 49 | A | Maestro |
+| 50 – 59 | S | Soberano |
+| 60 – 69 | SS | Monarca |
+| 70 – 79 | SS+ | Monarca supremo |
+| 80 – 89 | SSS | Leyenda |
+| 90 – 99 | SSS+ | Leyenda eterna |
+| 100 en adelante | X | Fuera de escala |
+
+En `RANKS`. Cada fila tiene `id`, `from`, `letter` y `name`; gana la última cuyo
+`from` no supera el nivel. Añadir un rango es añadir una fila.
+
+Cada rango tiene su color, definido una sola vez en el CSS con
+`[data-rank="…"]` y reutilizado por el panel de nivel, la chapa de la cabecera y
+el historial de ascensos. De E a A es una rampa de calor (cian, verde, ámbar,
+naranja, rojo); de S en adelante se sale de la escala. En SSS+ y X la letra del
+rango late en el panel de nivel.
+
+---
+
+## 6. Atributos
+
+Cinco atributos de estilo RPG, todos de 0 a 100 y **todos sacados de datos
+reales**: si una rama no tiene hábitos, su atributo vale 0 y lo dice.
+
+| Código | Atributo | De dónde sale |
+|---|---|---|
+| STR | Fuerza | Entrenos cerrados en los últimos 30 días (12 = 100) |
+| VIT | Vitalidad | Cumplimiento medio a 30 días de *Salud y bienestar físico* |
+| AGI | Agilidad | Ídem de *Hábitos a evitar* |
+| INT | Inteligencia | Ídem de *Aprendizaje y conocimiento* |
+| SEN | Concentración | Ídem de *Desarrollo personal y mental* |
+
+Debajo de cada barra se enseña de dónde sale el número, para que ninguno parezca
+inventado. En `attributes()`.
+
+---
+
+## 7. Subida de nivel y ascensos
+
+La **detección** vive en `grantXp()`: compara el nivel antes y después de sumar
+y, si ha crecido, llama a `onLevelUp()`. Como toda la EXP entra por ahí, la
+subida se detecta una sola vez y sin depender de la pantalla abierta.
+
+La **presentación** es `UI.showLevelUp()`: un destello en la chapa de la
+cabecera y una ventana a pantalla completa con el nuevo nivel, y el rango si lo
+estrenas justo en ese nivel. Con los efectos apagados o el movimiento reducido
+activado en el sistema, la ventana se sustituye por un aviso. Detección y
+celebración están separadas a propósito.
+
+### El registro de ascensos
+
+`onLevelUp()` apunta la fecha **antes** de celebrar nada, en `game.levelLog`: un
+apunte `{ level, date }` por nivel. Tres reglas lo mantienen honesto:
+
+1. **Solo la primera vez.** La EXP es simétrica —desmarcar retira lo ganado— y se
+   puede cruzar el mismo umbral varias veces. Un nivel ya apuntado no se repite
+   ni se borra.
+2. **Sin huecos.** Si un bono sube dos niveles de golpe, se apuntan los dos con
+   la misma fecha.
+3. **Sin inventar el pasado.** `game.levelLogFrom` es el nivel desde el que el
+   registro es fiable: quien ya tenía nivel antes de la 1.6.3 empieza a contar
+   desde él, y la tarjeta lo dice en vez de disimularlo.
+
+---
+
+## 8. Rachas
+
+Hay **tres tipos de racha**, y conviene no mezclarlos.
+
+### La racha de cumplimiento — `dayStreak()`
+
+La del contador `◆` de la cabecera. **Días seguidos cumpliendo al menos el
+listón** de hábitos.
+
+El listón se elige en *Ajustes → La pantalla Hoy*:
+
+| Ajuste | Cuántos hacen falta |
 |---|---|
-| 0 – 9 | Novato |
-| 10 – 19 | Aprendiz |
-| 20 – 29 | Combatiente |
-| 30 – 39 | Élite |
-| 40 – 49 | Maestro |
-| 50 en adelante | ??? |
+| 1, 2 o 3 hábitos | Ese número fijo |
+| Un cuarto del día | `ceil(total / 4)` |
+| La mitad del día | `ceil(total / 2)` |
 
-En `RANKS` (`js/stats.js`). Cada fila tiene `id`, `from` y `name`; gana la última
-cuyo `from` no supera el nivel. Añadir un rango es añadir una fila — y el `id`
-está ahí para poder colgarle después un color o un título propio.
+Por defecto, **2**. Los modos proporcionales se calculan sobre los hábitos que
+tocaban **ese** día, porque dos de nueve un miércoles y dos de tres un domingo no
+son el mismo esfuerzo. Con 9 hábitos, un cuarto son 3 y la mitad son 5. El
+listón nunca pide más de los que hay ni menos de uno. En `streakGoalFor()`.
+
+### La racha de registro — `activityStreak()`
+
+**Días seguidos apuntando algo**, aunque el día fuera malo. Cuenta cualquier
+registro:
+
+- marcar un hábito, apuntar una cantidad o un fallo de un hábito a evitar,
+- apuntar una serie de entrenamiento,
+- escribir una nota del día,
+- **o anotar el motivo de por qué el día no salió.**
+
+Ese último punto es lo que la hace valiosa. Un día malo, contado con honestidad,
+**mantiene la racha de registro y rompe la de cumplimiento**. No premia fingir:
+premia aparecer y decir la verdad. Como la de cumplimiento sigue siendo
+estricta, las dos juntas dicen cosas distintas en vez de repetirse.
+
+### Reglas comunes a las dos
+
+- **Hoy no corta.** Hasta medianoche sigues a tiempo: si hoy aún no llegas, la
+  racha se cuenta desde ayer.
+- **Los días sin nada programado son neutros.** Ni suman ni rompen. Romper una
+  racha por un domingo sin hábitos sería castigarte por tu propio calendario.
+- **Los días salvados con comodín** son neutros para la de cumplimiento. Para la
+  de registro cuentan a favor: salvar el día ya es apuntarlo.
+- **Los hábitos a evitar no cuentan** para el listón: están cumplidos desde las
+  00:00 y harían que la racha corriera sola.
+- **Los hábitos en pausa** no tocan esos días, así que tampoco entran en el
+  total.
+
+### En peligro — `streakAtRisk()`
+
+El contador `◆` pasa de cian a **rojo** y su borde late cuando **hoy todavía no
+llegas al listón** y la racha de cumplimiento tiene **3 días o más**. Por debajo
+de 3 no avisa: no hay nada que valga la pena defender. Al tocarlo, el aviso dice
+las dos rachas y cuántos hábitos faltan hoy.
+
+Con la racha a 0, el contador desaparece y vuelve el rombo `◈` de la marca.
+
+### Las rachas por hábito — `currentStreak()` y `bestStreak()`
+
+Cada hábito tiene la suya, que se ve en su ficha y en *Rachas por hábito*. Mismas
+reglas de perdón: los días que no le tocan y los días salvados no la cortan, y
+hoy tampoco.
+
+**Ojo con esto**: las fichas *Racha actual* y *Mejor racha* de Progreso, y los
+logros *Racha de 7 / 30 días* y *Centurión*, miran **la mejor racha de un solo
+hábito**, no las rachas generales de arriba. `game.bestStreak` guarda ese
+récord. Los hábitos a evitar quedan fuera: tienen su propio bloque, *Días sin*.
 
 ---
 
-## 5. Qué da XP
+## 9. Anotar el día y los comodines
 
-| Acción | XP | Estado |
-|---|---:|---|
-| Completar un hábito | +10 | Conectado |
-| Día perfecto (todos los hábitos) | +5 | Conectado |
-| Completar un ejercicio | +10 | Conectado |
-| Completar todos los ejercicios del día | +25 | Conectado |
-| Cerrar un entrenamiento | +50 | Conectado |
-| Cumplir un objetivo | +100 | **Pendiente** |
+El botón *Anotar el día* de la pantalla Hoy aparece cuando quedó algo sin
+cumplir. Abre un diálogo con seis motivos —🤒 Enfermedad · ✈️ Viaje · 💼 Día
+imposible · 🪫 Sin energía · 🎉 Imprevisto · ✏️ Otro, con texto libre— y una
+casilla: *Que este día no cuente*.
 
-Los malos hábitos (tipo `avoid`) **no dan XP a diario**: su día empieza limpio,
-así que no hay ningún "pasó a cumplido" que premiar. Cobran por aguantar:
+**Son dos cosas separadas a propósito:**
 
-| Hito | XP |
-|---|---:|
-| 7 días limpio | +50 |
-| 30 días limpio | +150 |
-| 100 días limpio | +400 |
+| | Precio | Efecto |
+|---|---|---|
+| Anotar el motivo | **Gratis, sin límite** | El día sigue contando como fallado; cuenta para la racha de registro |
+| Que el día no cuente | **Un comodín** | El día queda neutro para la racha de cumplimiento y las de cada hábito |
 
-En `AVOID_MILESTONES`. Se calculan sobre la **mejor racha histórica**, que nunca
-baja, y `game.avoidXpPaid` lleva la cuenta de lo ya cobrado. De ahí salen dos
-garantías: un hito no se puede cobrar dos veces, y una recaída no retira XP que
-ya te habías ganado.
+Si salvar el día fuera gratis, siempre habría un motivo y la racha dejaría de
+medir nada en dos semanas.
 
-Los valores viven en `XP`, en `js/stats.js`. Los de hábito y día perfecto ya
-existían desde la v1 con esas cifras y se mantienen para que la XP acumulada
-siga significando lo mismo.
+**Los comodines** viven en `game.freezes`: se gana **uno por semana**, cada
+lunes, hasta un máximo de **cuatro**. Si no abres la app en un mes, al volver
+recuperas los cuatro de golpe, no uno. Quitar la marca de un día salvado
+devuelve el comodín. Sin comodines, el motivo se guarda igual y el día sigue
+contando, y la app lo dice.
 
-### El pendiente
+**El aviso de ayer.** Al arrancar, si ayer quedó por debajo del listón y no
+anotaste por qué, sale un aviso con un botón para hacerlo. Una sola vez, sin
+insistir.
 
-No existe en la app ningún concepto de "objetivo" distinto de la meta de un
-hábito, que ya paga sus 10. El valor está definido en `XP.goal` y conectarlo será
-una línea — `grantXp(St.XP.goal)` — en cuanto decidamos qué acción lo dispara.
+**En la rejilla de la semana**: `✓` cumplido, `·` fallado con motivo, `❄`
+salvado con comodín, `✕` fallado sin explicación.
+
+**Datos antiguos.** Hasta la 1.7.1 un día congelado se guardaba como `true`.
+Desde la 1.7.2 se lee como *salvado sin motivo* — que es exactamente lo que
+significaba — y sigue salvado.
 
 ---
 
-## 6. Por qué la XP no se puede duplicar
+## 10. Logros
 
-Ninguna acción "paga" por sí misma. Lo que paga es **la diferencia** entre el
+Quince, en `ACHIEVEMENTS`. Se evalúan en `earnedAchievements()` cada vez que
+cambia algo y **no se pierden** una vez ganados (salvo con *Reiniciar
+progresión*).
+
+| | Logro | Condición |
+|---|---|---|
+| 🌱 | Primer despertar | Completar el primer hábito |
+| ⚔️ | Cien misiones | 100 hábitos completados |
+| 🏹 | Mil misiones | 1.000 hábitos completados |
+| 🔥 | Racha de 7 días | Un mismo hábito, 7 días seguidos |
+| 🏔️ | Racha de 30 días | Un mismo hábito, 30 días seguidos |
+| 💎 | Centurión | Un mismo hábito, 100 días seguidos |
+| ⭐ | Día impecable | Cumplir todos los hábitos de hoy |
+| 🏆 | Semana impecable | Últimos 7 días perfectos, con al menos 5 días con hábitos |
+| 🔰 | Primer ascenso | Rango D (nivel 10) |
+| 👑 | Soberano | Rango S (nivel 50) |
+| 🌌 | Fuera de escala | Rango X (nivel 100) |
+| 🗂️ | Archimaestro | Crear 10 hábitos (los de partida no cuentan) |
+| ⚡ | Diez mil de EXP | 10.000 de EXP acumulada |
+| 📝 | Cronista | 10 notas de día |
+| 🧭 | Sin faltar un día | 90 días seguidos registrando algo |
+
+*Misiones* son veces que se ha completado un hábito, sin contar los de evitar:
+sus días limpios pasan solos y ahogarían el número real de cosas hechas.
+
+*Sin faltar un día* es el único logro que se gana también en los días malos.
+
+**Añadir un logro** son dos pasos: una entrada en `ACHIEVEMENTS` y su condición
+en `earnedAchievements()`. El `id` no debe cambiar nunca: es lo que está guardado
+en `game.achievements`.
+
+---
+
+## 11. Por qué la EXP no se puede duplicar
+
+Ninguna acción paga por sí misma. Lo que paga es **la diferencia** entre el
 estado de antes y el de después:
 
-- `withScoring()` — hábitos. Compara si el hábito estaba cumplido y si el día era
-  perfecto, antes y después.
-- `withWorkoutScoring()` — ejercicios. Compara cuántos ejercicios estaban
-  completos, si lo estaban todos y si la sesión estaba cerrada.
+- `withScoring()` — hábitos. Compara si el hábito estaba cumplido y el bono del
+  día, antes y después.
+- `withWorkoutScoring()` — ejercicios. Compara cuántos estaban completos, el
+  bono de todos los ejercicios y si la sesión estaba cerrada.
 
 De ahí salen tres garantías:
 
 1. Repetir una acción ya cumplida vale 0. Una serie extra sobre un ejercicio
    completo no suma.
-2. Deshacer devuelve exactamente lo que dio. Reabrir un entreno resta los mismos
-   60 que dio al cerrarlo.
+2. Deshacer devuelve exactamente lo que dio, bonos incluidos.
 3. Volver a abrir una pantalla no cambia ningún estado, así que no paga nada.
 
 Sin esto, marcar y desmarcar en bucle sería una máquina de fabricar niveles.
 
-### Comprobado
-
-| Prueba | Resultado |
-|---|---|
-| Reabrir Progreso 3 veces seguidas | 0 XP |
-| Serie extra sobre un ejercicio ya completo | 0 XP |
-| Quitar la serie que completó un ejercicio | −10 XP |
-| Completar los 4 ejercicios de una rutina | 40 + 25 = 65 XP |
-| Cerrar entreno / reabrir / cerrar | +60 / −60 / +60 |
-| Tabla de niveles frente a la fórmula | 10 de 10 exactas |
-| Inversa XP → nivel en cada frontera hasta el 200 | 400 de 400 |
+**Lo que no da EXP, a propósito:** anotar el motivo de un día malo. Pagaría por
+declarar días malos y acabarías inventándolos. Su recompensa es que la racha de
+registro sobrevive.
 
 ---
 
-## 7. Subida de nivel
+## 12. Reiniciar la progresión
 
-La **detección** vive en `grantXp()`: compara el nivel antes y después de sumar,
-y si ha crecido llama a `onLevelUp()`. Como toda la XP entra por ahí, la subida
-se detecta una sola vez y sin depender de qué pantalla esté abierta.
-
-La **presentación** es `UI.showLevelUp()`: aviso, destello en la chapa de la
-cabecera y confeti si los efectos están activos. Están separadas a propósito —
-cambiar la celebración no toca la regla de cuándo se ha subido.
-
-### El registro de ascensos (1.6.3)
-
-`onLevelUp()` apunta la fecha antes de celebrar nada, en `game.levelLog`: un
-apunte `{ level, date }` por nivel, que Progreso enseña plegado bajo *Ascensos*.
-
-Tres reglas lo mantienen honesto:
-
-1. **Solo la primera vez.** La XP es simétrica —desmarcar un hábito la retira—,
-   así que se puede cruzar el mismo umbral varias veces. Un nivel ya apuntado no
-   se repite ni se borra.
-2. **Sin huecos.** Si un bonus grande sube dos niveles de una tacada, se apuntan
-   los dos con la misma fecha, en vez de dejar un nivel sin registrar.
-3. **Sin inventar el pasado.** `game.levelLogFrom` guarda el nivel desde el que
-   el registro es fiable. La app lo fija al arrancar por primera vez con esta
-   versión, con el nivel que ya tuviera el usuario, para que la siguiente subida
-   no rellene de golpe fechas que nunca se guardaron. Cuando vale más de 0, la
-   tarjeta lo dice en vez de disimularlo.
-
-`resetProgress()` lo vacía junto con la XP: sin nivel, las fechas contarían una
-historia que ya no existe.
+*Ajustes → Reiniciar progresión* (`resetProgress()`) pone a cero la EXP, los
+logros, el récord de racha, la EXP cobrada por hitos de "evitar" y el registro
+de ascensos. **No toca** los hábitos, su histórico, las notas, las marcas de día
+ni los entrenos — es la diferencia con *Borrar todo*.
 
 ---
 
-## 8. Migración desde versiones anteriores
-
-`game.points` ya era un acumulador de experiencia desde la v1, así que se
-reutiliza tal cual: **cero migración, cero riesgo de pérdida**.
-
-Lo que sí cambia es la curva, y además la numeración empieza en 0. Un usuario
-que venía de antes verá un nivel más bajo que el que tenía: la curva vieja daba
-el nivel 2 a los 50 puntos, y ahora con 50 de XP se sigue en el nivel 0.
-
-**No se pierde XP** — solo se reinterpreta. Se decidió así antes que inventar
-una conversión que falsease el historial. Y como el nivel no se guarda, la
-próxima vez que cambiemos la curva pasará exactamente lo mismo: números
-distintos, mismos datos.
-
----
-
-## 9. Dónde está cada cosa
+## 13. Dónde está cada cosa
 
 | Qué | Dónde |
 |---|---|
-| Curva, rangos y tabla de recompensas | `js/stats.js`, sección *Niveles y rangos* |
-| Reparto de XP y detección de subida | `js/app.js`, `grantXp()` |
-| Almacenamiento (`game.points`) | `js/store.js` |
-| Registro de ascensos | `js/store.js`, `recordLevelUp()` · `js/ui.js`, `renderAscents()` |
-| Pintado del panel y celebración | `js/ui.js`, `renderLevelPanel()` y `showLevelUp()` |
-| Marcado del panel | `index.html`, dentro de `#view-progress` |
-| Estilos | `css/styles.css`, sección 8d |
+| Tabla de EXP, bonos y previsión | `js/stats.js` — `XP`, `dayBonus()`, `exerciseBonus()`, `pendingToday()` |
+| Curva y rangos | `js/stats.js` — `XP_TABLE`, `XP_STEP`, `xpForLevel()`, `levelFromXp()`, `RANKS` |
+| Atributos | `js/stats.js` — `attributes()` |
+| Rachas generales | `js/stats.js` — `dayStreak()`, `activityStreak()`, `streakGoalFor()`, `streakAtRisk()` |
+| Rachas por hábito | `js/stats.js` — `currentStreak()`, `bestStreak()`, `topStreak()` |
+| Hitos de "evitar" | `js/stats.js` — `AVOID_MILESTONES` |
+| Logros | `js/stats.js` — `ACHIEVEMENTS`, `earnedAchievements()` |
+| Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withWorkoutScoring()`, `onLevelUp()` |
+| Marcas de día y comodines | `js/store.js` — `setDayMark()`, `clearDayMark()`, `isFrozen()`, `refillFreezes()` |
+| Registro de ascensos | `js/store.js` — `recordLevelUp()` · `js/ui.js` — `renderAscents()` |
+| Pintado de Progreso | `js/ui.js` — `renderProgress()`, `renderLevelPanel()`, `renderStreakPair()` |
+| Contador de la cabecera | `js/ui.js` — `renderStreakChip()`, `streakMessage()` |
+| Motivos de un día | `js/utils.js` — `DAY_REASONS` |
+| Estilos del panel de sistema | `css/styles.css`, sección 8d |

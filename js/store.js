@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 9;
+  const VERSION = 10;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -32,6 +32,10 @@ HT.store = (function () {
      se miraba y ya. Los tramos cortos salieron en la 1.6.8. */
   const REST_SECONDS = [0, 90, 120, 150, 180, 240, 300];
   const DEFAULT_REST = 150;
+  /* Cuántos hábitos hay que cumplir para que el día sostenga la racha.
+     'half' y 'quarter' se calculan sobre los que tocaban ESE día: dos de
+     nueve un miércoles y dos de tres un domingo no son el mismo esfuerzo. */
+  const STREAK_GOALS = ['1', '2', '3', 'half', 'quarter'];
   const MAX_SETS = 20;
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
@@ -203,6 +207,7 @@ HT.store = (function () {
         effects: true, controls: 'compact',
         theme: 'dark', fontSize: 'normal',
         hideDone: true, showBadges: true, backupDays: 14, restSeconds: DEFAULT_REST,
+        streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true
       },
       habits: habits,
@@ -489,6 +494,25 @@ HT.store = (function () {
     return out.slice(-MAX_LEVEL_LOG);   // si hay que recortar, sobran los niveles bajos
   }
 
+  /**
+   * Marca de un día: por qué no salió y si cuenta o no.
+   *   reason — id del catálogo, o null si se salvó sin dar motivo
+   *   note   — texto libre, solo tiene sentido con reason 'otro'
+   *   skip   — true si ese día no cuenta para las rachas (cuesta comodín)
+   */
+  function cleanDayMark(raw) {
+    if (raw === true) return { reason: null, note: '', skip: true };
+    if (!raw || typeof raw !== 'object') return null;
+
+    const reason = U.dayReasonById(raw.reason) ? raw.reason : null;
+    const skip = raw.skip === true;
+
+    // Sin motivo y sin salvar no hay nada que guardar.
+    if (!reason && !skip) return null;
+
+    return { reason: reason, note: cleanName(raw.note, '').slice(0, 80), skip: skip };
+  }
+
   function cleanState(raw) {
     if (!raw || typeof raw !== 'object') throw new Error('estado no es un objeto');
 
@@ -548,6 +572,7 @@ HT.store = (function () {
         // valores ya no existen y no hay a qué acercarlos sin inventar.
         restSeconds: REST_SECONDS.indexOf(Number(s.restSeconds)) >= 0
           ? Number(s.restSeconds) : DEFAULT_REST,
+        streakGoal: STREAK_GOALS.indexOf(s.streakGoal) >= 0 ? s.streakGoal : '2',
         showDayBar: s.showDayBar !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false
@@ -557,7 +582,10 @@ HT.store = (function () {
       notes: cleanByDate(raw.notes, function (v) {
         return typeof v === 'string' && v.trim() ? v.slice(0, MAX_NOTE) : null;
       }),
-      frozen: cleanByDate(raw.frozen, function (v) { return v === true ? true : null; }),
+      // Marcas de día. Hasta la v9 era `true` y punto; desde la v10 guarda
+      // el motivo. El `true` antiguo se lee como "salvado sin motivo", que
+      // es exactamente lo que significaba.
+      frozen: cleanByDate(raw.frozen, cleanDayMark),
       routines: routines,
       exercises: exercises,
       sessions: cleanByDate(raw.sessions, function (v) { return cleanSession(v, exerciseIds); }),
@@ -912,8 +940,14 @@ HT.store = (function () {
     return state.notes[dateKey] || '';
   }
 
+  /**
+   * ¿Ese día queda fuera de las rachas? Es la única puerta por la que el
+   * resto de la app pregunta por esto, así que cambiar lo que se guarda
+   * debajo no obliga a tocar los veinte sitios que lo consultan.
+   */
   function isFrozen(dateKey) {
-    return state.frozen[dateKey] === true;
+    const mark = state.frozen[dateKey];
+    return !!(mark && mark.skip);
   }
 
   /* ── Escritura: hábitos ───────────────────────────────────── */
@@ -1023,25 +1057,58 @@ HT.store = (function () {
     return clean;
   }
 
-  /* ── Comodines de racha ───────────────────────────────────
-     Congelar un día lo vuelve neutro: no cuenta como cumplido
-     pero tampoco corta la racha. Se gastan de uno en uno y se
-     recuperan al descongelar. ─────────────────────────────── */
+  /* ── Marcar un día ────────────────────────────────────────
+     Dos cosas que antes iban pegadas y ahora van sueltas:
 
-  function freezeDay(dateKey) {
-    if (!U.isValidKey(dateKey) || isFrozen(dateKey)) return false;
-    if (state.game.freezes <= 0) return false;
+       · El MOTIVO es gratis e ilimitado. Solo anota por qué el día no
+         salió, y el día sigue contando como fallado.
+       · Que el día NO CUENTE cuesta un comodín, uno por semana y cuatro
+         como mucho. Es lo que mantiene viva la racha, porque motivo hay
+         siempre y si salvar el día fuera gratis no mediría nada.
+     ──────────────────────────────────────────────────────── */
 
-    state.frozen[dateKey] = true;
-    state.game.freezes--;
-    commit('freeze:change', dateKey);
-    return true;
+  /** La marca completa de un día, o null si no tiene. */
+  function getDayMark(dateKey) {
+    return state.frozen[dateKey] || null;
   }
 
-  function unfreezeDay(dateKey) {
-    if (!isFrozen(dateKey)) return false;
+  /**
+   * Guarda el motivo y, si se pide, gasta un comodín para que el día no
+   * cuente. Devuelve la marca guardada; `skip` puede volver en false si se
+   * pidió salvar el día y no quedaban comodines.
+   */
+  function setDayMark(dateKey, reason, note, skip) {
+    if (!U.isValidKey(dateKey)) return null;
+
+    const antes = getDayMark(dateKey);
+    const eraSkip = !!(antes && antes.skip);
+    let quiereSkip = skip === true;
+
+    // El comodín solo se cobra al pasar de "cuenta" a "no cuenta".
+    if (quiereSkip && !eraSkip && state.game.freezes <= 0) quiereSkip = false;
+
+    const limpia = cleanDayMark({ reason: reason, note: note, skip: quiereSkip });
+
+    if (!limpia) {
+      clearDayMark(dateKey);
+      return null;
+    }
+
+    if (quiereSkip && !eraSkip) state.game.freezes--;
+    if (!quiereSkip && eraSkip) state.game.freezes = Math.min(MAX_FREEZES, state.game.freezes + 1);
+
+    state.frozen[dateKey] = limpia;
+    commit('freeze:change', dateKey);
+    return limpia;
+  }
+
+  /** Quita la marca entera. Si el día estaba salvado, devuelve el comodín. */
+  function clearDayMark(dateKey) {
+    const antes = getDayMark(dateKey);
+    if (!antes) return false;
+
+    if (antes.skip) state.game.freezes = Math.min(MAX_FREEZES, state.game.freezes + 1);
     delete state.frozen[dateKey];
-    state.game.freezes = Math.min(MAX_FREEZES, state.game.freezes + 1);
     commit('freeze:change', dateKey);
     return true;
   }
@@ -1248,6 +1315,7 @@ HT.store = (function () {
         ? Number(next.backupDays) : 14,
       restSeconds: REST_SECONDS.indexOf(Number(next.restSeconds)) >= 0
         ? Number(next.restSeconds) : DEFAULT_REST,
+      streakGoal: STREAK_GOALS.indexOf(next.streakGoal) >= 0 ? next.streakGoal : '2',
       showDayBar: next.showDayBar !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false
@@ -1386,7 +1454,8 @@ HT.store = (function () {
     isPausedOn: isPausedOn, pauseInfo: pauseInfo,
     pauseHabit: pauseHabit, resumeHabit: resumeHabit,
     setLog: setLog, toggleCheck: toggleCheck, addQuantity: addQuantity, toggleSlot: toggleSlot,
-    setNote: setNote, freezeDay: freezeDay, unfreezeDay: unfreezeDay,
+    setNote: setNote,
+    getDayMark: getDayMark, setDayMark: setDayMark, clearDayMark: clearDayMark,
 
     getWorkout: getWorkout, getRoutines: getRoutines, getRoutine: getRoutine,
     getExercises: getExercises, getExercise: getExercise,

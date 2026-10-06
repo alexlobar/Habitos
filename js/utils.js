@@ -22,8 +22,8 @@ HT.utils = (function () {
      otro sitio donde aparece es CACHE en sw.js, porque un service worker
      no puede leer este archivo; si se desincronizan, Ajustes lo avisa en
      vez de callarse. ─────────────────────────────────────── */
-  const VERSION = '1.7.1';
-  const BUILD_DATE = '2026-10-01';
+  const VERSION = '1.7.2';
+  const BUILD_DATE = '2026-10-06';
 
   /* ── Colores predeterminados ──────────────────────────────
      Catálogo de acentos. Hoy solo se usa el primero, pero la tabla ya
@@ -74,6 +74,25 @@ HT.utils = (function () {
 
   function pauseReasonById(id) {
     return PAUSE_REASONS.filter(function (r) { return r.id === id; })[0] || null;
+  }
+
+  /* ── Motivos de un día flojo ──────────────────────────────
+     Por qué un día no salió. Anotarlo es gratis y sin límite: es
+     información sobre ti y no debería tener precio. Lo que sigue
+     costando un comodín es que el día NO CUENTE — si salvar el día
+     fuera gratis, siempre hay un motivo y la racha dejaría de
+     significar nada en dos semanas. ──────────────────────────── */
+  const DAY_REASONS = [
+    { id: 'enfermedad', name: 'Enfermedad',     icon: '🤒' },
+    { id: 'viaje',      name: 'Viaje',          icon: '✈️' },
+    { id: 'imposible',  name: 'Día imposible',  icon: '💼' },
+    { id: 'energia',    name: 'Sin energía',    icon: '🪫' },
+    { id: 'imprevisto', name: 'Imprevisto',     icon: '🎉' },
+    { id: 'otro',       name: 'Otro',           icon: '✏️' }
+  ];
+
+  function dayReasonById(id) {
+    return DAY_REASONS.filter(function (r) { return r.id === id; })[0] || null;
   }
 
   const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
@@ -268,6 +287,7 @@ HT.utils = (function () {
     ACCENTS: ACCENTS, DEFAULT_ACCENT: DEFAULT_ACCENT, accentById: accentById,
     CATEGORIES: CATEGORIES, categoryById: categoryById,
     PAUSE_REASONS: PAUSE_REASONS, pauseReasonById: pauseReasonById,
+    DAY_REASONS: DAY_REASONS, dayReasonById: dayReasonById,
     toKey: toKey, fromKey: fromKey, isValidKey: isValidKey, todayKey: todayKey,
     addDays: addDays, addDaysKey: addDaysKey, daysBetween: daysBetween,
     startOfWeek: startOfWeek, startOfMonth: startOfMonth, daysInMonth: daysInMonth,

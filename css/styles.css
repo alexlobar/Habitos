@@ -253,43 +253,44 @@ svg { display: block; }
 .brand__mark { flex: none; color: var(--accent-text); font-size: var(--fs-xl); line-height: 1; }
 
 /* Contador de constancia. Ocupa el hueco del rombo, así que no añade ni un
-   píxel de ancho a una fila que en el móvil ya va justa. */
+   píxel de ancho a una fila que en el móvil ya va justa.
+   Cian, monoespaciada y esquinas rectas: el lenguaje del System, no el de
+   una app de rachas cualquiera. */
 .streak-chip {
+  --chip: #46dcff;
   display: flex;
   flex: none;
   align-items: center;
-  gap: 3px;
-  padding: 2px var(--sp-2) 2px 5px;
-  border: 1px solid color-mix(in srgb, var(--streak) 45%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--streak) 14%, transparent);
-  color: var(--streak);
+  gap: 4px;
+  padding: 2px var(--sp-2) 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--chip) 50%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--chip) 12%, transparent);
+  color: var(--chip);
   font: inherit;
   cursor: pointer;
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
-.streak-chip:hover { background: color-mix(in srgb, var(--streak) 24%, transparent); }
-.streak-chip__icon { font-size: var(--fs-sm); line-height: 1; }
+.streak-chip:hover { background: color-mix(in srgb, var(--chip) 22%, transparent); }
+.streak-chip__icon { font-size: var(--fs-xs); line-height: 1; }
 .streak-chip__num {
+  font-family: var(--sys-mono);
   font-size: var(--fs-sm);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-/* En juego: hoy todavía no has cumplido nada y hay racha que perder. */
-.streak-chip[data-state="risk"] {
-  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
-  background: color-mix(in srgb, var(--warning) 14%, transparent);
-  color: var(--warning);
-}
-.streak-chip[data-state="risk"] .streak-chip__icon { opacity: .55; }
+/* En juego: hoy todavía no llegas al listón y hay racha que perder.
+   Rojo y no ámbar porque en el System fallar la misión diaria no es un
+   aviso amable. */
+.streak-chip[data-state="risk"] { --chip: #ff5c7a; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .streak-chip[data-state="risk"] { animation: streak-pulse 2.8s var(--ease) infinite; }
+  .streak-chip[data-state="risk"] { animation: streak-pulse 2.6s var(--ease) infinite; }
 }
 @keyframes streak-pulse {
-  0%, 100% { border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
-  50%      { border-color: color-mix(in srgb, var(--warning) 20%, transparent); }
+  0%, 100% { border-color: color-mix(in srgb, var(--chip) 60%, transparent); }
+  50%      { border-color: color-mix(in srgb, var(--chip) 18%, transparent); }
 }
 
 /* El día, en grande y en el sitio donde antes estaba el nombre de la app.
@@ -1348,6 +1349,44 @@ button.heat:disabled:hover { transform: none; }
 }
 .session__hint { flex: 1; min-width: 12rem; font-size: var(--fs-xs); color: var(--text-muted); }
 
+/* ── Las dos rachas ───────────────────────────────────────
+   Una al lado de la otra a propósito: separadas no se entienden. Una
+   mide cumplir y la otra aparecer, y lo útil es ver cuál fallas. ──── */
+.streak-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+.streak-pair__item {
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.streak-pair__value {
+  font-family: var(--sys-mono);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.03em;
+}
+.streak-pair__label {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.streak-pair__hint {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* La casilla de "que no cuente" dentro del diálogo del día. */
+.day-skip { margin-bottom: var(--sp-4); cursor: pointer; }
+.day-skip__box { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+.day-skip__box:disabled { opacity: .4; cursor: not-allowed; }
+
 /* ── Notas ────────────────────────────────────────────────
    Lo escrito manda: la fecha y el resultado del día son el marco, no el
    contenido. Por eso el texto va a tamaño de lectura y lo demás en
@@ -1709,6 +1748,12 @@ button.week-cell:disabled:hover { transform: none; }
 .week-cell[data-state="done"] { color: var(--bg); }
 .week-cell[data-state="missed"] { color: var(--danger); }
 .week-cell[data-state="frozen"] { color: var(--frost); font-size: 10px; }
+/* Fallado pero con motivo apuntado: ni el hueco mudo del fallo ni el
+   indulto del comodín. */
+.week-cell[data-state="marked"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 50%, transparent);
+  color: var(--warning);
+}
 /* A medias: el relleno ya dice cuánto, el punto dice que hay algo. */
 .week-cell[data-partial="true"] {
   color: var(--text);

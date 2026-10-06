@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="1.7.1">
+<html lang="es" data-theme="dark" data-build="1.7.2">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -36,7 +36,7 @@
           <span class="brand__mark" id="brandMark" aria-hidden="true">◈</span>
 
           <button type="button" class="streak-chip" id="streakChip" hidden>
-            <span class="streak-chip__icon" aria-hidden="true">🔥</span>
+            <span class="streak-chip__icon" aria-hidden="true">◆</span>
             <span class="streak-chip__num" id="streakNum">0</span>
           </button>
 
@@ -124,8 +124,8 @@
 
         <div class="day-actions" id="dayActions" hidden>
           <button type="button" class="btn btn--frost" id="btnFreeze">
-            <span class="btn__snow" aria-hidden="true">❄️</span>
-            <span id="freezeLabel">Congelar día</span>
+            <span class="btn__snow" id="freezeIcon" aria-hidden="true">✎</span>
+            <span id="freezeLabel">Anotar el día</span>
           </button>
           <p class="day-actions__hint" id="freezeHint"></p>
         </div>
@@ -163,7 +163,8 @@
             <li><span class="week-cell" data-level="2" data-partial="true" data-mark="•" aria-hidden="true"></span> A medias</li>
             <li><span class="week-cell" data-level="0" data-state="pending" aria-hidden="true"></span> Pendiente</li>
             <li><span class="week-cell" data-level="0" data-state="missed" data-mark="✕" aria-hidden="true"></span> Sin cumplir</li>
-            <li><span class="week-cell" data-level="0" data-state="frozen" data-mark="❄" aria-hidden="true"></span> Congelado</li>
+            <li><span class="week-cell" data-level="0" data-state="frozen" data-mark="❄" aria-hidden="true"></span> Salvado</li>
+            <li><span class="week-cell" data-level="0" data-state="marked" data-mark="·" aria-hidden="true"></span> Con motivo</li>
             <li><span class="week-cell" data-level="0" data-state="off" data-mark="–" aria-hidden="true"></span> No toca</li>
           </ul>
         </article>
@@ -398,6 +399,25 @@
             </p>
           </article>
 
+          <article class="card sys-streaks" aria-labelledby="streaksPairTitle">
+            <p class="sys-win__tag" aria-hidden="true">Constancia</p>
+            <header class="card__head">
+              <h2 class="card__title" id="streaksPairTitle">Tus dos rachas</h2>
+            </header>
+            <ul class="streak-pair">
+              <li class="streak-pair__item">
+                <p class="streak-pair__value" id="streakHabits">—</p>
+                <p class="streak-pair__label">Cumpliendo</p>
+                <p class="streak-pair__hint" id="streakHabitsHint">—</p>
+              </li>
+              <li class="streak-pair__item">
+                <p class="streak-pair__value" id="streakActivity">—</p>
+                <p class="streak-pair__label">Registrando</p>
+                <p class="streak-pair__hint">Días seguidos apuntando algo, aunque fuera un mal día.</p>
+              </li>
+            </ul>
+          </article>
+
           <ul class="stat-grid" aria-label="Resumen de estadísticas">
             <li class="stat"><p class="stat__value" id="statStreak">—</p><p class="stat__label">Racha actual</p></li>
             <li class="stat"><p class="stat__value" id="statBest">—</p><p class="stat__label">Mejor racha</p></li>
@@ -603,6 +623,19 @@
                     role="switch" aria-checked="false" aria-labelledby="hideDoneLabel">
               <span class="switch__thumb"></span>
             </button>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setStreakGoal">Listón de la racha</label>
+              <span class="field-row__hint" id="streakGoalHint">—</span>
+            </span>
+            <select id="setStreakGoal" class="input input--select field-row__controls">
+              <option value="1">1 hábito</option>
+              <option value="2">2 hábitos</option>
+              <option value="3">3 hábitos</option>
+              <option value="quarter">Un cuarto del día</option>
+              <option value="half">La mitad del día</option>
+            </select>
           </div>
           <div class="field-row">
             <span class="field-row__text">
@@ -910,6 +943,48 @@
   </div>
 
   <!-- ══ MODAL: crear / editar ejercicio ══ -->
+  <!-- ══ MODAL: anotar un día ══ -->
+  <div class="modal" id="dayModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="dayModalTitle">
+      <header class="modal__head">
+        <h2 class="modal__title" id="dayModalTitle">Anotar el día</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__body" id="dayForm" novalidate>
+        <p class="card__text" id="dayIntro">
+          Anotar por qué no salió es gratis y el día sigue contando. Salvarlo
+          para que no rompa la racha cuesta un comodín.
+        </p>
+
+        <fieldset class="reasons" id="dayReasons">
+          <legend class="field__label">¿Qué pasó?</legend>
+        </fieldset>
+
+        <div class="field" id="dayNoteField" hidden>
+          <label class="field__label" for="dayReasonNote">Escríbelo</label>
+          <input class="input" type="text" id="dayReasonNote" maxlength="80"
+                 placeholder="Ej. guardia en el trabajo" autocomplete="off">
+        </div>
+
+        <label class="field-row field-row--tight day-skip" id="daySkipRow">
+          <span class="field-row__text">
+            <span>Que este día no cuente</span>
+            <span class="field-row__hint" id="daySkipHint">—</span>
+          </span>
+          <input type="checkbox" id="daySkip" class="day-skip__box">
+        </label>
+
+        <footer class="modal__foot">
+          <button type="button" class="btn btn--ghost btn--danger" id="btnClearDay" hidden>Quitar</button>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn btn--primary">Guardar</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="pauseModal" hidden>
     <div class="modal__backdrop" data-close></div>
     <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="pauseModalTitle">

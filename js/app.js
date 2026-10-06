@@ -750,19 +750,75 @@
              { type: 'success', icon: '▶' });
   }
 
-  /* ── Comodines de racha ───────────────────────────────────── */
+  /* ── Anotar un día ────────────────────────────────────────
+     El motivo es gratis; salvar el día del todo sigue costando
+     comodín. El almacén cobra o devuelve, aquí solo se cuenta. ──── */
 
-  function toggleFreeze() {
-    if (S.isFrozen(currentDate)) {
-      S.unfreezeDay(currentDate);
-      UI.toast('Día descongelado. Recuperas el comodín.');
-    } else if (S.freezeDay(currentDate)) {
-      UI.toast('Día congelado: no romperá ninguna racha.', { type: 'success', icon: '🧊' });
-    } else {
-      UI.toast('No te quedan comodines. Recuperas uno cada mes.', { type: 'error', icon: '⚠️' });
+  function onDaySubmit(e) {
+    e.preventDefault();
+
+    const data = UI.readDayForm();
+    if (!data.dateKey) { UI.closeDayModal(); return; }
+
+    if (!data.reason && !data.skip) {
+      UI.toast('Elige un motivo, o marca que el día no cuente.', { type: 'error', icon: '⚠️' });
       return;
     }
+
+    const antes = S.getDayMark(data.dateKey);
+    const eraSkip = !!(antes && antes.skip);
+    const mark = S.setDayMark(data.dateKey, data.reason, data.note, data.skip);
+    UI.closeDayModal();
     syncProgressState();
+
+    if (!mark) return;
+
+    // Si se pidió salvar el día y no había comodín, hay que decirlo: el
+    // motivo se ha guardado igual, pero el día sigue contando.
+    if (data.skip && !mark.skip) {
+      UI.toast('Motivo guardado. Sin comodines, así que el día sigue contando.',
+               { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    if (mark.skip && !eraSkip) {
+      UI.toast('Día salvado: no romperá tus rachas.', { type: 'success', icon: '🧊' });
+      return;
+    }
+    if (!mark.skip && eraSkip) {
+      UI.toast('Recuperas el comodín. El día vuelve a contar.');
+      return;
+    }
+    UI.toast('Anotado: ' + UI.dayMarkLabel(mark) + '.', { icon: '✎' });
+  }
+
+  function clearDayMark() {
+    const key = UI.els.dayForm.dataset.day;
+    if (!key) return;
+
+    const era = S.getDayMark(key);
+    S.clearDayMark(key);
+    UI.closeDayModal();
+    syncProgressState();
+    UI.toast(era && era.skip ? 'Quitado. Recuperas el comodín.' : 'Nota del día quitada.');
+  }
+
+  /**
+   * Si ayer quedó a medias y no dijiste por qué, se ofrece una vez al
+   * arrancar. Una vez: insistir con esto sería exactamente la clase de
+   * recordatorio que quitamos en la 1.6.8.
+   */
+  function checkYesterdayMark() {
+    const ayer = U.addDaysKey(today, -1);
+    if (S.getDayMark(ayer)) return;
+
+    const day = St.dayStats(ayer);
+    if (!day.total || day.done >= St.streakGoalFor(ayer, day.total)) return;
+
+    UI.toast('Ayer quedó a medias. ¿Qué pasó?', {
+      icon: '✎',
+      action: { label: 'Anotar', onClick: function () { UI.openDayModal(ayer); } }
+    });
   }
 
   /* ── Modal de hábito ──────────────────────────────────────── */
@@ -1203,7 +1259,17 @@
     });
 
     // Extras del día
-    els.btnFreeze.addEventListener('click', toggleFreeze);
+    els.btnFreeze.addEventListener('click', function () { UI.openDayModal(currentDate); });
+
+    els.dayReasons.addEventListener('change', UI.syncDayNote);
+    els.dayForm.addEventListener('submit', onDaySubmit);
+    els.btnClearDay.addEventListener('click', clearDayMark);
+    els.dayModal.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closeDayModal();
+    });
+    els.dayModal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') UI.closeDayModal();
+    });
     const saveNote = U.debounce(function () { S.setNote(currentDate, els.dayNote.value); }, 400);
     els.dayNote.addEventListener('input', function () { UI.growField(els.dayNote); saveNote(); });
     els.dayNote.addEventListener('blur', function () { S.setNote(currentDate, els.dayNote.value); });
@@ -1317,6 +1383,9 @@
     });
 
     // Ajustes
+    els.setStreakGoal.addEventListener('change', function () {
+      S.setSettings({ streakGoal: els.setStreakGoal.value });
+    });
     els.setRest.addEventListener('change', function () {
       S.setSettings({ restSeconds: Number(els.setRest.value) });
       // Cambiar la duración no alarga el descanso que ya esté corriendo:
@@ -1528,6 +1597,8 @@
       // Solo si no hay ya un aviso más urgente en pantalla.
       checkBackupReminder();
     }
+
+    checkYesterdayMark();
 
     // El último, porque es el que hay que ver aunque haya salido otro.
     checkBuildMatch();
