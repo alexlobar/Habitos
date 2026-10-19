@@ -93,6 +93,8 @@ HT.ui = (function () {
       'dayReasonNote', 'daySkip', 'daySkipRow', 'daySkipHint', 'btnClearDay',
       'streakHabits', 'streakHabitsHint', 'streakActivity',
       'setStreakGoal', 'streakGoalHint',
+      'weightEntryCard', 'weightInput', 'weightHint', 'setShowWeight',
+      'weightCard', 'weightStats', 'weightChart', 'weightLegend', 'weightEmpty',
       'pausedNote', 'pausedNoteText',
       'pauseModal', 'pauseForm', 'pauseReasons', 'pauseNoteField', 'pauseNote', 'pauseIntro',
       'pauseModalTitle', 'pauseBanner', 'pauseBannerTitle', 'pauseBannerMeta', 'pauseBannerIcon',
@@ -131,7 +133,7 @@ HT.ui = (function () {
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
-      'fCategory', 'limitField', 'fLimit',
+      'fCategory', 'limitField', 'fLimit', 'avoidModeFields', 'capHint', 'fTargetLabel',
       'fName', 'fNameError'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
@@ -657,7 +659,9 @@ HT.ui = (function () {
       controls.appendChild(group);
     }
 
-    if (habit.type === 'quantity' && habit.target.entry === 'manual') {
+    const capped = St.isCapped(habit);
+
+    if ((habit.type === 'quantity' && habit.target.entry === 'manual') || capped) {
       // El campo va con su unidad al lado: antes era una caja con un "0" y
       // no decía qué había que escribir.
       const field = el('div', { class: 'amount-field' });
@@ -669,7 +673,10 @@ HT.ui = (function () {
         step: 'any',
         inputmode: 'decimal',
         placeholder: '0',
-        'aria-label': habit.name + ': escribe el total en ' + habit.target.unit
+        'aria-label': capped
+          ? habit.name + ': escribe cuánto llevas hoy, máximo ' +
+            habit.target.amount + ' ' + habit.target.unit
+          : habit.name + ': escribe el total en ' + habit.target.unit
       }));
       field.appendChild(el('span', {
         class: 'amount-field__unit', 'aria-hidden': 'true', text: habit.target.unit
@@ -680,7 +687,7 @@ HT.ui = (function () {
     // Stepper de cantidad y de fallos: mismo esqueleto, distinto significado.
     // Con franjas no hace falta: son ellas las que cuentan los fallos.
     if ((habit.type === 'quantity' && habit.target.entry !== 'manual') ||
-        (avoid && !habit.slots)) {
+        (avoid && !habit.slots && !capped)) {
       const paso = avoid ? 1 : habit.target.step;
       const unidad = avoid ? 'fallos' : habit.target.unit;
 
@@ -720,6 +727,14 @@ HT.ui = (function () {
    * se dice el número de fallos, que es el dato y no admite interpretación.
    */
   function badgeText(habit, state, value) {
+    // Con límite de cantidad el dato es lo que llevas: "45 min" dice más
+    // que "Sin", que aquí sería falso en cuanto hayas apuntado algo.
+    if (St.isCapped(habit)) {
+      const n = Number(value) || 0;
+      if (!n) return BADGE.clean;
+      return (Math.round(n * 10) / 10) + ' ' + habit.target.unit;
+    }
+
     if (state !== 'warn' && state !== 'critical') return BADGE[state];
     const fallos = St.failsOf(value);
     return fallos + (fallos === 1 ? ' fallo' : ' fallos');
@@ -1071,6 +1086,180 @@ HT.ui = (function () {
       els.dayNote.value = S.getNote(dateKey);
       growField(els.dayNote);
     }
+
+    renderWeightEntry(dateKey);
+  }
+
+  /* ── Peso ─────────────────────────────────────────────────── */
+
+  const fmtKg = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function kg(n) { return fmtKg.format(n) + ' kg'; }
+
+  /** Con signo y menos de verdad: "+0,4 kg", "−0,6 kg". */
+  function kgDelta(n) {
+    if (n === null) return '—';
+    if (n === 0) return 'Igual';
+    return (n > 0 ? '+' : '−') + fmtKg.format(Math.abs(n)) + ' kg';
+  }
+
+  /** El campo del peso en Hoy, para el día que se esté mirando. */
+  function renderWeightEntry(dateKey) {
+    const hoyPeso = S.getWeight(dateKey);
+
+    if (document.activeElement !== els.weightInput) {
+      els.weightInput.value = hoyPeso === null ? '' : hoyPeso;
+    }
+
+    // La pista no repite lo que ya está en el campo: si hay peso, da la media
+    // de la semana, que es el dato que importa; si no, el último apuntado.
+    if (hoyPeso !== null) {
+      const media = St.weightAvg7(dateKey);
+      els.weightHint.textContent = 'Media de 7 días: ' + kg(media) + '.';
+      return;
+    }
+
+    const ultimo = St.weightOnOrBefore(U.addDaysKey(dateKey, -1));
+    if (!ultimo) {
+      els.weightHint.textContent = 'Opcional. Mejor siempre a la misma hora.';
+      return;
+    }
+    const dias = U.daysBetween(ultimo.date, dateKey);
+    els.weightHint.textContent = 'Último: ' + kg(ultimo.kg) + ' · ' +
+      (dias === 1 ? 'ayer' : 'hace ' + dias + ' días') + '.';
+  }
+
+  /**
+   * La tarjeta de Histórico: cuatro cifras y la gráfica. Los cambios no se
+   * pintan en verde ni en rojo a propósito: si subir es bueno o malo
+   * depende de lo que busques, y la app no lo sabe.
+   */
+  function renderWeight(todayKey, days) {
+    const resumen = St.weightSummary(todayKey, days);
+    const vacio = !resumen;
+
+    els.weightEmpty.hidden = !vacio;
+    els.weightStats.hidden = vacio;
+    els.weightChart.hidden = vacio;
+    els.weightLegend.hidden = vacio;
+    if (vacio) return;
+
+    const dias = U.daysBetween(resumen.last.date, todayKey);
+    const cuando = dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : 'hace ' + dias + ' días';
+
+    const fichas = [
+      { valor: kg(resumen.last.kg), etiqueta: 'Último · ' + cuando },
+      { valor: kg(resumen.avg), etiqueta: 'Media de 7 días' },
+      { valor: kgDelta(resumen.change7), etiqueta: 'En 7 días',
+        nota: resumen.change7 === null ? 'Sin pesadas hace una semana' : null },
+      { valor: kgDelta(resumen.change30), etiqueta: 'En 30 días',
+        nota: resumen.change30 === null ? 'Sin pesadas hace un mes' : null }
+    ];
+
+    const frag = document.createDocumentFragment();
+    fichas.forEach(function (f) {
+      const li = el('li', { class: 'weight-stat', title: f.nota || null });
+      li.appendChild(el('p', { class: 'weight-stat__value', text: f.valor }));
+      li.appendChild(el('p', { class: 'weight-stat__label', text: f.etiqueta }));
+      frag.appendChild(li);
+    });
+
+    if (resumen.min !== null && resumen.min !== resumen.max) {
+      frag.appendChild(el('li', {
+        class: 'weight-stat weight-stat--range',
+        text: 'En el periodo, entre ' + kg(resumen.min) + ' y ' + kg(resumen.max) + '.'
+      }));
+    }
+
+    els.weightStats.textContent = '';
+    els.weightStats.appendChild(frag);
+
+    drawWeightChart(St.weightSeries(todayKey, days));
+  }
+
+  /**
+   * Puntos para cada pesada y una línea para la media de 7 días. La línea
+   * es lo que hay que leer; los puntos están para ver cuánto baila el dato
+   * de un día a otro y no fiarse de uno suelto.
+   */
+  function drawWeightChart(series) {
+    // El ancho del dibujo es el de la tarjeta, no uno fijo: así una unidad
+    // del SVG es un píxel de pantalla y el texto del eje se lee igual en el
+    // móvil que en el ordenador. Con un ancho fijo de 600, en el móvil se
+    // encogía a la mitad y quedaba ilegible.
+    const W = Math.max(280, Math.round(els.weightChart.clientWidth) || 360);
+    const H = 180;
+    const m = { l: 44, r: 12, t: 12, b: 26 };
+
+    const valores = [];
+    series.forEach(function (p) {
+      if (p.kg !== null) valores.push(p.kg);
+      if (p.avg !== null) valores.push(p.avg);
+    });
+
+    let lo = Math.min.apply(null, valores);
+    let hi = Math.max.apply(null, valores);
+    // Con muy poca variación la gráfica exageraría décimas hasta parecer un
+    // precipicio: se fuerza un margen mínimo de dos kilos.
+    if (hi - lo < 2) {
+      const centro = (hi + lo) / 2;
+      lo = centro - 1;
+      hi = centro + 1;
+    }
+    lo = Math.floor(lo * 2) / 2 - 0.5;
+    hi = Math.ceil(hi * 2) / 2 + 0.5;
+
+    const n = Math.max(1, series.length - 1);
+    const x = function (i) { return m.l + (i / n) * (W - m.l - m.r); };
+    const y = function (v) { return m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b); };
+
+    const svg = svgEl('svg', {
+      class: 'wchart', viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+      'aria-label': 'Evolución del peso en ' + series.length + ' días'
+    });
+
+    // Tres líneas de referencia con su valor.
+    [lo, (lo + hi) / 2, hi].forEach(function (v) {
+      svg.appendChild(svgEl('line', {
+        class: 'wchart__grid', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v)
+      }));
+      const t = svgEl('text', { class: 'wchart__axis', x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end' });
+      t.textContent = fmtKg.format(v);
+      svg.appendChild(t);
+    });
+
+    // La media: un tramo por cada racha de días con dato, sin inventar el
+    // hueco entre dos semanas sin pesarse.
+    let d = '';
+    let dentro = false;
+    series.forEach(function (p, i) {
+      if (p.avg === null) { dentro = false; return; }
+      d += (dentro ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.avg).toFixed(1);
+      dentro = true;
+    });
+    if (d) svg.appendChild(svgEl('path', { class: 'wchart__avg', d: d }));
+
+    series.forEach(function (p, i) {
+      if (p.kg === null) return;
+      const c = svgEl('circle', { class: 'wchart__dot', cx: x(i), cy: y(p.kg), r: 3.2 });
+      const t = svgEl('title');
+      t.textContent = U.formatShort(U.fromKey(p.key)) + ': ' + kg(p.kg);
+      c.appendChild(t);
+      svg.appendChild(c);
+    });
+
+    // Fechas en los extremos: con eso se lee el periodo sin saturar el eje.
+    [0, series.length - 1].forEach(function (i, j) {
+      if (!series[i]) return;
+      const t = svgEl('text', {
+        class: 'wchart__axis', x: x(i), y: H - 6, 'text-anchor': j === 0 ? 'start' : 'end'
+      });
+      t.textContent = U.formatShort(U.fromKey(series[i].key));
+      svg.appendChild(t);
+    });
+
+    els.weightChart.textContent = '';
+    els.weightChart.appendChild(svg);
   }
 
   /* ── Marcar un día ────────────────────────────────────────── */
@@ -2525,6 +2714,12 @@ HT.ui = (function () {
     let what;
     if (habit.type === 'quantity') what = habit.target.amount + ' ' + habit.target.unit + ' al día';
     else if (habit.type === 'schedule') what = habit.slots.map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ');
+    else if (St.isCapped(habit)) what = 'Máximo ' + habit.target.amount + ' ' + habit.target.unit + ' al día';
+    else if (habit.type === 'avoid') {
+      what = habit.slots
+        ? 'A evitar: ' + habit.slots.map(function (s) { return St.SLOT_LABELS[s]; }).join(' + ')
+        : 'A evitar · crítico con ' + St.limitOf(habit) + (St.limitOf(habit) === 1 ? ' fallo' : ' fallos');
+    }
     else what = 'Check diario';
 
     return what + ' · ' + days;
@@ -2636,6 +2831,9 @@ HT.ui = (function () {
         // ese día en Hoy: "8 de 10 páginas" dice mucho más que "sin cumplir".
         label = date + ': ' + (Number(value) || 0) + ' de ' + habit.target.amount +
                 ' ' + habit.target.unit;
+      } else if (St.isCapped(habit)) {
+        label = date + ': ' + (Number(value) || 0) + ' de máximo ' + habit.target.amount +
+                ' ' + habit.target.unit + (St.isComplete(habit, value) ? '' : ' · pasado');
       } else {
         label = date + ': ' + (St.isComplete(habit, value) ? 'cumplido' : 'sin cumplir');
       }
@@ -2702,6 +2900,7 @@ HT.ui = (function () {
     els.setDayBar.setAttribute('aria-checked', s.showDayBar ? 'true' : 'false');
     els.setShowFreeze.setAttribute('aria-checked', s.showFreeze ? 'true' : 'false');
     els.setShowNotes.setAttribute('aria-checked', s.showNotes ? 'true' : 'false');
+    els.setShowWeight.setAttribute('aria-checked', s.showWeight ? 'true' : 'false');
 
     applyControls(s.controls);
     applyTheme(s.theme);
@@ -2899,6 +3098,7 @@ HT.ui = (function () {
   function applyDayLayout(s) {
     els.dayProgress.hidden = !s.showDayBar;
     els.noteCard.hidden = !s.showNotes;
+    els.weightEntryCard.hidden = !s.showWeight;
     // El de congelar además depende de si ese día hay algo que salvar, así
     // que aquí solo se marca la preferencia y renderDayExtras decide.
     document.documentElement.dataset.freeze = s.showFreeze ? 'on' : 'off';
@@ -2971,10 +3171,13 @@ HT.ui = (function () {
       field('icon').value = habit.icon;
       field('color').value = habit.color;
       els.fCategory.value = habit.category || '';
-      if (habit.type === 'avoid') els.fLimit.value = St.limitOf(habit);
+      if (habit.type === 'avoid' && !habit.target) els.fLimit.value = St.limitOf(habit);
       U.$$('input[name="type"]', form).forEach(function (r) { r.checked = r.value === habit.type; });
+      U.$$('input[name="avoidMode"]', form).forEach(function (r) {
+        r.checked = r.value === (St.isCapped(habit) ? 'cap' : 'fails');
+      });
 
-      if (habit.type === 'quantity') {
+      if (habit.type === 'quantity' || St.isCapped(habit)) {
         field('target').value = habit.target.amount;
         field('unit').value = habit.target.unit;
         field('step').value = habit.target.step;
@@ -3015,17 +3218,25 @@ HT.ui = (function () {
     const checked = els.habitForm.querySelector('input[name="type"]:checked');
     const type = checked ? checked.value : 'check';
     const entry = els.habitForm.querySelector('input[name="entry"]:checked');
+    const modo = els.habitForm.querySelector('input[name="avoidMode"]:checked');
+    // Un hábito a evitar con máximo al día reutiliza los campos de cantidad.
+    const cap = type === 'avoid' && !!modo && modo.value === 'cap';
 
-    els.quantityFields.hidden = type !== 'quantity';
+    els.avoidModeFields.hidden = type !== 'avoid';
+    els.capHint.hidden = !cap;
+    els.quantityFields.hidden = type !== 'quantity' && !cap;
     els.entryFields.hidden = type !== 'quantity';
-    // Las franjas valen para los dos: cuándo cumplir, o cuándo no caer.
-    els.slotFields.hidden = type !== 'schedule' && type !== 'avoid';
+    els.fTargetLabel.textContent = cap ? 'Máximo al día' : 'Meta diaria';
+    // Las franjas valen para los dos: cuándo cumplir, o cuándo no caer. Con
+    // un máximo de cantidad no tienen sentido.
+    els.slotFields.hidden = (type !== 'schedule' && type !== 'avoid') || cap;
     // "Dejar" invierte la lógica: conviene decirlo antes de guardar, no después.
-    els.avoidHint.hidden = type !== 'avoid';
-    els.limitField.hidden = type !== 'avoid';
+    // El aviso habla del botón ✗, que solo existe contando fallos.
+    els.avoidHint.hidden = type !== 'avoid' || cap;
+    els.limitField.hidden = type !== 'avoid' || cap;
 
     // El incremento solo significa algo si se registra con los botones
-    els.stepField.hidden = !entry || entry.value !== 'stepper';
+    els.stepField.hidden = cap || !entry || entry.value !== 'stepper';
   }
 
   function showFieldError(message) {
@@ -3063,10 +3274,25 @@ HT.ui = (function () {
     };
 
     if (type === 'avoid') {
-      data.limit = Number(els.fLimit.value) || 2;
-      // Franjas opcionales aquí: sin ninguna marcada se cuentan fallos sueltos.
-      const franjas = U.$$('input[name="slots"]:checked', form).map(function (c) { return c.value; });
-      if (franjas.length) data.slots = franjas;
+      const modo = form.querySelector('input[name="avoidMode"]:checked');
+
+      if (modo && modo.value === 'cap') {
+        data.target = {
+          amount: Number(field('target').value) || 1,
+          unit: field('unit').value.trim() || 'min',
+          step: 1,
+          entry: 'manual'
+        };
+        data.slots = null;
+      } else {
+        // `target: null` explícito: al editar se mezcla con lo guardado, y
+        // sin esto un hábito que pasa a contar fallos conservaría su límite.
+        data.target = null;
+        data.limit = Number(els.fLimit.value) || 2;
+        // Franjas opcionales aquí: sin ninguna marcada se cuentan fallos sueltos.
+        const franjas = U.$$('input[name="slots"]:checked', form).map(function (c) { return c.value; });
+        data.slots = franjas.length ? franjas : null;
+      }
     }
 
     if (type === 'quantity') {
@@ -3228,6 +3454,7 @@ HT.ui = (function () {
     isDayPickerOpen: isDayPickerOpen,
     renderProgress: renderProgress, renderHistory: renderHistory,
     renderNotes: renderNotes, growField: growField,
+    renderWeight: renderWeight, renderWeightEntry: renderWeightEntry,
     streakMessage: streakMessage,
     renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,

@@ -19,6 +19,7 @@
   let habitId = null;                            // hábito abierto en la ficha
   let habitMonth = U.startOfMonth(new Date());
   let noteQuery = '';                            // filtro del buscador de Notas
+  let weightRange = 30;                          // días de la gráfica de peso (0 = todo)
 
   /* ── Repintado coalescido ─────────────────────────────────
      Un solo clic puede disparar varios eventos del store
@@ -98,6 +99,7 @@
     if (UI.els.views.week.hidden) return;
     UI.renderWeek(weekDates(), today);
     UI.renderHistory(currentDate, viewPeriod, calScale);
+    UI.renderWeight(today, weightRange);
   }
 
   function renderHabitIfOpen() {
@@ -435,6 +437,25 @@
     if (input.value !== '' && (!isFinite(value) || value < 0)) {
       UI.toast('Escribe un número válido.', { type: 'error', icon: '⚠️' });
       input.value = Number(S.getLog(habit.id, currentDate)) || '';
+      return;
+    }
+
+    // Un hábito a evitar con máximo no pasa por withScoring: no paga EXP por
+    // día, sino por hitos de racha. Si pasara, pasarse del límite le
+    // restaría 20 de EXP que nunca se le dieron.
+    if (St.isCapped(habit)) {
+      const antes = St.isComplete(habit, S.getLog(habit.id, currentDate));
+      const racha = St.currentStreak(habit, today);
+
+      S.setLog(habit.id, currentDate, input.value === '' ? null : value);
+
+      const despues = St.isComplete(habit, S.getLog(habit.id, currentDate));
+      if (antes && !despues) {
+        UI.toast('Te has pasado de ' + habit.target.amount + ' ' + habit.target.unit +
+                 (racha > 1 ? '. Llevabas ' + racha + ' días sin pasarte: eso no se borra.' : '.'),
+                 { icon: '💧' });
+      }
+      syncProgressState();
       return;
     }
 
@@ -832,10 +853,15 @@
 
     if (editingId) {
       const previous = S.getHabit(editingId);
+      // Mismo criterio que el almacén para borrar el histórico: cambia el
+      // tipo, o un hábito a evitar pasa de contar fallos a tener un máximo.
+      const modo = function (h) { return h.type === 'avoid' && h.target ? 'avoid-cap' : h.type; };
+      const reinicia = previous && modo(previous) !== modo(data);
+
       S.updateHabit(editingId, data);
       UI.toast(
-        previous && previous.type !== data.type
-          ? 'Hábito actualizado. Su histórico se ha reiniciado por el cambio de tipo.'
+        reinicia
+          ? 'Hábito actualizado. Su histórico se ha reiniciado porque ahora se mide distinto.'
           : 'Hábito actualizado.',
         { type: 'success', icon: '✓' }
       );
@@ -974,6 +1000,9 @@
         } else if (habit.type === 'quantity') {
           shown = value + ' ' + habit.target.unit;
           goal = habit.target.amount + ' ' + habit.target.unit;
+        } else if (St.isCapped(habit)) {
+          shown = value + ' ' + habit.target.unit;
+          goal = 'máximo ' + habit.target.amount + ' ' + habit.target.unit;
         } else if (habit.type === 'avoid' && !habit.slots) {
           // Un hábito a evitar sin franjas guarda un número de fallos, no un
           // objeto: aquí se colaba en la rama de franjas y rompía la exportación.
@@ -990,6 +1019,13 @@
           St.isComplete(habit, value) ? 'sí' : 'no'
         ]);
       });
+    });
+
+    // El peso va en el mismo archivo, como una fila más por día: así una
+    // hoja de cálculo puede cruzarlo con los hábitos sin juntar dos ficheros.
+    const pesos = S.getWeights();
+    Object.keys(pesos).forEach(function (dateKey) {
+      rows.push([dateKey, 'Peso', 'peso', pesos[dateKey] + ' kg', '', '']);
     });
 
     rows.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
@@ -1274,6 +1310,39 @@
     els.dayNote.addEventListener('input', function () { UI.growField(els.dayNote); saveNote(); });
     els.dayNote.addEventListener('blur', function () { S.setNote(currentDate, els.dayNote.value); });
 
+    // Peso. Mientras escribes solo se guarda si el número ya es válido: si
+    // no, escribir "7" camino de "72" borraría el peso que hubiera.
+    const saveWeight = function (avisar) {
+      const raw = els.weightInput.value.trim();
+      if (raw === '') { S.setWeight(currentDate, null); return; }
+
+      const n = Number(raw.replace(',', '.'));
+      if (!isFinite(n) || n < 20 || n > 400) {
+        if (avisar) {
+          UI.toast('Escribe el peso en kg, entre 20 y 400.', { type: 'error', icon: '⚠️' });
+          const previo = S.getWeight(currentDate);
+          els.weightInput.value = previo === null ? '' : previo;
+        }
+        return;
+      }
+      S.setWeight(currentDate, n);
+    };
+    const saveWeightSoon = U.debounce(function () { saveWeight(false); }, 600);
+    els.weightInput.addEventListener('input', saveWeightSoon);
+    els.weightInput.addEventListener('change', function () {
+      saveWeightSoon.cancel();
+      saveWeight(true);
+    });
+    els.weightInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') e.target.blur();
+    });
+
+    UI.els.weightCard.addEventListener('change', function (e) {
+      if (e.target.name !== 'weightRange') return;
+      weightRange = Number(e.target.value) || 0;
+      renderWeekIfOpen();
+    });
+
     // Notas. El campo de arriba escribe siempre en hoy, se esté mirando el
     // día que se esté mirando: un diario se escribe en presente.
     const saveToday = U.debounce(function () { S.setNote(today, els.notesToday.value); }, 400);
@@ -1303,7 +1372,8 @@
     // Modal
     els.habitForm.addEventListener('submit', onFormSubmit);
     els.habitForm.addEventListener('change', function (e) {
-      if (e.target.name === 'type' || e.target.name === 'entry') UI.syncTypeFields();
+      if (e.target.name === 'type' || e.target.name === 'entry' ||
+          e.target.name === 'avoidMode') UI.syncTypeFields();
     });
 
     // Selector de emojis
@@ -1438,6 +1508,7 @@
     toggle(els.setDayBar, 'showDayBar');
     toggle(els.setShowFreeze, 'showFreeze');
     toggle(els.setShowNotes, 'showNotes');
+    toggle(els.setShowWeight, 'showWeight');
 
     els.btnResetProgress.addEventListener('click', resetProgressOnly);
 

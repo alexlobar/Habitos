@@ -136,12 +136,34 @@ HT.stats = (function () {
     return isFinite(n) && n > 0 ? n : 2;
   }
 
+  /**
+   * ¿Es un hábito a evitar con límite diario de cantidad? ("Redes: no más de
+   * 90 min"). Se apunta lo que llevas y solo pasarse es fallar.
+   */
+  function isCapped(habit) {
+    return isAvoid(habit) && !!habit.target;
+  }
+
+  /** A partir de qué parte del límite la tarjeta avisa de que te acercas. */
+  const CAP_WARN_FROM = 0.75;
+
+  /**
+   * Fallos del día, sabiendo de qué hábito es. Con límite de cantidad,
+   * pasarse es el único fallo posible: 45 de 90 minutos no son 45 fallos.
+   * Todo lo que mire si un hábito a evitar ha fallado pasa por aquí, no por
+   * failsOf(), que solo entiende el conteo de fallos.
+   */
+  function slipsOf(habit, value) {
+    if (isCapped(habit)) return (Number(value) || 0) > habit.target.amount ? 1 : 0;
+    return failsOf(value);
+  }
+
   /** ¿El valor registrado cumple la meta del hábito? */
   function isComplete(habit, value) {
     // Un mal hábito se cumple por omisión: el día empieza limpio y solo deja
     // de estarlo si se registra una recaída. Por eso se mira ANTES del null:
     // "no hay nada apuntado" es precisamente el caso bueno.
-    if (isAvoid(habit)) return !failsOf(value);
+    if (isAvoid(habit)) return !slipsOf(habit, value);
 
     if (value === null || value === undefined) return false;
 
@@ -156,6 +178,8 @@ HT.stats = (function () {
     // Barra inversa: llena mientras no haya fallos, y se vacía según se
     // acerca al límite. Es la lectura contraria a la de un hábito normal.
     if (isAvoid(habit)) {
+      // Con límite, la barra se vacía según te comes el margen del día.
+      if (isCapped(habit)) return U.clamp(1 - (Number(value) || 0) / habit.target.amount, 0, 1);
       return U.clamp(1 - failsOf(value) / limitOf(habit), 0, 1);
     }
     if (value === null || value === undefined) return 0;
@@ -210,7 +234,7 @@ HT.stats = (function () {
     const total = habits.length;
     const avoid = avoidHabitsFor(dateKey);
     const slips = avoid.filter(function (h) {
-      return failsOf(S.getLog(h.id, dateKey)) > 0;
+      return slipsOf(h, S.getLog(h.id, dateKey)) > 0;
     }).length;
 
     return {
@@ -237,6 +261,14 @@ HT.stats = (function () {
     const value = S.getLog(habit.id, dateKey);
 
     if (isAvoid(habit)) {
+      // Con límite: crítico solo al pasarse, y aviso cuando ya te has comido
+      // tres cuartas partes del margen — es cuando todavía se puede parar.
+      if (isCapped(habit)) {
+        const n = Number(value) || 0;
+        if (n > habit.target.amount) return 'critical';
+        return n >= habit.target.amount * CAP_WARN_FROM ? 'warn' : 'clean';
+      }
+
       const fails = failsOf(value);
       if (!fails) return 'clean';
       return fails >= limitOf(habit) ? 'critical' : 'warn';
@@ -253,7 +285,7 @@ HT.stats = (function () {
 
     let n = 0;
     daysFromTo(first, today).forEach(function (key) {
-      n += failsOf(S.getLog(habit.id, key));
+      n += slipsOf(habit, S.getLog(habit.id, key));
     });
     return n;
   }
@@ -394,6 +426,7 @@ HT.stats = (function () {
   function hasAnyRecord(dateKey) {
     if (S.getDayMark(dateKey)) return true;
     if (S.getNote(dateKey)) return true;
+    if (S.getWeight(dateKey) !== null) return true;
 
     const session = S.getSession(dateKey);
     if (session && Object.keys(session.sets).length) return true;
@@ -435,6 +468,89 @@ HT.stats = (function () {
       key = U.addDaysKey(key, -1);
     }
     return count;
+  }
+
+  /* ── Peso ─────────────────────────────────────────────────
+     El peso de un día suelto baila medio kilo o más por el agua, la sal o
+     la hora a la que te peses. Comparar dos pesadas sueltas es comparar
+     ruido; lo que dice si de verdad subes o bajas es la media de la
+     semana. Por eso los cambios se calculan entre medias, nunca entre
+     días aislados. ─────────────────────────────────────────────────── */
+
+  function round1(n) {
+    return Math.round(n * 10) / 10;
+  }
+
+  function weightKeys() {
+    return Object.keys(S.getWeights()).sort();
+  }
+
+  /** Media de lo apuntado en los 7 días que acaban en `dateKey`. */
+  function weightAvg7(dateKey) {
+    const w = S.getWeights();
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < 7; i++) {
+      const v = w[U.addDaysKey(dateKey, -i)];
+      if (v !== undefined) { sum += v; n++; }
+    }
+    return n ? round1(sum / n) : null;
+  }
+
+  /** El último peso apuntado en ese día o antes. */
+  function weightOnOrBefore(dateKey) {
+    const keys = weightKeys().filter(function (k) { return k <= dateKey; });
+    if (!keys.length) return null;
+    const k = keys[keys.length - 1];
+    return { date: k, kg: S.getWeights()[k] };
+  }
+
+  /**
+   * Un punto por día del periodo: el peso de ese día (o null) y la media de
+   * la semana que acaba en él. `days` = 0 significa "desde el primer peso".
+   */
+  function weightSeries(todayKey, days) {
+    const today = todayKey || U.todayKey();
+    let n = days;
+
+    if (!n) {
+      const keys = weightKeys();
+      if (!keys.length) return [];
+      n = Math.max(2, U.daysBetween(keys[0], today) + 1);
+    }
+
+    return U.lastNDays(today, n).map(function (key) {
+      return { key: key, kg: S.getWeight(key), avg: weightAvg7(key) };
+    });
+  }
+
+  /**
+   * El resumen que acompaña a la gráfica. Los cambios comparan la media de
+   * la última semana con la de hace 7 y 30 días; si en esa semana no hubo
+   * ninguna pesada, el cambio no se inventa: vale null.
+   */
+  function weightSummary(todayKey, days) {
+    const today = todayKey || U.todayKey();
+    const last = weightOnOrBefore(today);
+    if (!last) return null;
+
+    const avg = weightAvg7(last.date);
+    const hace7 = weightAvg7(U.addDaysKey(last.date, -7));
+    const hace30 = weightAvg7(U.addDaysKey(last.date, -30));
+
+    const enRango = weightSeries(today, days)
+      .map(function (p) { return p.kg; })
+      .filter(function (kg) { return kg !== null; });
+
+    return {
+      last: last,
+      avg: avg,
+      change7: hace7 === null ? null : round1(avg - hace7),
+      change30: hace30 === null ? null : round1(avg - hace30),
+      min: enRango.length ? Math.min.apply(null, enRango) : null,
+      max: enRango.length ? Math.max.apply(null, enRango) : null,
+      entries: weightKeys().length
+    };
   }
 
   /** Días seguidos cumpliendo el listón de hábitos. */
@@ -1168,6 +1284,9 @@ HT.stats = (function () {
 
     AVOID_MILESTONES: AVOID_MILESTONES,
     isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,
+    isCapped: isCapped, slipsOf: slipsOf,
+    weightSeries: weightSeries, weightSummary: weightSummary,
+    weightAvg7: weightAvg7, weightOnOrBefore: weightOnOrBefore,
     cardState: cardState, failsThisWeek: failsThisWeek,
     avoidXpFor: avoidXpFor, avoidMilestoneAt: avoidMilestoneAt,
     doHabitsFor: doHabitsFor, avoidHabitsFor: avoidHabitsFor,

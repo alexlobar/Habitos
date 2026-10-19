@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **1.7.2** · esquema de datos **v10**.
+Versión documentada: **1.7.3** · esquema de datos **v11**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -104,7 +104,7 @@ cualquier otro.
 ### Un día de ejemplo
 
 Con los hábitos de partida tocan **9 al día** de lunes a sábado y 10 el domingo
-(los tres hábitos a evitar no cuentan).
+(los cuatro hábitos a evitar no cuentan).
 
 | Día | Cuenta | EXP |
 |---|---|---:|
@@ -116,7 +116,16 @@ Con los hábitos de partida tocan **9 al día** de lunes a sábado y 10 el domin
 ### Hábitos a evitar
 
 No dan EXP a diario: su día empieza limpio a las 00:00, así que no hay ningún
-"pasó a cumplido" que premiar. Cobran por aguantar, por hábito:
+"pasó a cumplido" que premiar. Hay dos formas de medirlos:
+
+- **Contando fallos** (Gula, Lujo, Evitar pantallas): un fallo y el día deja de
+  estar limpio.
+- **Con un máximo al día** (Redes, 90 min): apuntas cuánto llevas y el día solo
+  falla si te pasas. La tarjeta avisa en ámbar a partir del 75% del máximo y
+  se pone en rojo al pasarlo. Apuntar minutos no paga ni resta nada.
+
+Para la racha y los hitos las dos funcionan igual: un día limpio es un día sin
+fallo. Cobran por aguantar, por hábito:
 
 | Hito | EXP |
 |---|---:|
@@ -289,7 +298,7 @@ listón nunca pide más de los que hay ni menos de uno. En `streakGoalFor()`.
 registro:
 
 - marcar un hábito, apuntar una cantidad o un fallo de un hábito a evitar,
-- apuntar una serie de entrenamiento,
+- apuntar una serie de entrenamiento o el peso del día,
 - escribir una nota del día,
 - **o anotar el motivo de por qué el día no salió.**
 

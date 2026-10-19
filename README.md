@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **1.7.2** · esquema de datos **v10**.
+Versión documentada: **1.7.3** · esquema de datos **v11**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -44,11 +44,12 @@ rango y EXP. Debajo, la barra del día con su cuenta (`5/9`).
 
 **Hoy.** Los hábitos del día agrupados por categoría. Los ya cumplidos se
 apartan a un cajón plegado al final. Debajo: los hábitos en pausa, el botón
-*Anotar el día* y la nota del día.
+*Anotar el día*, el peso del día y la nota del día.
 
 **Histórico.** La semana en rejilla (hábito × día), los totales de los hábitos
 por cantidad, el cumplimiento de la semana y del mes, el calendario en vista
-de mes o de año y la gráfica de evolución.
+de mes o de año, la gráfica de evolución y la evolución del peso (30 días,
+90 días o todo, con la media de 7 días).
 
 **Ejercicios.** La rutina que toca, con sus ejercicios, las series apuntadas,
 el récord de cada uno y el contador de descanso entre series. *Gestionar*
@@ -240,7 +241,7 @@ Una sola clave, `habitTracker.v1`:
     "fontSize": "normal",             // "small" | "normal" | "large" | "xlarge"
     "controls": "compact",            // "compact" | "comfy" | "roomy"
     "hideDone": true, "showBadges": true,
-    "showDayBar": true, "showNotes": true, "showFreeze": true,
+    "showDayBar": true, "showNotes": true, "showFreeze": true, "showWeight": true,
     "backupDays": 14,                 // aviso de copia: 0, 7, 14 o 30 días
     "restSeconds": 150,               // 0, 90, 120, 150, 180, 240 o 300
     "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"
@@ -251,10 +252,11 @@ Una sola clave, `habitTracker.v1`:
     "id": "h_k3f9", "name": "Lectura", "icon": "📖", "color": "#e879f9",
     "category": "aprendizaje",        // "fisico" | "mental" | "aprendizaje" | "evitar" | null
     "type": "quantity",               // "check" | "quantity" | "schedule" | "avoid"
-    // solo quantity · entry: "stepper" (botones + y −) o "manual" (escribir el total)
+    // quantity: la meta del día · entry: "stepper" (botones + y −) o "manual"
+    // avoid con target: un MÁXIMO al día ("Redes": 90 min), siempre "manual"
     "target": { "amount": 10, "unit": "páginas", "step": 1, "entry": "stepper" },
-    "slots": null,                    // schedule y avoid: "morning" | "afternoon" | "night"
-    "limit": null,                    // solo avoid: fallos del día hasta "crítico"
+    "slots": null,                    // schedule y avoid por fallos: "morning" | "afternoon" | "night"
+    "limit": null,                    // solo avoid por fallos: fallos del día hasta "crítico"
     "activeDays": [0, 1, 2, 3, 4, 5, 6],   // 0 = domingo
     "createdAt": "2026-09-15",
     "archived": false,
@@ -264,10 +266,12 @@ Una sola clave, `habitTracker.v1`:
   }],
   "logs": {
     // check → true · quantity → número · schedule → { "night": true }
-    // avoid → número de fallos del día; con franjas, en cuáles se falló
+    // avoid por fallos → número de fallos del día; con franjas, en cuáles se falló
+    // avoid con máximo → cuánto llevas (minutos, euros…)
     "h_k3f9": { "2026-09-15": 12 }
   },
   "notes": { "2026-09-15": "Día raro, pero saqué el rato de leer." },
+  "weights": { "2026-09-15": 72.4 },  // kg, un decimal, entre 20 y 400
   "frozen": {
     // marcas de día: el motivo es gratis; "skip": true cuesta un comodín
     "2026-09-20": { "reason": "energia", "note": "", "skip": false },
@@ -322,10 +326,12 @@ Después se ejecutan las migraciones que tocan, según la versión guardada:
 | < 5 | `migrateToScreenSlots()` | Pasa "Evitar pantallas" a franjas y convierte su histórico |
 | < 6 | `migrateSeedTweaks()` | Bandera para Japonés, tope 1 para Gula y Lujo |
 | < 8 | `migrateNewDefaults()` | Controles compactos y "apartar cumplidos" por defecto |
+| < 11 | `migrateAddRedes()` | Añade "Redes" (máximo 90 min) si no hay ya un hábito con ese nombre |
 
-Las versiones 7 (`levelLog`), 9 (`pauses`) y 10 (marcas de día) no necesitan
-migración propia: el saneado rellena los campos nuevos o, en el caso de la v10,
-lee el `true` antiguo de `frozen` como "salvado sin motivo".
+Las versiones 7 (`levelLog`), 9 (`pauses`), 10 (marcas de día) y la parte de
+`weights` de la 11 no necesitan migración propia: el saneado rellena los campos
+nuevos o, en el caso de la v10, lee el `true` antiguo de `frozen` como "salvado
+sin motivo".
 
 **Importar no ejecuta las migraciones**, solo el saneado. Comprobado que
 importar exportaciones de los esquemas 6 a 9 da el mismo resultado que
@@ -374,6 +380,16 @@ Sustituir `writeNow()` y `load()` por llamadas de red deja intacto el resto.
 - **Anotar el motivo es gratis; salvar el día cuesta un comodín.** Si salvar
   fuera gratis, siempre habría un motivo y la racha no mediría nada. Los
   comodines se recargan uno por semana, hasta cuatro.
+- **Un hábito a evitar se mide de dos formas.** Contando fallos (Gula: un
+  fallo y el día está tocado) o con un máximo al día (Redes: 45 de 90 minutos
+  es un día bueno, solo pasarse es fallar). El segundo reutiliza `target`
+  leído como techo. Todo lo que pregunta si un hábito a evitar ha fallado pasa
+  por `St.slipsOf()`, nunca por `failsOf()`, que solo entiende fallos: si no,
+  45 minutos contarían como 45 fallos.
+- **El peso no es un hábito.** No se "cumple", así que va aparte y no entra en
+  el porcentaje del día, ni en rachas de cumplimiento, ni da EXP. Sí cuenta
+  como registro. Los cambios se calculan entre **medias de 7 días**, no entre
+  pesadas sueltas, porque el peso de un día baila por el agua y la comida.
 - **Pausar no es archivar.** Un hábito en pausa sale de Hoy y sus días no
   cuentan ni a favor ni en contra, así que la racha se queda donde estaba. Se
   guardan los tramos, no un "está en pausa": borrar el rastro al reanudar haría

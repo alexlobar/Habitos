@@ -1382,6 +1382,93 @@ button.heat:disabled:hover { transform: none; }
   color: var(--text-muted);
 }
 
+/* ── Peso ─────────────────────────────────────────────────
+   La entrada en Hoy es una línea: campo, unidad y una pista. La tarjeta
+   de Histórico lleva cuatro cifras y la gráfica. ─────────────────── */
+.weight-entry__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.weight-entry__input {
+  width: 6.5rem;
+  min-height: 40px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.weight-entry__hint { flex: 1; min-width: 10rem; font-size: var(--fs-xs); color: var(--text-muted); }
+
+.weight-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+@media (min-width: 768px) {
+  .weight-stats { grid-template-columns: repeat(4, 1fr); }
+}
+.weight-stat {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.weight-stat__value {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+.weight-stat__label { font-size: var(--fs-xs); color: var(--text-muted); }
+.weight-stat--range {
+  grid-column: 1 / -1;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.weight-chart { width: 100%; }
+.wchart { display: block; width: 100%; height: auto; }
+.wchart__grid { stroke: var(--border); stroke-width: 1; }
+.wchart__axis { fill: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* La media es lo que hay que leer: trazo grueso con el acento. Los puntos
+   van en segundo plano, para ver cuánto baila el dato de un día. */
+.wchart__avg {
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wchart__dot { fill: var(--text-muted); opacity: .75; }
+
+.weight-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.weight-legend__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.weight-legend__line {
+  width: 16px;
+  height: 3px;
+  margin-left: var(--sp-2);
+  border-radius: 2px;
+  background: var(--accent-text);
+}
+
 /* La casilla de "que no cuente" dentro del diálogo del día. */
 .day-skip { margin-bottom: var(--sp-4); cursor: pointer; }
 .day-skip__box { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }

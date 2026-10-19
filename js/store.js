@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 10;
+  const VERSION = 11;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -121,7 +121,10 @@ HT.store = (function () {
      día se marca como crítico. Se edita desde el propio hábito. */
   const AVOID_SEED = [
     { name: 'Gula', icon: '🍔', color: '#f97316', type: 'avoid', category: 'evitar', limit: 1 },
-    { name: 'Lujo', icon: '💸', color: '#eab308', type: 'avoid', category: 'evitar', limit: 1 }
+    { name: 'Lujo', icon: '💸', color: '#eab308', type: 'avoid', category: 'evitar', limit: 1 },
+    // Con límite de cantidad: el día está bien mientras no pases de 90 min.
+    { name: 'Redes', icon: '📱', color: '#60a5fa', type: 'avoid', category: 'evitar',
+      target: { amount: 90, unit: 'min', step: 15, entry: 'manual' } }
   ];
 
   /* Reparto por nombre de los hábitos que ya existían. Se compara sin
@@ -160,8 +163,6 @@ HT.store = (function () {
     const habits = [
       // El total de pasos se escribe a mano (entry: 'manual'): nadie va a
       // pulsar "+" mil veces, el dato lo da el móvil de una pieza.
-      // El total de pasos se escribe a mano (entry: 'manual'): nadie va a
-      // pulsar "+" mil veces, el dato lo da el móvil de una pieza.
       mkHabit({ name: '10k pasos', icon: '🚶', color: '#3ddc97', category: 'fisico',
                 type: 'quantity',
                 target: { amount: 10000, unit: 'pasos', step: 1000, entry: 'manual' } }, today),
@@ -189,7 +190,8 @@ HT.store = (function () {
       mkHabit({ name: 'Dormir 7-9 horas', icon: '😴', color: '#818cf8', category: 'fisico',
                 type: 'check' }, today),
       mkHabit(AVOID_SEED[0], today),
-      mkHabit(AVOID_SEED[1], today)
+      mkHabit(AVOID_SEED[1], today),
+      mkHabit(AVOID_SEED[2], today)
     ];
 
     const training = mkHabit({ name: 'Entrenar', icon: '💪', color: '#f472b6',
@@ -208,12 +210,13 @@ HT.store = (function () {
         theme: 'dark', fontSize: 'normal',
         hideDone: true, showBadges: true, backupDays: 14, restSeconds: DEFAULT_REST,
         streakGoal: '2',
-        showDayBar: true, showNotes: true, showFreeze: true
+        showDayBar: true, showNotes: true, showFreeze: true, showWeight: true
       },
       habits: habits,
       logs: {},
       notes: {},
       frozen: {},
+      weights: {},
       routines: seed.routines,
       exercises: seed.exercises,
       sessions: {},
@@ -248,8 +251,17 @@ HT.store = (function () {
 
     const type = ['check', 'quantity', 'schedule', 'avoid'].indexOf(raw.type) >= 0 ? raw.type : 'check';
 
+    /* Un hábito a evitar puede medirse de dos formas:
+         · contando fallos (sin `target`): un fallo y el día está tocado;
+         · con un límite diario de cantidad (con `target`): "no pasar de 90 min
+           de redes". Ahí apuntas cuánto llevas, y solo pasarse es fallar.
+       El segundo modo reutiliza `target` porque es el mismo dato que una
+       meta de cantidad, solo que leído como techo en vez de como suelo. */
+    const capped = type === 'avoid' && !!raw.target && typeof raw.target === 'object' &&
+                   Number(raw.target.amount) > 0;
+
     let target = null;
-    if (type === 'quantity') {
+    if (type === 'quantity' || capped) {
       const t = raw.target || {};
       const amount = Number(t.amount);
       const step = Number(t.step);
@@ -258,8 +270,9 @@ HT.store = (function () {
         unit: typeof t.unit === 'string' && t.unit.trim() ? t.unit.trim().slice(0, 10) : 'ud',
         step: isFinite(step) && step > 0 ? step : 1,
         // Ausente en los datos anteriores: los hábitos que ya existían
-        // siguen con sus botones + y −.
-        entry: t.entry === 'manual' ? 'manual' : 'stepper'
+        // siguen con sus botones + y −. Un límite se escribe siempre a mano:
+        // el dato sale del móvil de una pieza, nadie va a pulsar "+" 90 veces.
+        entry: capped || t.entry === 'manual' ? 'manual' : 'stepper'
       };
     }
 
@@ -268,7 +281,7 @@ HT.store = (function () {
       slots = Array.isArray(raw.slots) ? raw.slots.filter(function (s) { return SLOTS.indexOf(s) >= 0; }) : [];
       if (!slots.length) slots = SLOTS.slice();
       slots.sort(function (a, b) { return SLOTS.indexOf(a) - SLOTS.indexOf(b); });
-    } else if (type === 'avoid' && Array.isArray(raw.slots)) {
+    } else if (type === 'avoid' && !capped && Array.isArray(raw.slots)) {
       // En un hábito a evitar las franjas son opcionales. Sin ellas se
       // cuentan fallos sueltos; con ellas, cada franja es un fallo posible.
       slots = raw.slots.filter(function (s) { return SLOTS.indexOf(s) >= 0; });
@@ -284,9 +297,10 @@ HT.store = (function () {
 
     const rem = raw.reminder || {};
 
-    // Tope de fallos del día. Solo significa algo en 'avoid'.
+    // Tope de fallos del día. Solo significa algo en 'avoid' contado por
+    // fallos: con límite de cantidad, el techo ya es el `target`.
     let limit = null;
-    if (type === 'avoid') {
+    if (type === 'avoid' && !capped) {
       const n = Math.floor(Number(raw.limit));
       limit = isFinite(n) && n > 0 ? Math.min(n, MAX_FAILS) : 2;
     }
@@ -365,6 +379,13 @@ HT.store = (function () {
     // día, no un logro. El `true` de la versión anterior vale un fallo, así
     // que los datos viejos se leen solos sin migración aparte.
     if (habit.type === 'avoid') {
+      // Con límite de cantidad se guarda lo que llevas (minutos, euros…),
+      // no fallos. Cero vale lo mismo que no apuntar nada.
+      if (habit.target) {
+        const n = Number(value);
+        return isFinite(n) && n > 0 ? Math.min(n, 100000) : null;
+      }
+
       // Con franjas, el registro dice EN CUÁL se falló, igual que en
       // 'schedule' pero con el significado invertido.
       if (habit.slots) {
@@ -495,6 +516,16 @@ HT.store = (function () {
   }
 
   /**
+   * Un peso en kg, con un decimal. El rango es amplio a propósito: está para
+   * descartar un 7 o un 720 tecleados por error, no para opinar del dato.
+   */
+  function cleanWeight(raw) {
+    const n = Number(String(raw).replace(',', '.'));
+    if (!isFinite(n) || n < 20 || n > 400) return null;
+    return Math.round(n * 10) / 10;
+  }
+
+  /**
    * Marca de un día: por qué no salió y si cuenta o no.
    *   reason — id del catálogo, o null si se salvó sin dar motivo
    *   note   — texto libre, solo tiene sentido con reason 'otro'
@@ -575,7 +606,8 @@ HT.store = (function () {
         streakGoal: STREAK_GOALS.indexOf(s.streakGoal) >= 0 ? s.streakGoal : '2',
         showDayBar: s.showDayBar !== false,
         showNotes: s.showNotes !== false,
-        showFreeze: s.showFreeze !== false
+        showFreeze: s.showFreeze !== false,
+        showWeight: s.showWeight !== false
       },
       habits: habits,
       logs: logs,
@@ -586,6 +618,8 @@ HT.store = (function () {
       // el motivo. El `true` antiguo se lee como "salvado sin motivo", que
       // es exactamente lo que significaba.
       frozen: cleanByDate(raw.frozen, cleanDayMark),
+      // Peso por día, en kg. Ausente antes de la v11: empieza vacío.
+      weights: cleanByDate(raw.weights, cleanWeight),
       routines: routines,
       exercises: exercises,
       sessions: cleanByDate(raw.sessions, function (v) { return cleanSession(v, exerciseIds); }),
@@ -743,6 +777,18 @@ HT.store = (function () {
     state.settings.hideDone = true;
   }
 
+  /**
+   * Migración a la v11: "Redes" entra como hábito de partida. A quien ya
+   * tiene la app se le añade una vez, salvo que ya tenga uno con ese nombre
+   * —creado a mano, archivado o como sea—, para no duplicarlo.
+   * No suma a `habitsCreated`: lo regala la app, no lo has creado tú.
+   */
+  function migrateAddRedes() {
+    const existe = state.habits.some(function (h) { return plainName(h.name) === 'redes'; });
+    if (existe) return;
+    state.habits.push(mkHabit(AVOID_SEED[2], U.todayKey()));
+  }
+
   /* ── Carga y guardado ─────────────────────────────────────── */
 
   function load() {
@@ -777,6 +823,7 @@ HT.store = (function () {
       if (incoming < 5) migrateToScreenSlots();
       if (incoming < 6) migrateSeedTweaks();
       if (incoming < 8) migrateNewDefaults();
+      if (incoming < 11) migrateAddRedes();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);
@@ -961,6 +1008,15 @@ HT.store = (function () {
     return habit;
   }
 
+  /**
+   * Qué significa el número guardado en sus registros. Dos hábitos del
+   * mismo tipo pueden guardar cosas distintas: un hábito a evitar por
+   * fallos guarda fallos, y uno con límite guarda minutos.
+   */
+  function modeOf(habit) {
+    return habit.type === 'avoid' && habit.target ? 'avoid-cap' : habit.type;
+  }
+
   function updateHabit(id, patch) {
     const current = getHabit(id);
     if (!current) return null;
@@ -972,7 +1028,9 @@ HT.store = (function () {
 
     // Cambiar de tipo invalida el histórico: un número no significa nada
     // como check, ni al revés. Se limpia en lugar de mostrar datos falsos.
-    if (merged.type !== current.type) delete state.logs[id];
+    // Lo mismo al pasar un hábito a evitar de "fallos" a "límite": un 3 eran
+    // tres fallos y como minutos no significa nada.
+    if (modeOf(merged) !== modeOf(current)) delete state.logs[id];
 
     commit('habit:update', merged);
     return merged;
@@ -1066,6 +1124,29 @@ HT.store = (function () {
          como mucho. Es lo que mantiene viva la racha, porque motivo hay
          siempre y si salvar el día fuera gratis no mediría nada.
      ──────────────────────────────────────────────────────── */
+
+  /* ── Peso ─────────────────────────────────────────────────
+     Va aparte de los hábitos a propósito: no es algo que se "cumpla", así
+     que no debe entrar en el porcentaje del día, ni en las rachas, ni dar
+     EXP. Es un registro, y solo cuenta para la racha de registro. ─────── */
+
+  function getWeight(dateKey) {
+    return state.weights[dateKey] !== undefined ? state.weights[dateKey] : null;
+  }
+
+  function getWeights() { return state.weights; }
+
+  /** Guarda el peso de un día. null o vacío lo borra. */
+  function setWeight(dateKey, kg) {
+    if (!U.isValidKey(dateKey)) return null;
+
+    const limpio = kg === null || kg === '' ? null : cleanWeight(kg);
+    if (limpio === null) delete state.weights[dateKey];
+    else state.weights[dateKey] = limpio;
+
+    commit('weight:change', dateKey);
+    return limpio;
+  }
 
   /** La marca completa de un día, o null si no tiene. */
   function getDayMark(dateKey) {
@@ -1318,7 +1399,8 @@ HT.store = (function () {
       streakGoal: STREAK_GOALS.indexOf(next.streakGoal) >= 0 ? next.streakGoal : '2',
       showDayBar: next.showDayBar !== false,
       showNotes: next.showNotes !== false,
-      showFreeze: next.showFreeze !== false
+      showFreeze: next.showFreeze !== false,
+      showWeight: next.showWeight !== false
     };
     commit('settings:change', state.settings);
     return state.settings;
@@ -1456,6 +1538,7 @@ HT.store = (function () {
     setLog: setLog, toggleCheck: toggleCheck, addQuantity: addQuantity, toggleSlot: toggleSlot,
     setNote: setNote,
     getDayMark: getDayMark, setDayMark: setDayMark, clearDayMark: clearDayMark,
+    getWeight: getWeight, getWeights: getWeights, setWeight: setWeight,
 
     getWorkout: getWorkout, getRoutines: getRoutines, getRoutine: getRoutine,
     getExercises: getExercises, getExercise: getExercise,

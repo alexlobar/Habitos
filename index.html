@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="1.7.2">
+<html lang="es" data-theme="dark" data-build="1.7.3">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -129,6 +129,18 @@
           </button>
           <p class="day-actions__hint" id="freezeHint"></p>
         </div>
+
+        <article class="card weight-entry" id="weightEntryCard">
+          <label class="field__label" for="weightInput">Peso de hoy</label>
+          <div class="weight-entry__row">
+            <div class="amount-field">
+              <input class="input weight-entry__input" type="number" id="weightInput"
+                     min="20" max="400" step="0.1" inputmode="decimal" placeholder="—">
+              <span class="amount-field__unit" aria-hidden="true">kg</span>
+            </div>
+            <p class="weight-entry__hint" id="weightHint">—</p>
+          </div>
+        </article>
 
         <article class="card note-card" id="noteCard">
           <label class="field__label" for="dayNote">Notas del día</label>
@@ -257,6 +269,43 @@
                 <table class="data-table" id="chartTable"></table>
               </div>
             </details>
+          </article>
+
+          <!-- El peso no es un hábito: no se "cumple", así que va aparte y no
+               entra en porcentajes, rachas de cumplimiento ni EXP. -->
+          <article class="card" id="weightCard" aria-labelledby="weightTitle">
+            <header class="card__head">
+              <h2 class="card__title" id="weightTitle">Peso</h2>
+              <div class="seg seg--compact" role="radiogroup" aria-label="Periodo del peso">
+                <label class="seg__opt">
+                  <input type="radio" name="weightRange" value="30" checked>
+                  <span>30 días</span>
+                </label>
+                <label class="seg__opt">
+                  <input type="radio" name="weightRange" value="90">
+                  <span>90 días</span>
+                </label>
+                <label class="seg__opt">
+                  <input type="radio" name="weightRange" value="0">
+                  <span>Todo</span>
+                </label>
+              </div>
+            </header>
+
+            <ul class="weight-stats" id="weightStats"></ul>
+            <div class="weight-chart" id="weightChart"></div>
+            <p class="weight-legend" id="weightLegend">
+              <span class="weight-legend__dot" aria-hidden="true"></span> Cada pesada
+              <span class="weight-legend__line" aria-hidden="true"></span> Media de 7 días
+            </p>
+
+            <div class="blank" id="weightEmpty" hidden>
+              <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
+                <rect x="8" y="12" width="32" height="28" rx="6"/>
+                <path d="M17 22a7 7 0 0 1 14 0M24 22l3-4"/>
+              </svg>
+              <p class="blank__text">Apunta tu peso en la pantalla Hoy para ver su evolución</p>
+            </div>
           </article>
 
       </section>
@@ -662,6 +711,13 @@
             </button>
           </div>
           <div class="field-row">
+            <span id="weightSwLabel">Peso del día</span>
+            <button type="button" class="switch" id="setShowWeight"
+                    role="switch" aria-checked="true" aria-labelledby="weightSwLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
             <span id="notesSwLabel">Notas del día</span>
             <button type="button" class="switch" id="setShowNotes"
                     role="switch" aria-checked="true" aria-labelledby="notesSwLabel">
@@ -870,6 +926,26 @@
           </p>
         </fieldset>
 
+        <!-- Dos formas de medir un hábito a evitar. Sin esto, editar "Redes"
+             y guardar le habría borrado el límite de 90 minutos. -->
+        <fieldset class="field" id="avoidModeFields" hidden>
+          <legend class="field__label">Cómo se mide</legend>
+          <div class="seg" role="radiogroup" aria-label="Cómo se mide el hábito a evitar">
+            <label class="seg__opt">
+              <input type="radio" name="avoidMode" value="fails" checked>
+              <span>Contando fallos</span>
+            </label>
+            <label class="seg__opt">
+              <input type="radio" name="avoidMode" value="cap">
+              <span>Con un máximo al día</span>
+            </label>
+          </div>
+          <p class="field__hint" id="capHint" hidden>
+            Apuntas cuánto llevas (minutos, euros…). El día solo cuenta como
+            fallado si te pasas del máximo.
+          </p>
+        </fieldset>
+
         <div class="field" id="limitField" hidden>
           <label class="field__label" for="fLimit">Fallos que lo ponen en crítico</label>
           <input type="number" id="fLimit" name="limit" class="input"
@@ -882,7 +958,7 @@
 
         <div class="field-grid" id="quantityFields" hidden>
           <div class="field">
-            <label class="field__label" for="fTarget">Meta diaria</label>
+            <label class="field__label" for="fTarget" id="fTargetLabel">Meta diaria</label>
             <input class="input" type="number" id="fTarget" name="target" min="1" step="1" value="30">
           </div>
           <div class="field">
