@@ -120,7 +120,7 @@ HT.ui = (function () {
       'exerciseModal', 'exerciseForm', 'exModalTitle', 'exNameError', 'btnDeleteExercise',
       'habitIcon', 'habitTitle', 'habitMeta', 'hStreak', 'hBest', 'hRate', 'hTotal',
       'hSumsCard', 'hSumWeek', 'hSumMonth', 'hSumTotal', 'hSumAvg', 'hSumBest',
-      'hSumDays', 'hSumsNote',
+      'hSumDays', 'hSumsNote', 'hSumTotalLabel', 'hSumBestLabel', 'hSumDaysLabel', 'hChartTitle',
       'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
       'setAccent', 'btnResetAccent', 'setEffects', 'setRest',
@@ -131,7 +131,7 @@ HT.ui = (function () {
       'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
       'emptyNotes', 'emptyNotesTitle', 'emptyNotesText',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
-      'buildVersion', 'buildOrigin', 'buildCache', 'buildHint',
+      'buildVersion', 'buildOrigin', 'buildCache', 'buildHint', 'installRow', 'btnInstall',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
       'fCategory', 'limitField', 'fLimit', 'avoidModeFields', 'capHint', 'fTargetLabel',
       'fName', 'fNameError'
@@ -1380,7 +1380,7 @@ HT.ui = (function () {
     return { text: day.done + ' de ' + day.total, state: day.pct >= 50 ? 'ok' : 'low' };
   }
 
-  function renderNotes(dateKey, query) {
+  function renderNotes(dateKey, query, editingKey) {
     const hoy = U.todayKey();
     const notes = S.getState().notes;
     const busca = (query || '').trim().toLowerCase();
@@ -1405,17 +1405,22 @@ HT.ui = (function () {
     const frag = document.createDocumentFragment();
 
     claves.forEach(function (key) {
-      const item = el('li');
-      const btn = el('button', {
-        type: 'button', class: 'note-entry', 'data-day': key,
-        'aria-label': 'Ver el ' + U.formatLong(U.fromKey(key))
-      });
+      /* Antes la entrada entera era un botón que llevaba al día. Ahora hay
+         dos acciones, así que cada una tiene el suyo: la fecha lleva al día
+         y el lápiz edita aquí mismo. El texto deja de ser pulsable, y con
+         eso también se puede seleccionar y copiar. */
+      const editando = key === editingKey;
+      const largo = U.formatLong(U.fromKey(key));
+      const item = el('li', { class: 'note-entry' + (editando ? ' is-editing' : '') });
 
       const head = el('div', { class: 'note-entry__head' });
 
       const dias = U.daysBetween(key, hoy);
-      const cuando = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : U.formatLong(U.fromKey(key));
-      head.appendChild(el('span', { class: 'note-entry__date', text: cuando }));
+      const cuando = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer' : largo;
+      head.appendChild(el('button', {
+        type: 'button', class: 'note-entry__date', 'data-day': key,
+        'aria-label': 'Ir al ' + largo, text: cuando + ' ›'
+      }));
 
       const tag = noteDayTag(key);
       if (tag) {
@@ -1424,14 +1429,36 @@ HT.ui = (function () {
         }));
       }
 
-      btn.appendChild(head);
-      btn.appendChild(el('p', { class: 'note-entry__text', text: notes[key] }));
-      item.appendChild(btn);
+      head.appendChild(el('button', {
+        type: 'button', class: 'icon-btn note-entry__edit', 'data-edit': key,
+        'aria-pressed': editando ? 'true' : 'false',
+        'aria-label': (editando ? 'Terminar de editar la nota del ' : 'Editar la nota del ') + largo,
+        title: editando ? 'Listo' : 'Editar',
+        text: editando ? '✓' : '✎'
+      }));
+
+      item.appendChild(head);
+
+      if (editando) {
+        const ta = el('textarea', {
+          class: 'input input--area note-grow note-entry__input', 'data-note': key,
+          rows: '3', 'aria-label': 'Nota del ' + largo
+        });
+        ta.value = notes[key];
+        item.appendChild(ta);
+      } else {
+        item.appendChild(el('p', { class: 'note-entry__text', text: notes[key] }));
+      }
+
       frag.appendChild(item);
     });
 
     els.notesList.textContent = '';
     els.notesList.appendChild(frag);
+
+    // El campo de edición se mide ya en el documento: oculto daría altura 0.
+    const editor = $('.note-entry__input', els.notesList);
+    if (editor) growField(editor);
 
     // Dos vacíos distintos: no haber escrito nunca, y no encontrar nada.
     els.notesList.hidden = !claves.length;
@@ -2544,6 +2571,9 @@ HT.ui = (function () {
     const series = St.habitValueSeries(habit, todayKey, 30);
     const meta = habit.target.amount;
     const unidad = habit.target.unit;
+    // Con un máximo, la línea de guiones es un techo: lo que la supera es lo
+    // malo, al revés que con una meta.
+    const capped = St.isCapped(habit);
 
     const width = Math.max(els.habitChart.clientWidth || 0, CHART.minW);
     const ml = 40;                       // más margen: aquí caben "12.400"
@@ -2608,8 +2638,11 @@ HT.ui = (function () {
     series.forEach(function (p, i) {
       if (!p.hasData) return;
 
+      const marca = capped
+        ? (p.value > meta ? ' chart__dot--over' : '')
+        : (p.value >= meta ? ' chart__dot--goal' : '');
       svg.appendChild(svgEl('circle', {
-        class: 'chart__dot' + (p.value >= meta ? ' chart__dot--goal' : ''),
+        class: 'chart__dot' + marca,
         cx: x(i), cy: y(p.value), r: 3
       }));
 
@@ -2617,7 +2650,8 @@ HT.ui = (function () {
         class: 'chart__hit', x: ml + i * slot, y: CHART.mt, width: slot, height: plotH
       });
       const title = svgEl('title');
-      title.textContent = p.full + ': ' + fmtNum.format(p.value) + ' de ' +
+      title.textContent = p.full + ': ' + fmtNum.format(p.value) +
+                          (capped ? ' de máximo ' : ' de ') +
                           fmtNum.format(meta) + ' ' + unidad;
       hit.appendChild(title);
       svg.appendChild(hit);
@@ -2640,6 +2674,16 @@ HT.ui = (function () {
     els.habitChart.appendChild(svg);
 
     const conDatos = series.filter(function (p) { return p.hasData && p.value > 0; });
+
+    if (capped) {
+      const pasados = conDatos.filter(function (p) { return p.value > meta; }).length;
+      els.hChartReadout.textContent = conDatos.length
+        ? conDatos.length + ' días con registro · ' + pasados +
+          (pasados === 1 ? ' pasado' : ' pasados') + ' del máximo de ' + fmtNum.format(meta) + ' ' + unidad
+        : 'Todavía no hay valores registrados.';
+      return;
+    }
+
     const sobreMeta = conDatos.filter(function (p) { return p.value >= meta; }).length;
     els.hChartReadout.textContent = conDatos.length
       ? conDatos.length + ' días con registro · ' + sobreMeta + ' por encima de la meta de ' +
@@ -2780,25 +2824,46 @@ HT.ui = (function () {
    * un check sumar "veces" ya lo dice la ficha "Veces cumplido".
    */
   function renderHabitSums(habit, todayKey, weekStart) {
-    const esCantidad = habit.type === 'quantity';
-    els.hSumsCard.hidden = !esCantidad;
-    els.hChartCard.hidden = !esCantidad;
-    if (!esCantidad) return;
+    const capped = St.isCapped(habit);
+    const conCantidad = habit.type === 'quantity' || capped;
+    els.hSumsCard.hidden = !conCantidad;
+    els.hChartCard.hidden = !conCantidad;
+    if (!conCantidad) return;
 
     renderValueChart(habit, todayKey);
 
     const s = St.habitSums(habit, todayKey, weekStart);
     const u = habit.target.unit;
-    const con = function (n) { return fmtNum.format(n) + ' ' + u; };
+    const con = function (n) { return fmtNum.format(Math.round(n * 10) / 10) + ' ' + u; };
 
     els.hSumWeek.textContent = con(s.week);
     els.hSumMonth.textContent = con(s.month);
-    els.hSumTotal.textContent = con(s.total);
     els.hSumAvg.textContent = s.days ? con(s.avg) : '—';
+
+    if (capped) {
+      /* Con un máximo diario cambian tres fichas: lo útil no es el total de
+         siempre sino compararte con la semana pasada, el "mejor día" sería
+         el de más minutos (el peor), y la racha de apuntar importa menos que
+         cuántos días te pasaste. */
+      els.hSumTotalLabel.textContent = 'Semana pasada';
+      els.hSumTotal.textContent = con(s.lastWeek);
+      els.hSumBestLabel.textContent = 'Día más alto';
+      els.hSumBest.textContent = s.best ? con(s.best) : '—';
+      els.hSumDaysLabel.textContent = 'Pasados este mes';
+      els.hSumDays.textContent = s.overMonth + (s.overMonth === 1 ? ' día' : ' días');
+
+      els.hSumsNote.textContent = capWeekNote(habit, s);
+      return;
+    }
+
+    els.hSumTotalLabel.textContent = 'Total histórico';
+    els.hSumTotal.textContent = con(s.total);
+    els.hSumBestLabel.textContent = 'Mejor día';
     els.hSumBest.textContent = s.best ? con(s.best) : '—';
 
     // Racha de apuntar, no de cumplir: en los pasos casi nunca llegas a la
     // meta, pero registrar a diario ya es constancia.
+    els.hSumDaysLabel.textContent = 'Racha apuntando';
     const apuntando = St.logStreak(habit, todayKey);
     els.hSumDays.textContent = apuntando + (apuntando === 1 ? ' día' : ' días');
 
@@ -2806,6 +2871,32 @@ HT.ui = (function () {
       ? 'Tu mejor día fue el ' + U.formatShort(U.fromKey(s.bestDay)) + ', y llevas ' + s.days +
         ' días con registro en total. La media cuenta solo esos días, no los que no apuntaste nada.'
       : 'Todavía no has registrado ningún valor en este hábito.';
+  }
+
+  /**
+   * La tendencia de un hábito con máximo, en una frase. Compara esta semana
+   * con la anterior A ESTAS ALTURAS: un martes, dos días contra siete
+   * siempre diría que vas mejor.
+   */
+  function capWeekNote(habit, s) {
+    const u = ' ' + habit.target.unit;
+    const fmt = function (n) { return fmtNum.format(Math.round(n)); };
+
+    if (!s.days) return 'Todavía no has apuntado nada. Escribe en Hoy cuánto llevas cada día.';
+
+    if (!s.lastWeekSoFar && !s.week) {
+      return 'Esta semana todavía no has apuntado nada.';
+    }
+
+    const diff = s.week - s.lastWeekSoFar;
+    let tendencia;
+    if (!s.lastWeekSoFar) tendencia = 'La semana pasada no apuntaste nada a estas alturas, así que aún no hay con qué comparar.';
+    else if (Math.abs(diff) < 1) tendencia = 'Igual que la semana pasada a estas alturas.';
+    else if (diff < 0) tendencia = fmt(-diff) + u + ' menos que la semana pasada a estas alturas.';
+    else tendencia = fmt(diff) + u + ' más que la semana pasada a estas alturas.';
+
+    return 'Esta semana llevas ' + fmt(s.week) + u + '. ' + tendencia +
+      ' La media cuenta solo los días que apuntaste algo.';
   }
 
   function renderHabitHeatmap(habit, monthDate, weekStart, todayKey) {

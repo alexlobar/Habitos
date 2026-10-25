@@ -1382,6 +1382,14 @@ button.heat:disabled:hover { transform: none; }
   color: var(--text-muted);
 }
 
+/* Botón de instalación propio, en Ajustes → Esta instalación. */
+.install-row {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.install-row .btn { flex: none; }
+
 /* ── Peso ─────────────────────────────────────────────────
    La entrada en Hoy es una línea: campo, unidad y una pista. La tarjeta
    de Histórico lleva cuatro cifras y la gráfica. ─────────────────── */
@@ -1487,33 +1495,47 @@ button.heat:disabled:hover { transform: none; }
 
 .notes-list { display: grid; gap: var(--sp-3); }
 
+/* Ya no es un botón entero: la fecha lleva al día y el lápiz edita. */
 .note-entry {
-  display: block;
-  width: 100%;
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  transition: border-color var(--dur) var(--ease);
 }
-.note-entry:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.note-entry.is-editing { border-color: var(--accent); }
 
 .note-entry__head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
+  align-items: center;
+  gap: var(--sp-2);
   margin-bottom: var(--sp-2);
 }
 .note-entry__date {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   font-size: var(--fs-xs);
   font-weight: 600;
+  text-align: left;
   color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
 }
+.note-entry__date:hover { color: var(--accent-text); }
 .note-entry__date::first-letter { text-transform: uppercase; }
+
+.note-entry__edit {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  font-size: var(--fs-md);
+}
+.note-entry.is-editing .note-entry__edit { color: var(--accent-text); }
+.note-entry__input { margin: 0; }
 
 .note-entry__tag {
   flex: none;
@@ -2445,6 +2467,8 @@ button.week-cell:disabled:hover { transform: none; }
 #habitChart .chart__dot { stroke: var(--habit-color, var(--accent)); }
 /* Los días que pasan la meta se rellenan: se ven de un vistazo. */
 #habitChart .chart__dot--goal { fill: var(--habit-color, var(--accent)); }
+/* Con un máximo diario, lo que supera la línea es lo malo: en rojo. */
+#habitChart .chart__dot--over { fill: var(--danger); }
 .chart__area--value { fill: url(#valueAreaGrad); }
 #habitChart .chart__area-a { stop-color: var(--habit-color, var(--accent)); stop-opacity: .24; }
 #habitChart .chart__area-b { stop-color: var(--habit-color, var(--accent)); stop-opacity: 0; }

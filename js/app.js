@@ -19,6 +19,7 @@
   let habitId = null;                            // hábito abierto en la ficha
   let habitMonth = U.startOfMonth(new Date());
   let noteQuery = '';                            // filtro del buscador de Notas
+  let noteEditing = null;                        // nota antigua abierta para editar
   let weightRange = 30;                          // días de la gráfica de peso (0 = todo)
 
   /* ── Repintado coalescido ─────────────────────────────────
@@ -212,7 +213,7 @@
       const streak = St.currentStreak(habit, today);
       if (streak >= 3) {
         UI.toast('¡' + streak + ' días seguidos con ' + habit.name + '!',
-                 { type: 'success', icon: '🔥' });
+                 { type: 'success', icon: '⛓️' });
       }
     }
 
@@ -1133,13 +1134,34 @@
   }
 
   function showNotes() {
+    noteEditing = null;                  // se entra siempre leyendo, no a medio editar
     UI.setView('notes');
     renderNotesIfOpen();
   }
 
   function renderNotesIfOpen() {
     if (UI.els.views.notes.hidden) return;
-    UI.renderNotes(currentDate, noteQuery);
+    // Con una nota antigua abierta no se repinta la lista por su cuenta:
+    // guardar dispara un repintado, y reconstruir la lista te quitaría el
+    // cursor a mitad de frase. Peor aún, al pulsar ✓ el campo pierde el foco
+    // y se guarda justo antes del clic; si el repintado llega en medio, el
+    // botón ya no existe y el clic se pierde. Solo repinta toggleNoteEdit().
+    if (noteEditing) return;
+    UI.renderNotes(currentDate, noteQuery, noteEditing);
+  }
+
+  /** Abre una nota antigua para editarla, o la cierra si ya estaba abierta. */
+  function toggleNoteEdit(key) {
+    noteEditing = noteEditing === key ? null : key;
+    UI.renderNotes(currentDate, noteQuery, noteEditing);
+
+    if (!noteEditing) return;
+    const campo = UI.els.notesList.querySelector('.note-entry__input');
+    if (campo) {
+      campo.focus();
+      const fin = campo.value.length;
+      campo.setSelectionRange(fin, fin);   // el cursor al final, para seguir escribiendo
+    }
   }
 
   function stepWeek(delta) {
@@ -1182,7 +1204,7 @@
     // La racha se explica sola al tocarla: un número suelto en la cabecera
     // invita a preguntar qué cuenta, y ahí no cabe la respuesta.
     els.streakChip.addEventListener('click', function () {
-      UI.toast(UI.streakMessage(today), { icon: '🔥' });
+      UI.toast(UI.streakMessage(today), { icon: '◆' });
     });
 
     // El aviso de nivel se quita al tocarlo o con Escape; no hay que esperar.
@@ -1351,14 +1373,45 @@
 
     els.notesSearch.addEventListener('input', U.debounce(function () {
       noteQuery = els.notesSearch.value;
+      noteEditing = null;                // buscar cierra la edición: la lista cambia
       renderNotesIfOpen();
     }, 200));
 
     els.notesList.addEventListener('click', function (e) {
+      const editar = e.target.closest('[data-edit]');
+      if (editar) {
+        // Si había otra abierta, se guarda antes de cambiar.
+        const abierto = els.notesList.querySelector('.note-entry__input');
+        if (abierto) S.setNote(abierto.dataset.note, abierto.value);
+        toggleNoteEdit(editar.dataset.edit);
+        return;
+      }
+
       const btn = e.target.closest('[data-day]');
       if (!btn) return;
       goToDate(btn.dataset.day);
       UI.setView('today');
+    });
+
+    // Editar una nota antigua: se guarda mientras escribes y al salir del
+    // campo. Vaciarla del todo la borra, igual que en el resto de la app.
+    const saveOldNote = U.debounce(function (campo) {
+      S.setNote(campo.dataset.note, campo.value);
+    }, 400);
+    els.notesList.addEventListener('input', function (e) {
+      if (!e.target.classList.contains('note-entry__input')) return;
+      UI.growField(e.target);
+      saveOldNote(e.target);
+    });
+    els.notesList.addEventListener('focusout', function (e) {
+      if (!e.target.classList.contains('note-entry__input')) return;
+      saveOldNote.cancel();
+      S.setNote(e.target.dataset.note, e.target.value);
+    });
+    els.notesList.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !e.target.classList.contains('note-entry__input')) return;
+      S.setNote(e.target.dataset.note, e.target.value);
+      toggleNoteEdit(e.target.dataset.note);
     });
 
     els.btnBackFromProgress.addEventListener('click', function () { UI.setView('today'); });
@@ -1559,6 +1612,41 @@
     document.head.appendChild(link);
   }
 
+  /* ── Instalar desde la propia app ─────────────────────────
+     Chrome para Android (hasta la 157) comprueba por DOMINIO si una app ya
+     está instalada. Con varias apps en alexlobar.github.io, la primera que
+     instalas bloquea el menú ⋮ → "Instalar app" para las demás.
+     Hábitos fue la primera, así que hoy no le afecta; esto la cubre si un
+     día se instala en otro orden (otro móvil, o reinstalando).
+     El aviso `beforeinstallprompt` sí mira la carpeta: se guarda y se
+     ofrece con un botón propio, que solo aparece cuando hay algo que
+     instalar. Tiene que escucharse antes de enlazar el manifest. ───── */
+
+  let installPrompt = null;
+
+  function listenInstall() {
+    window.addEventListener('beforeinstallprompt', function (ev) {
+      ev.preventDefault();               // sin la mini-barra de Chrome: botón propio
+      installPrompt = ev;
+      UI.els.installRow.hidden = false;
+    });
+
+    UI.els.btnInstall.addEventListener('click', function () {
+      if (!installPrompt) return;
+      const ev = installPrompt;
+      installPrompt = null;              // cada aviso solo se puede usar una vez
+      UI.els.installRow.hidden = true;
+      ev.prompt();
+      if (ev.userChoice) ev.userChoice.catch(function () { /* cancelado */ });
+    });
+
+    window.addEventListener('appinstalled', function () {
+      installPrompt = null;
+      UI.els.installRow.hidden = true;
+      UI.toast('App instalada. Ya la tienes en la pantalla de inicio.', { type: 'success', icon: '📲' });
+    });
+  }
+
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     // Un service worker necesita origen seguro: abierto con file:// no aplica.
@@ -1654,6 +1742,7 @@
 
     syncProgressState();
     scheduleMidnight();
+    listenInstall();                     // antes del manifest: si no, el aviso puede perderse
     linkManifest();
     registerServiceWorker();
 

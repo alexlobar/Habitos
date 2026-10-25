@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **1.7.3** · esquema de datos **v11**.
+Versión documentada: **1.7.4** · esquema de datos **v11**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -22,7 +22,7 @@ barra de navegación). De arriba abajo:
 | 1 | Panel de nivel | Nivel, rango, barra de EXP con previsión, EXP del nivel y total |
 | 2 | Estado del jugador | Los cinco atributos (sección 6) |
 | 3 | Tus dos rachas | Cumpliendo y registrando, cada una con su regla (sección 8) |
-| 4 | Cuatro fichas | Racha actual, mejor racha, misiones completadas, logros |
+| 4 | Cuatro fichas | Mejor hábito ahora, récord de un hábito, misiones completadas, logros |
 | 5 | Ascensos | Plegado. Fecha en que alcanzaste cada nivel |
 | 6 | Rachas por hábito | Racha actual y récord de cada hábito |
 | 7 | Días sin | Solo si hay hábitos a evitar: días seguidos sin caer |
@@ -335,10 +335,12 @@ Cada hábito tiene la suya, que se ve en su ficha y en *Rachas por hábito*. Mis
 reglas de perdón: los días que no le tocan y los días salvados no la cortan, y
 hoy tampoco.
 
-**Ojo con esto**: las fichas *Racha actual* y *Mejor racha* de Progreso, y los
+Las fichas *Mejor hábito ahora* y *Récord de un hábito* de Progreso, y los
 logros *Racha de 7 / 30 días* y *Centurión*, miran **la mejor racha de un solo
-hábito**, no las rachas generales de arriba. `game.bestStreak` guarda ese
-récord. Los hábitos a evitar quedan fuera: tienen su propio bloque, *Días sin*.
+hábito**, no las rachas generales de arriba. Hasta la 1.7.3 esas fichas se
+llamaban *Racha actual* y *Mejor racha*, y se confundían con las generales.
+`game.bestStreak` guarda ese récord. Los hábitos a evitar quedan fuera: tienen
+su propio bloque, *Días sin*.
 
 ---
 
@@ -389,7 +391,7 @@ progresión*).
 | 🌱 | Primer despertar | Completar el primer hábito |
 | ⚔️ | Cien misiones | 100 hábitos completados |
 | 🏹 | Mil misiones | 1.000 hábitos completados |
-| 🔥 | Racha de 7 días | Un mismo hábito, 7 días seguidos |
+| ⛓️ | Racha de 7 días | Un mismo hábito, 7 días seguidos |
 | 🏔️ | Racha de 30 días | Un mismo hábito, 30 días seguidos |
 | 💎 | Centurión | Un mismo hábito, 100 días seguidos |
 | ⭐ | Día impecable | Cumplir todos los hábitos de hoy |

@@ -864,8 +864,15 @@ HT.stats = (function () {
     const logs = S.getHabitLogs(habit.id);
     const firstOfWeek = U.toKey(U.startOfWeek(U.fromKey(today), weekStart));
     const firstOfMonth = today.slice(0, 8) + '01';
+    // La semana pasada entera, y la semana pasada "hasta el mismo día": un
+    // martes, comparar dos días de esta semana con siete de la anterior
+    // siempre diría que vas mejor. Lo justo es compararla a estas alturas.
+    const firstOfLastWeek = U.addDaysKey(firstOfWeek, -7);
+    const sameDayLastWeek = U.addDaysKey(today, -7);
+    const cap = isCapped(habit) ? habit.target.amount : null;
 
     let week = 0, month = 0, total = 0, days = 0, best = 0, bestDay = null;
+    let lastWeek = 0, lastWeekSoFar = 0, overMonth = 0;
 
     Object.keys(logs).forEach(function (key) {
       const n = Number(logs[key]);
@@ -875,13 +882,23 @@ HT.stats = (function () {
       total += n;
       days++;
       if (n > best) { best = n; bestDay = key; }
-      if (key >= firstOfMonth) month += n;
+      if (key >= firstOfMonth) {
+        month += n;
+        if (cap !== null && n > cap) overMonth++;
+      }
       if (key >= firstOfWeek) week += n;
+      if (key >= firstOfLastWeek && key < firstOfWeek) {
+        lastWeek += n;
+        if (key <= sameDayLastWeek) lastWeekSoFar += n;
+      }
     });
 
     return {
       week: week, month: month, total: total,
       days: days, best: best, bestDay: bestDay,
+      lastWeek: lastWeek, lastWeekSoFar: lastWeekSoFar,
+      // Solo con máximo diario: días de este mes en que te pasaste.
+      overMonth: overMonth,
       // Media sobre los días con registro, no sobre los días transcurridos:
       // "he leído 12 páginas los días que leí" dice más que diluirlo en ceros.
       avg: days ? Math.round(total / days) : 0
@@ -1175,7 +1192,7 @@ HT.stats = (function () {
     { id: 'first_step',   icon: '🌱', name: 'Primer despertar', hint: 'Completa tu primer hábito' },
     { id: 'quests_100',   icon: '⚔️', name: 'Cien misiones',    hint: 'Completa 100 hábitos' },
     { id: 'quests_1000',  icon: '🏹', name: 'Mil misiones',     hint: 'Completa 1000 hábitos' },
-    { id: 'streak_7',     icon: '🔥', name: 'Racha de 7 días',  hint: '7 días seguidos con un hábito' },
+    { id: 'streak_7',     icon: '⛓️', name: 'Racha de 7 días',  hint: '7 días seguidos con un hábito' },
     { id: 'streak_30',    icon: '🏔️', name: 'Racha de 30 días', hint: '30 días seguidos con un hábito' },
     { id: 'streak_100',   icon: '💎', name: 'Centurión',        hint: '100 días seguidos con un hábito' },
     { id: 'perfect_day',  icon: '⭐', name: 'Día impecable',    hint: 'Cumple todos los hábitos de un día' },

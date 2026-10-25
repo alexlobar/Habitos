@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="1.7.3">
+<html lang="es" data-theme="dark" data-build="1.7.4">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -13,7 +13,9 @@
   <!-- El manifest lo enlaza app.js solo en http/https: en file:// el origen
        es "null" y el navegador rechaza la petición con un error de CORS. -->
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icon.svg">
+  <!-- iOS no admite SVG aquí: con el .svg el iPhone ponía una captura de la
+       página en la pantalla de inicio en vez del icono. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="css/styles.css">
@@ -468,8 +470,11 @@
           </article>
 
           <ul class="stat-grid" aria-label="Resumen de estadísticas">
-            <li class="stat"><p class="stat__value" id="statStreak">—</p><p class="stat__label">Racha actual</p></li>
-            <li class="stat"><p class="stat__value" id="statBest">—</p><p class="stat__label">Mejor racha</p></li>
+            <!-- Estas dos miran UN solo hábito (el mejor), no las rachas generales
+                 de la tarjeta de encima. Con "Racha actual" y "Mejor racha" se
+                 confundían con ellas. -->
+            <li class="stat"><p class="stat__value" id="statStreak">—</p><p class="stat__label">Mejor hábito ahora</p></li>
+            <li class="stat"><p class="stat__value" id="statBest">—</p><p class="stat__label">Récord de un hábito</p></li>
             <li class="stat"><p class="stat__value" id="statQuests">—</p><p class="stat__label">Misiones completadas</p></li>
             <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
@@ -563,12 +568,14 @@
         <article class="card" id="hSumsCard" aria-labelledby="hSumsTitle" hidden>
           <header class="card__head"><h2 class="card__title" id="hSumsTitle">Totales acumulados</h2></header>
           <ul class="stat-grid" aria-label="Totales del hábito">
+            <!-- Tres etiquetas cambian según el hábito: con un máximo diario
+                 (Redes) "mejor día" sería el de más minutos, que es el peor. -->
             <li class="stat"><p class="stat__value" id="hSumWeek">—</p><p class="stat__label">Esta semana</p></li>
             <li class="stat"><p class="stat__value" id="hSumMonth">—</p><p class="stat__label">Este mes</p></li>
-            <li class="stat"><p class="stat__value" id="hSumTotal">—</p><p class="stat__label">Total histórico</p></li>
+            <li class="stat"><p class="stat__value" id="hSumTotal">—</p><p class="stat__label" id="hSumTotalLabel">Total histórico</p></li>
             <li class="stat"><p class="stat__value" id="hSumAvg">—</p><p class="stat__label">Media por día</p></li>
-            <li class="stat"><p class="stat__value" id="hSumBest">—</p><p class="stat__label">Mejor día</p></li>
-            <li class="stat"><p class="stat__value" id="hSumDays">—</p><p class="stat__label">Racha apuntando</p></li>
+            <li class="stat"><p class="stat__value" id="hSumBest">—</p><p class="stat__label" id="hSumBestLabel">Mejor día</p></li>
+            <li class="stat"><p class="stat__value" id="hSumDays">—</p><p class="stat__label" id="hSumDaysLabel">Racha apuntando</p></li>
           </ul>
           <p class="card__text card__text--tight" id="hSumsNote"></p>
         </article>
@@ -816,6 +823,18 @@
             <span class="build" id="buildCache">—</span>
           </div>
           <p class="card__text card__text--tight" id="buildHint"></p>
+
+          <!-- Solo aparece cuando el navegador permite instalar la app. Existe
+               por un fallo de Chrome para Android (hasta la 157): si ya hay
+               otra app instalada en alexlobar.github.io, el menú ⋮ dice "ya
+               está instalada" aunque no lo esté. Ver PWA-Android-ya-instalada.md. -->
+          <div class="field-row install-row" id="installRow" hidden>
+            <span class="field-row__text">
+              <span>Instalar en este dispositivo</span>
+              <span class="field-row__hint">Queda con su icono, a pantalla completa y sin conexión.</span>
+            </span>
+            <button type="button" class="btn btn--primary" id="btnInstall">Instalar la app</button>
+          </div>
         </article>
       </section>
     </main>

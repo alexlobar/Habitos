@@ -5,13 +5,17 @@
    ============================================================ */
 /* Este número tiene que coincidir con VERSION en js/utils.js. Si se
    desincronizan, la pantalla de Ajustes lo avisa en lugar de callarse. */
-const CACHE = 'habitos-v1.7.3';
+const CACHE = 'habitos-v1.7.4';
 
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon.svg',
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png',
   './css/styles.css',
   './js/utils.js',
   './js/store.js',

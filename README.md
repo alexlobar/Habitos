@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **1.7.3** · esquema de datos **v11**.
+Versión documentada: **1.7.4** · esquema de datos **v11**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -14,7 +14,11 @@ documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
 index.html          Marcado completo: vistas, modales y navegación
 manifest.json       Metadatos PWA
 sw.js               Service worker (caché offline)
-icon.svg            Icono de la app
+icon.svg            Icono de la app (navegador y escritorio)
+icon-180.png        Icono de pantalla de inicio en iPhone (iOS no admite SVG)
+icon-192.png        Icono Android
+icon-512.png        Icono Android
+icon-maskable-512.png  Icono Android a sangre, para que el lanzador le dé su forma
 .gitignore
 css/styles.css      Estilos, en secciones numeradas y comentadas
 js/utils.js         Fechas, DOM, catálogos (categorías, motivos) y la versión
@@ -56,7 +60,8 @@ el récord de cada uno y el contador de descanso entre series. *Gestionar*
 despliega la tabla para editar rutinas y ejercicios.
 
 **Notas.** Un campo para escribir la nota de hoy, un buscador y todas tus notas
-de día en orden, cada una con cómo fue ese día. Tocar una lleva a ese día.
+de día en orden, cada una con cómo fue ese día. La fecha lleva a ese día y el
+lápiz la edita ahí mismo; vaciarla la borra.
 
 **Ajustes.** Apariencia, qué se ve en Hoy, entrenamiento, la lista de todos tus
 hábitos (con archivados y pausados), copia de seguridad y la información de la
@@ -68,7 +73,9 @@ los hábitos a evitar y los logros.
 
 **Ficha de un hábito** (tocando su icono o su nombre). Estadísticas, totales,
 calendario del mes, cumplimiento por día de la semana y los botones de editar,
-pausar, archivar y eliminar.
+pausar, archivar y eliminar. Los hábitos con máximo diario (Redes) tienen sus
+propios totales: semana pasada, día más alto, días pasados del mes, y la
+comparación con la semana anterior a estas alturas.
 
 ---
 
@@ -113,6 +120,12 @@ En el móvil, abre esa URL y añádela a la pantalla de inicio:
 
 > El repositorio es público: cualquiera puede ver el **código**, pero nadie
 > puede ver tus **datos**, que están solo en tu navegador.
+
+**Si Chrome dice «Esta aplicación ya está instalada» sin estarlo**: es un fallo
+de Chrome para Android (hasta la 157) cuando hay otra app tuya instalada en el
+mismo `usuario.github.io`. Usa el botón *Instalar la app* de **Ajustes → Esta
+instalación**, que solo aparece cuando el navegador permite instalarla. Detalle
+en `PWA-Android-ya-instalada.md`.
 
 **PC y móvil son instalaciones independientes y no se sincronizan.** Para pasar
 datos de uno a otro: *Ajustes → Exportar JSON* en el origen y *Ajustes →
@@ -433,5 +446,5 @@ Sustituir `writeNow()` y `load()` por llamadas de red deja intacto el resto.
 - Borrar los datos de navegación borra el historial de hábitos.
 - Importar reemplaza, no fusiona.
 - Sin notificaciones de ningún tipo.
-- El icono de pantalla de inicio en iPhone necesita un PNG: iOS no admite el
-  `icon.svg` actual como `apple-touch-icon`.
+- Si cambias el icono, hay que regenerar también los PNG: el SVG solo lo usan el
+  navegador y Android; el iPhone usa `icon-180.png`.

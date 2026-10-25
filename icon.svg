@@ -1,6 +1,6 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HÃ¡bitos">
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hábitos">
   <rect width="512" height="512" rx="112" fill="#0b0d12"/>
-  <!-- Margen amplio: en Android el icono maskable se recorta en cÃ­rculo -->
+  <!-- Margen amplio: en Android el icono maskable se recorta en círculo -->
   <g transform="translate(136 136)">
     <rect x="0" y="0" width="100" height="100" rx="22" fill="#4361ee"/>
     <rect x="140" y="0" width="100" height="100" rx="22" fill="#4361ee" opacity=".45"/>
