@@ -134,7 +134,12 @@ HT.ui = (function () {
       'buildVersion', 'buildOrigin', 'buildCache', 'buildHint', 'installRow', 'btnInstall',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
       'fCategory', 'limitField', 'fLimit', 'avoidModeFields', 'capHint', 'fTargetLabel',
-      'fName', 'fNameError'
+      'fName', 'fNameError',
+      'weekRecap', 'recapRange', 'btnRecapClose', 'recapStats', 'recapLines', 'btnRecapPlan',
+      'btnPlanWeek', 'planModal', 'planForm', 'planPrev', 'planNext', 'planLabel',
+      'planList', 'planEmpty', 'btnPlanReset',
+      'weightLegendGoal', 'weightGoalInput', 'weightGoalText',
+      'btnAddFreeNote', 'freeNotesList', 'freeNotesHint'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -619,6 +624,11 @@ HT.ui = (function () {
     if (S.getSettings().showBadges) head.appendChild(el('span', { class: 'badge' }));
     li.appendChild(head);
 
+    // Este se cumple planificando: el ✓ abre el plan y guardarlo lo marca.
+    if (habit.role === 'planner' && habit.type === 'check') {
+      li.appendChild(el('p', { class: 'habit-card__sub', text: 'Al marcarlo se abre el plan de la semana' }));
+    }
+
     /* ── Barra de progreso ── */
     const track = el('div', { class: 'progress progress--sm habit-card__bar' });
     track.appendChild(el('div', { class: 'progress__fill' }));
@@ -934,6 +944,172 @@ HT.ui = (function () {
     };
   }
 
+  /* ── Plan de la semana ────────────────────────────────────
+     El borrador vive aquí mientras el modal está abierto: se puede ir y
+     volver entre semanas sin perder lo marcado, y nada se guarda hasta
+     pulsar Guardar. Quien escribe en el almacén sigue siendo app.js. ── */
+
+  const PLAN_ORDER = [1, 2, 3, 4, 5, 6, 0];   // de lunes a domingo, como el resto de la app
+  const PLAN_AHEAD = 8;                        // semanas por delante que se pueden planificar
+  const plan = { weekKey: null, minWeek: null, draft: {} };
+
+  function sameDayList(a, b) {
+    return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
+  }
+
+  /** Los que se planifican: los de evitar tocan todos los días por definición. */
+  function planHabits() {
+    return S.getHabits().filter(function (h) { return !St.isAvoid(h); }).sort(byName);
+  }
+
+  function maxPlanWeek() {
+    return U.addDaysKey(plan.minWeek, PLAN_AHEAD * 7);
+  }
+
+  /** La fecha de un día de la semana del plan. */
+  function planDateOf(dow) {
+    return U.addDaysKey(plan.weekKey, PLAN_ORDER.indexOf(dow));
+  }
+
+  /** Días marcados de un hábito en la semana que se ve: el borrador si lo hay. */
+  function planDaysOf(habit) {
+    const w = plan.draft[plan.weekKey];
+    return w && w[habit.id] ? w[habit.id] : S.activeDaysFor(habit, plan.weekKey);
+  }
+
+  function setPlanDraft(habitId, days) {
+    if (!plan.draft[plan.weekKey]) plan.draft[plan.weekKey] = {};
+    plan.draft[plan.weekKey][habitId] = days.slice().sort();
+  }
+
+  function openPlanModal(weekKey) {
+    plan.minWeek = S.weekKeyOf(U.todayKey());
+    plan.weekKey = weekKey < plan.minWeek ? plan.minWeek
+      : weekKey > maxPlanWeek() ? maxPlanWeek() : weekKey;
+    plan.draft = {};
+    renderPlan();
+
+    lastFocused = document.activeElement;
+    els.planModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closePlanModal() {
+    els.planModal.hidden = true;
+    document.body.style.overflow = '';
+    plan.draft = {};
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  function stepPlanWeek(delta) {
+    const next = U.addDaysKey(plan.weekKey, delta * 7);
+    if (next < plan.minWeek || next > maxPlanWeek()) return;
+    plan.weekKey = next;
+    renderPlan();
+  }
+
+  function renderPlan() {
+    const hoy = U.todayKey();
+    const wk = plan.weekKey;
+    const fin = U.addDaysKey(wk, 6);
+    const nombre = wk === plan.minWeek ? 'Esta semana · '
+      : wk === U.addDaysKey(plan.minWeek, 7) ? 'La que viene · ' : '';
+
+    els.planLabel.textContent = nombre +
+      U.formatShort(U.fromKey(wk)) + ' – ' + U.formatShort(U.fromKey(fin));
+    els.planPrev.disabled = wk <= plan.minWeek;
+    els.planNext.disabled = wk >= maxPlanWeek();
+
+    const letras = U.weekdayLabels(0);
+    const habits = planHabits();
+    const frag = document.createDocumentFragment();
+
+    habits.forEach(function (h) {
+      const li = el('li', { class: 'plan-row', 'data-id': h.id });
+      li.style.setProperty('--habit-color', h.color);
+
+      const head = el('div', { class: 'plan-row__head' });
+      head.appendChild(el('span', { class: 'plan-row__icon', 'aria-hidden': 'true', text: h.icon }));
+      head.appendChild(el('span', { class: 'plan-row__name', text: h.name }));
+      head.appendChild(el('span', { class: 'plan-row__count' }));
+      li.appendChild(head);
+
+      const group = el('div', { class: 'plan-days', role: 'group', 'aria-label': 'Días de ' + h.name });
+      PLAN_ORDER.forEach(function (dow) {
+        const key = planDateOf(dow);
+        // Lo que ya pasó no se toca: cambiarlo reescribiría tus rachas.
+        const pasado = key < hoy;
+        const pausa = S.isPausedOn(h, key);
+        const btn = el('button', {
+          type: 'button', class: 'plan-day', 'data-dow': String(dow),
+          title: pasado ? 'Ya pasó' : pausa ? 'En pausa' : null,
+          text: letras[dow]
+        });
+        btn.disabled = pasado || pausa || h.createdAt > key;
+        group.appendChild(btn);
+      });
+      li.appendChild(group);
+
+      paintPlanRow(li, h);
+      frag.appendChild(li);
+    });
+
+    els.planList.textContent = '';
+    els.planList.appendChild(frag);
+    els.planList.hidden = !habits.length;
+    els.planEmpty.hidden = habits.length > 0;
+  }
+
+  /** Vuelca el borrador sobre una fila sin reconstruirla: el foco no se pierde. */
+  function paintPlanRow(li, habit) {
+    const days = planDaysOf(habit);
+    li.classList.toggle('is-changed', !sameDayList(days, habit.activeDays));
+    $('.plan-row__count', li).textContent = days.length === 7 ? 'Todos'
+      : days.length + (days.length === 1 ? ' día' : ' días');
+
+    U.$$('.plan-day', li).forEach(function (btn) {
+      const dow = Number(btn.dataset.dow);
+      const on = days.indexOf(dow) >= 0;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.setAttribute('aria-label', U.weekdayLong(U.fromKey(planDateOf(dow))) + ': ' +
+        (on ? 'toca' : 'no toca') + ' ' + habit.name);
+    });
+  }
+
+  function togglePlanDay(habitId, dow) {
+    const habit = S.getHabit(habitId);
+    const li = $('.plan-row[data-id="' + habitId + '"]', els.planList);
+    if (!habit || !li) return;
+
+    const days = planDaysOf(habit).slice();
+    const i = days.indexOf(dow);
+    if (i >= 0) days.splice(i, 1);
+    else days.push(dow);
+
+    setPlanDraft(habitId, days);
+    paintPlanRow(li, habit);
+  }
+
+  /** "Como siempre": vuelve a los días de siempre salvo en lo que ya pasó. */
+  function resetPlanWeek() {
+    const hoy = U.todayKey();
+    planHabits().forEach(function (h) {
+      const actual = S.activeDaysFor(h, plan.weekKey);
+      const days = PLAN_ORDER.filter(function (dow) {
+        const fuente = planDateOf(dow) < hoy ? actual : h.activeDays;
+        return fuente.indexOf(dow) >= 0;
+      });
+      setPlanDraft(h.id, days);
+    });
+    renderPlan();
+  }
+
+  /** El borrador entero: { lunes → { hábito → días } }. */
+  function readPlan() {
+    return JSON.parse(JSON.stringify(plan.draft));
+  }
+
   /** El cajón de los cumplidos: plegado, con su cuenta, y abrible. */
   function doneDrawer(hechos, dateKey) {
     const box = el('details', { class: 'done-drawer' });
@@ -1088,6 +1264,77 @@ HT.ui = (function () {
     }
 
     renderWeightEntry(dateKey);
+    renderWeekRecap(dateKey);
+  }
+
+  /* ── Resumen de la semana pasada ──────────────────────────
+     Sale en Hoy de lunes a miércoles, hasta que lo cierras. Más tarde ya
+     no es "la semana pasada" sino historia, y para eso está Histórico. ── */
+
+  function renderWeekRecap(dateKey) {
+    const hoy = U.todayKey();
+    const estaSemana = S.weekKeyOf(hoy);
+    const dow = U.fromKey(hoy).getDay();
+
+    let r = null;
+    if (dateKey === hoy && dow >= 1 && dow <= 3 && S.getGame().weekSummarySeen !== estaSemana) {
+      r = St.weekSummary(U.addDaysKey(estaSemana, -7));
+      if (!r.rate.total) r = null;               // no tocaba nada: no hay nada que resumir
+    }
+
+    els.weekRecap.hidden = !r;
+    if (!r) return;
+
+    els.weekRecap.dataset.week = estaSemana;
+    els.recapRange.textContent =
+      U.formatShort(U.fromKey(r.weekKey)) + ' – ' + U.formatShort(U.fromKey(U.addDaysKey(r.weekKey, 6)));
+
+    const dif = r.prevPct === null ? null : r.rate.pct - r.prevPct;
+    const fichas = [
+      { valor: r.rate.pct + '%', etiqueta: dif === null ? 'Cumplido'
+          : dif === 0 ? 'Igual que la anterior'
+          : (dif > 0 ? '+' : '−') + Math.abs(dif) + ' pts sobre la anterior' },
+      { valor: r.perfect + ' / ' + r.scheduled, etiqueta: 'Días perfectos' },
+      { valor: '◆ ' + St.dayStreak(hoy), etiqueta: 'Racha de hábitos' }
+    ];
+
+    const stats = document.createDocumentFragment();
+    fichas.forEach(function (f) {
+      const li = el('li', { class: 'recap__stat' });
+      li.appendChild(el('p', { class: 'recap__value', text: f.valor }));
+      li.appendChild(el('p', { class: 'recap__label', text: f.etiqueta }));
+      stats.appendChild(li);
+    });
+    els.recapStats.textContent = '';
+    els.recapStats.appendChild(stats);
+
+    const lineas = [];
+    if (r.weakest) {
+      lineas.push('Lo que más se escapó: ' + r.weakest.habit.icon + ' ' + r.weakest.habit.name +
+                  ', ' + r.weakest.done + ' de ' + r.weakest.total + '.');
+    }
+    r.capped.forEach(function (c) {
+      const u = c.habit.target.unit;
+      const d = Math.round((c.sum - c.prev) * 10) / 10;
+      let txt = c.habit.icon + ' ' + c.habit.name + ': ' + (Math.round(c.sum * 10) / 10) + ' ' + u;
+      if (c.prev) txt += d === 0 ? ', lo mismo que la anterior' : ', ' + Math.abs(d) + ' ' + u + (d < 0 ? ' menos' : ' más') + ' que la anterior';
+      if (c.over) txt += ' · ' + c.over + (c.over === 1 ? ' día pasado' : ' días pasados') + ' del máximo';
+      lineas.push(txt + '.');
+    });
+    if (r.weight) {
+      lineas.push('Peso: media de ' + kg(r.weight.avg) +
+                  (r.weight.change === null ? '' : ' (' + kgDelta(r.weight.change) + ')') + '.');
+    }
+
+    const lines = document.createDocumentFragment();
+    lineas.forEach(function (t) { lines.appendChild(el('li', { text: t })); });
+    els.recapLines.textContent = '';
+    els.recapLines.appendChild(lines);
+    els.recapLines.hidden = !lineas.length;
+
+    // Si ya planificaste esta semana, el botón lo dice.
+    const conPlan = S.getHabits().some(function (h) { return h.weekPlan && h.weekPlan[estaSemana]; });
+    els.btnRecapPlan.textContent = conPlan ? 'Revisar el plan de esta semana' : 'Planificar esta semana';
   }
 
   /* ── Peso ─────────────────────────────────────────────────── */
@@ -1137,6 +1384,9 @@ HT.ui = (function () {
   function renderWeight(todayKey, days) {
     const resumen = St.weightSummary(todayKey, days);
     const vacio = !resumen;
+    const meta = St.weightGoal(todayKey);
+
+    renderWeightGoal(meta);
 
     els.weightEmpty.hidden = !vacio;
     els.weightStats.hidden = vacio;
@@ -1174,7 +1424,44 @@ HT.ui = (function () {
     els.weightStats.textContent = '';
     els.weightStats.appendChild(frag);
 
-    drawWeightChart(St.weightSeries(todayKey, days));
+    els.weightLegendGoal.hidden = !drawWeightChart(St.weightSeries(todayKey, days), meta ? meta.goal : null);
+  }
+
+  /**
+   * El objetivo y el ritmo, en una frase. Neutra a propósito, como el resto
+   * de la tarjeta: "a 3 kg" vale igual para quien quiere bajar que subir.
+   */
+  function renderWeightGoal(meta) {
+    if (document.activeElement !== els.weightGoalInput) {
+      els.weightGoalInput.value = meta ? meta.goal : '';
+    }
+
+    if (!meta) {
+      els.weightGoalText.textContent = 'Opcional. Con un objetivo verás cuánto te falta y a qué ritmo vas.';
+      return;
+    }
+    if (meta.status === 'nodata') {
+      els.weightGoalText.textContent = 'Apunta tu peso en Hoy para ver cuánto te falta.';
+      return;
+    }
+    if (meta.status === 'arrived') {
+      els.weightGoalText.textContent = 'En tu objetivo: la media de 7 días está en ' + kg(meta.current) + '.';
+      return;
+    }
+
+    const falta = 'A ' + kg(Math.abs(meta.remaining)) + ' del objetivo';
+    const ritmo = meta.rate === null ? '' : kgDelta(meta.rate) + ' por semana';
+    let txt;
+
+    if (meta.status === 'norate') txt = falta + '. Con dos semanas de pesadas se calcula tu ritmo.';
+    else if (meta.status === 'stable') txt = falta + '. Ahora mismo estás estable.';
+    else if (meta.status === 'away') txt = falta + ', pero vas en la otra dirección (' + ritmo + ').';
+    else if (meta.eta) {
+      txt = falta + '. A ' + ritmo + ', unas ' + meta.weeks + (meta.weeks === 1 ? ' semana' : ' semanas') +
+            ' (hacia el ' + U.formatShort(U.fromKey(meta.eta)) + ').';
+    } else txt = falta + '. A ' + ritmo + ', más de tres años.';
+
+    els.weightGoalText.textContent = txt;
   }
 
   /**
@@ -1182,7 +1469,7 @@ HT.ui = (function () {
    * es lo que hay que leer; los puntos están para ver cuánto baila el dato
    * de un día a otro y no fiarse de uno suelto.
    */
-  function drawWeightChart(series) {
+  function drawWeightChart(series, goal) {
     // El ancho del dibujo es el de la tarjeta, no uno fijo: así una unidad
     // del SVG es un píxel de pantalla y el texto del eje se lee igual en el
     // móvil que en el ordenador. Con un ancho fijo de 600, en el móvil se
@@ -1199,6 +1486,14 @@ HT.ui = (function () {
 
     let lo = Math.min.apply(null, valores);
     let hi = Math.max.apply(null, valores);
+
+    // El objetivo entra en la escala solo si está cerca: uno a 15 kg
+    // aplastaría la gráfica hasta dejarla plana. Lejos, ya lo dice el texto.
+    const conMeta = goal !== null && goal !== undefined && goal >= lo - 3 && goal <= hi + 3;
+    if (conMeta) {
+      lo = Math.min(lo, goal);
+      hi = Math.max(hi, goal);
+    }
     // Con muy poca variación la gráfica exageraría décimas hasta parecer un
     // precipicio: se fuerza un margen mínimo de dos kilos.
     if (hi - lo < 2) {
@@ -1227,6 +1522,12 @@ HT.ui = (function () {
       t.textContent = fmtKg.format(v);
       svg.appendChild(t);
     });
+
+    if (conMeta) {
+      svg.appendChild(svgEl('line', {
+        class: 'wchart__goal', x1: m.l, x2: W - m.r, y1: y(goal), y2: y(goal)
+      }));
+    }
 
     // La media: un tramo por cada racha de días con dato, sin inventar el
     // hueco entre dos semanas sin pesarse.
@@ -1260,6 +1561,7 @@ HT.ui = (function () {
 
     els.weightChart.textContent = '';
     els.weightChart.appendChild(svg);
+    return conMeta;
   }
 
   /* ── Marcar un día ────────────────────────────────────────── */
@@ -1392,6 +1694,8 @@ HT.ui = (function () {
       growField(els.notesToday);
     }
 
+    renderFreeNotes(busca, editingKey);
+
     const claves = Object.keys(notes)
       .filter(function (k) { return !busca || notes[k].toLowerCase().indexOf(busca) >= 0; })
       .sort()
@@ -1471,6 +1775,88 @@ HT.ui = (function () {
         : 'Lo que escribas cada día se queda aquí, junto a cómo te fue. ' +
           'Dentro de unos meses es lo que te dirá por qué una racha se rompió.';
     }
+  }
+
+  /**
+   * Notas libres. Se editan igual que las del día —lápiz, y ✓ para
+   * terminar—, con un título opcional. `editingKey` es 'free:<id>' cuando la
+   * abierta es una de estas: así las dos listas comparten un solo "qué se
+   * está editando" y nunca hay dos editores abiertos a la vez.
+   */
+  function renderFreeNotes(busca, editingKey) {
+    const hoy = U.todayKey();
+    const todas = S.getFreeNotes();
+    const lista = todas.filter(function (n) {
+      return !busca || (n.title + '\n' + n.text).toLowerCase().indexOf(busca) >= 0;
+    });
+
+    const frag = document.createDocumentFragment();
+    lista.forEach(function (n) {
+      const editando = editingKey === 'free:' + n.id;
+      const titulo = n.title || 'Sin título';
+      const item = el('li', { class: 'note-entry free-note' + (editando ? ' is-editing' : '') });
+
+      const head = el('div', { class: 'note-entry__head' });
+      // Mientras se edita, el título ya está en su campo: arriba no se repite.
+      head.appendChild(el('span', {
+        class: 'free-note__title' + (n.title && !editando ? '' : ' is-empty'),
+        text: editando ? 'Editando' : titulo
+      }));
+
+      const dia = U.toKey(new Date(n.updated || Date.now()));
+      const dias = U.daysBetween(dia, hoy);
+      head.appendChild(el('span', {
+        class: 'note-entry__tag',
+        text: dias <= 0 ? 'Hoy' : dias === 1 ? 'Ayer' : U.formatShort(U.fromKey(dia))
+      }));
+
+      head.appendChild(el('button', {
+        type: 'button', class: 'icon-btn note-entry__edit', 'data-free-edit': n.id,
+        'aria-pressed': editando ? 'true' : 'false',
+        'aria-label': (editando ? 'Terminar de editar ' : 'Editar ') + titulo,
+        title: editando ? 'Listo' : 'Editar',
+        text: editando ? '✓' : '✎'
+      }));
+      item.appendChild(head);
+
+      if (editando) {
+        const t = el('input', {
+          type: 'text', class: 'input free-note__title-input', 'data-free': n.id,
+          maxlength: '60', placeholder: 'Título (opcional)', 'aria-label': 'Título de la nota'
+        });
+        t.value = n.title;
+        item.appendChild(t);
+
+        const ta = el('textarea', {
+          class: 'input input--area note-grow free-note__input', 'data-free': n.id,
+          rows: '3', placeholder: 'Escribe…', 'aria-label': 'Texto de la nota'
+        });
+        ta.value = n.text;
+        item.appendChild(ta);
+
+        const foot = el('div', { class: 'free-note__foot' });
+        foot.appendChild(el('button', {
+          type: 'button', class: 'btn btn--ghost btn--danger', 'data-free-delete': n.id, text: 'Eliminar'
+        }));
+        item.appendChild(foot);
+      } else if (n.text.trim()) {
+        item.appendChild(el('p', { class: 'note-entry__text', text: n.text }));
+      }
+
+      frag.appendChild(item);
+    });
+
+    els.freeNotesList.textContent = '';
+    els.freeNotesList.appendChild(frag);
+    els.freeNotesList.hidden = !lista.length;
+
+    const editor = $('.free-note__input', els.freeNotesList);
+    if (editor) growField(editor);
+
+    els.freeNotesHint.hidden = lista.length > 0;
+    els.freeNotesHint.textContent = busca && todas.length
+      ? 'Ninguna nota libre contiene "' + busca + '".'
+      : 'Objetivos, listas, ideas… lo que no va atado a un día.';
   }
 
   /* ── Celdas del calendario ────────────────────────────────── */
@@ -2766,7 +3152,13 @@ HT.ui = (function () {
     }
     else what = 'Check diario';
 
-    return what + ' · ' + days;
+    // Si esta semana tiene plan propio, se dice: si no, la ficha diría unos
+    // días y Hoy enseñaría otros.
+    const semana = S.activeDaysFor(habit, U.todayKey());
+    const plan = semana === habit.activeDays ? ''
+      : ' · Esta semana: ' + (semana.length ? semana.map(U.weekdayName).join(', ') : 'ninguno');
+
+    return what + ' · ' + days + plan;
   }
 
   /**
@@ -3538,6 +3930,8 @@ HT.ui = (function () {
     openExerciseModal: openExerciseModal, closeExerciseModal: closeExerciseModal,
     readExerciseForm: readExerciseForm,
     openPauseModal: openPauseModal, closePauseModal: closePauseModal,
+    openPlanModal: openPlanModal, closePlanModal: closePlanModal, stepPlanWeek: stepPlanWeek,
+    togglePlanDay: togglePlanDay, resetPlanWeek: resetPlanWeek, readPlan: readPlan,
     readPauseForm: readPauseForm, syncPauseNote: syncPauseNote, pauseLabel: pauseLabel,
     openDayModal: openDayModal, closeDayModal: closeDayModal,
     readDayForm: readDayForm, syncDayNote: syncDayNote, dayMarkLabel: dayMarkLabel,

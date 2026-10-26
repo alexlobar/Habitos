@@ -129,6 +129,10 @@
         dirty.progress = true;
         dirty.notes = true;
         break;
+      case 'freenote:change':
+        // Solo cambia la lista de Notas, y mientras se escribe ni eso.
+        dirty.notes = true;
+        break;
       case 'session:change':
       case 'workout:change':
         dirty.workout = true;
@@ -314,6 +318,14 @@
     const action = btn.dataset.action;
 
     if (action === 'detail') { openHabit(habit.id); return; }
+
+    // "Planificar la semana" se cumple planificando: el ✓ abre el plan y es
+    // guardarlo lo que lo marca. Desmarcarlo sigue siendo un toque.
+    if (action === 'check' && habit.role === 'planner' &&
+        !St.isComplete(habit, S.getLog(habit.id, currentDate))) {
+      openPlanner(currentDate, planWeekFor(currentDate));
+      return;
+    }
 
     // Una franja de un hábito a evitar apunta un fallo, no un logro: va por
     // el mismo camino que el ✗, fuera de withScoring.
@@ -772,6 +784,94 @@
              { type: 'success', icon: '▶' });
   }
 
+  /* ── Plan de la semana ────────────────────────────────────
+     Se puede planificar cualquier día. Guardar el plan es lo que da por
+     hecho el hábito "Planificar la semana": marcarlo pasa a significar
+     que de verdad has mirado la semana. ───────────────────────────── */
+
+  let planMarkDate = null;      // día del hábito que se marca al guardar (null = buscarlo)
+  let planFromRecap = false;    // abierto desde el resumen: al guardar, el resumen se cierra
+
+  function plannerHabit() {
+    return S.getHabits().filter(function (h) { return h.role === 'planner'; })[0] || null;
+  }
+
+  /** La semana que se ofrece: el domingo ya se piensa en la que viene. */
+  function planWeekFor(dateKey) {
+    const lunes = S.weekKeyOf(dateKey);
+    return U.fromKey(dateKey).getDay() === 0 ? U.addDaysKey(lunes, 7) : lunes;
+  }
+
+  function openPlanner(markDate, weekKey, fromRecap) {
+    planMarkDate = markDate || null;
+    planFromRecap = !!fromRecap;
+    UI.openPlanModal(weekKey || planWeekFor(today));
+  }
+
+  /**
+   * Marca el hábito planificador. Si no se dice qué día, vale el último en
+   * que tocaba dentro de los tres anteriores: el del domingo, si planificas
+   * el lunes o el martes porque se te pasó. Más atrás ya no es esa semana.
+   */
+  function markPlannerDone(dateKey) {
+    const habit = plannerHabit();
+    if (!habit || habit.type !== 'check') return false;
+
+    let key = dateKey;
+    for (let i = 0; !key && i <= 3; i++) {
+      const k = U.addDaysKey(today, -i);
+      if (St.isActiveOn(habit, k)) key = k;
+    }
+    if (!key || !St.isActiveOn(habit, key)) return false;
+    if (St.isComplete(habit, S.getLog(habit.id, key))) return false;
+
+    withScoring(habit, key, function () { S.toggleCheck(habit.id, key); });
+    return true;
+  }
+
+  function onPlanSubmit(e) {
+    e.preventDefault();
+
+    const draft = UI.readPlan();
+    const same = function (a, b) {
+      return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
+    };
+
+    // Cambiar qué toca hoy puede dejar el día perfecto, o dejar de serlo. El
+    // bonus se mide entero antes y después y se paga la diferencia, como en
+    // withScoring(). Los días pasados no cambian y los futuros no tienen bonus.
+    const bonusAntes = St.dayBonus(today);
+    let cambios = 0;
+
+    Object.keys(draft).forEach(function (weekKey) {
+      Object.keys(draft[weekKey]).forEach(function (id) {
+        const habit = S.getHabit(id);
+        if (!habit || same(S.activeDaysFor(habit, weekKey), draft[weekKey][id])) return;
+        S.setWeekPlan(id, weekKey, draft[weekKey][id]);
+        cambios++;
+      });
+    });
+
+    const delta = St.dayBonus(today) - bonusAntes;
+    if (delta) grantXp(delta);
+
+    UI.closePlanModal();
+    if (planFromRecap) {
+      S.dismissWeekSummary(S.weekKeyOf(today));
+      UI.els.weekRecap.hidden = true;
+    }
+    const marcado = markPlannerDone(planMarkDate);
+    planMarkDate = null;
+    planFromRecap = false;
+    syncProgressState();
+
+    // Un cambio es un hábito en una semana: el mismo en dos semanas cuenta dos.
+    UI.toast((cambios ? 'Plan guardado: ' + cambios + (cambios === 1 ? ' cambio.' : ' cambios.')
+                      : 'Plan revisado: todo como siempre.') +
+             (marcado ? ' «' + plannerHabit().name + '» hecho.' : ''),
+             { type: 'success', icon: '📅' });
+  }
+
   /* ── Anotar un día ────────────────────────────────────────
      El motivo es gratis; salvar el día del todo sigue costando
      comodín. El almacén cobra o devuelve, aquí solo se cuenta. ──── */
@@ -1134,6 +1234,7 @@
   }
 
   function showNotes() {
+    saveOpenNote();                      // por si se salió a mitad de una nota libre vacía
     noteEditing = null;                  // se entra siempre leyendo, no a medio editar
     UI.setView('notes');
     renderNotesIfOpen();
@@ -1150,13 +1251,43 @@
     UI.renderNotes(currentDate, noteQuery, noteEditing);
   }
 
-  /** Abre una nota antigua para editarla, o la cierra si ya estaba abierta. */
+  /**
+   * Guarda lo que haya abierto en Notas, sea una nota de un día o una libre
+   * ('free:<id>'). Una nota libre que se cierra vacía se descarta: crearla
+   * y arrepentirse no debe dejar una tarjeta "Sin título" en la lista.
+   */
+  function saveOpenNote() {
+    if (!noteEditing) return;
+
+    if (noteEditing.indexOf('free:') !== 0) {
+      const campo = UI.els.notesList.querySelector('.note-entry__input');
+      if (campo) S.setNote(campo.dataset.note, campo.value);
+      return;
+    }
+
+    const id = noteEditing.slice(5);
+    const titulo = UI.els.freeNotesList.querySelector('.free-note__title-input');
+    const texto = UI.els.freeNotesList.querySelector('.free-note__input');
+    if (titulo && texto) S.updateFreeNote(id, { title: titulo.value, text: texto.value });
+
+    const nota = S.getFreeNote(id);
+    if (nota && !nota.title && !nota.text.trim()) S.deleteFreeNote(id);
+  }
+
+  /** Abre una nota para editarla, o la cierra si ya estaba abierta. */
   function toggleNoteEdit(key) {
     noteEditing = noteEditing === key ? null : key;
     UI.renderNotes(currentDate, noteQuery, noteEditing);
 
     if (!noteEditing) return;
-    const campo = UI.els.notesList.querySelector('.note-entry__input');
+
+    // En una nota libre sin título se empieza por el título; si ya lo
+    // tiene, por el texto, que es lo que se viene a cambiar.
+    let campo = UI.els.notesList.querySelector('.note-entry__input');
+    if (noteEditing.indexOf('free:') === 0) {
+      const t = UI.els.freeNotesList.querySelector('.free-note__title-input');
+      campo = t && !t.value ? t : UI.els.freeNotesList.querySelector('.free-note__input');
+    }
     if (campo) {
       campo.focus();
       const fin = campo.value.length;
@@ -1373,6 +1504,7 @@
 
     els.notesSearch.addEventListener('input', U.debounce(function () {
       noteQuery = els.notesSearch.value;
+      saveOpenNote();
       noteEditing = null;                // buscar cierra la edición: la lista cambia
       renderNotesIfOpen();
     }, 200));
@@ -1381,8 +1513,7 @@
       const editar = e.target.closest('[data-edit]');
       if (editar) {
         // Si había otra abierta, se guarda antes de cambiar.
-        const abierto = els.notesList.querySelector('.note-entry__input');
-        if (abierto) S.setNote(abierto.dataset.note, abierto.value);
+        saveOpenNote();
         toggleNoteEdit(editar.dataset.edit);
         return;
       }
@@ -1412,6 +1543,121 @@
       if (e.key !== 'Escape' || !e.target.classList.contains('note-entry__input')) return;
       S.setNote(e.target.dataset.note, e.target.value);
       toggleNoteEdit(e.target.dataset.note);
+    });
+
+    // Notas libres. Mismo trato que las del día: se guardan mientras
+    // escribes y al salir del campo, y ✓ o Escape las cierran.
+    els.btnAddFreeNote.addEventListener('click', function () {
+      saveOpenNote();
+      const nota = S.addFreeNote();
+      if (!nota) {
+        UI.toast('Has llegado al máximo de notas libres. Borra alguna para crear otra.',
+                 { type: 'error', icon: '⚠️' });
+        return;
+      }
+      // Una búsqueda activa podría esconder la nota recién creada.
+      if (noteQuery) { noteQuery = ''; els.notesSearch.value = ''; }
+      noteEditing = null;
+      toggleNoteEdit('free:' + nota.id);
+    });
+
+    const saveFreeSoon = U.debounce(function (campo) {
+      const patch = campo.classList.contains('free-note__title-input')
+        ? { title: campo.value } : { text: campo.value };
+      S.updateFreeNote(campo.dataset.free, patch);
+    }, 400);
+
+    els.freeNotesList.addEventListener('click', function (e) {
+      const editar = e.target.closest('[data-free-edit]');
+      if (editar) {
+        saveFreeSoon.cancel();
+        saveOpenNote();
+        toggleNoteEdit('free:' + editar.dataset.freeEdit);
+        return;
+      }
+
+      const borrar = e.target.closest('[data-free-delete]');
+      if (!borrar) return;
+      saveFreeSoon.cancel();
+      const nota = S.getFreeNote(borrar.dataset.freeDelete);
+      noteEditing = null;
+      S.deleteFreeNote(borrar.dataset.freeDelete);
+      UI.renderNotes(currentDate, noteQuery, null);
+      if (nota && (nota.title || nota.text.trim())) {
+        UI.toast('Nota eliminada.', {
+          icon: '🗑️',
+          action: { label: 'Deshacer', onClick: function () { S.restoreFreeNote(nota); } }
+        });
+      }
+    });
+    els.freeNotesList.addEventListener('input', function (e) {
+      if (!e.target.dataset.free) return;
+      if (e.target.tagName === 'TEXTAREA') UI.growField(e.target);
+      saveFreeSoon(e.target);
+    });
+    els.freeNotesList.addEventListener('focusout', function (e) {
+      if (!e.target.dataset.free) return;
+      saveFreeSoon.cancel();
+      const patch = e.target.tagName === 'TEXTAREA' ? { text: e.target.value } : { title: e.target.value };
+      S.updateFreeNote(e.target.dataset.free, patch);
+    });
+    els.freeNotesList.addEventListener('keydown', function (e) {
+      if (!e.target.dataset.free) return;
+      // Enter en el título pasa al texto, como en cualquier editor de notas.
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+        e.preventDefault();
+        const texto = els.freeNotesList.querySelector('.free-note__input');
+        if (texto) texto.focus();
+        return;
+      }
+      if (e.key !== 'Escape') return;
+      saveFreeSoon.cancel();
+      const id = e.target.dataset.free;
+      saveOpenNote();
+      toggleNoteEdit('free:' + id);
+    });
+
+    // Plan de la semana
+    els.btnPlanWeek.addEventListener('click', function () { openPlanner(null, planWeekFor(today)); });
+    els.btnRecapPlan.addEventListener('click', function () {
+      openPlanner(null, S.weekKeyOf(today), true);
+    });
+    els.btnRecapClose.addEventListener('click', function () {
+      S.dismissWeekSummary(els.weekRecap.dataset.week || S.weekKeyOf(today));
+      els.weekRecap.hidden = true;
+    });
+    els.planList.addEventListener('click', function (e) {
+      const btn = e.target.closest('.plan-day');
+      if (!btn || btn.disabled) return;
+      UI.togglePlanDay(btn.closest('.plan-row').dataset.id, Number(btn.dataset.dow));
+    });
+    els.planPrev.addEventListener('click', function () { UI.stepPlanWeek(-1); });
+    els.planNext.addEventListener('click', function () { UI.stepPlanWeek(1); });
+    els.btnPlanReset.addEventListener('click', UI.resetPlanWeek);
+    els.planForm.addEventListener('submit', onPlanSubmit);
+    els.planModal.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closePlanModal();
+    });
+    els.planModal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') UI.closePlanModal();
+    });
+
+    // Peso objetivo. Vacío lo quita; fuera de rango se avisa y no se toca.
+    els.weightGoalInput.addEventListener('change', function () {
+      const raw = els.weightGoalInput.value.trim();
+      if (raw === '') { S.setSettings({ weightGoal: null }); return; }
+
+      const n = Number(raw.replace(',', '.'));
+      if (!isFinite(n) || n < 20 || n > 400) {
+        UI.toast('Escribe el objetivo en kg, entre 20 y 400.', { type: 'error', icon: '⚠️' });
+        const previo = S.getSettings().weightGoal;
+        els.weightGoalInput.value = previo === null ? '' : previo;
+        return;
+      }
+      S.setSettings({ weightGoal: n });
+    });
+    els.weightGoalInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') e.target.blur();
     });
 
     els.btnBackFromProgress.addEventListener('click', function () { UI.setView('today'); });

@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="1.7.4">
+<html lang="es" data-theme="dark" data-build="2.0.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -107,6 +107,23 @@
           </button>
         </div>
 
+        <!-- Resumen de la semana pasada: sale de lunes a miércoles hasta que
+             lo cierras, y desde él se planifica la semana en curso. -->
+        <article class="card recap" id="weekRecap" aria-labelledby="recapTitle" hidden>
+          <header class="card__head">
+            <div>
+              <p class="recap__eyebrow" id="recapRange">—</p>
+              <h2 class="card__title" id="recapTitle">Tu semana pasada</h2>
+            </div>
+            <button type="button" class="icon-btn" id="btnRecapClose" aria-label="Cerrar el resumen">✕</button>
+          </header>
+          <ul class="recap__stats" id="recapStats"></ul>
+          <ul class="recap__lines" id="recapLines"></ul>
+          <div class="btn-row">
+            <button type="button" class="btn btn--primary" id="btnRecapPlan">Planificar esta semana</button>
+          </div>
+        </article>
+
         <div class="habit-groups" id="habitList"></div>
 
         <!-- Recordatorio de lo que has apartado tú mismo: en pausa no sale
@@ -155,7 +172,10 @@
       <section class="view" id="view-week" aria-labelledby="titleWeek" hidden>
         <div class="view__head">
           <h1 class="view__title" id="titleWeek">Histórico</h1>
-          <button type="button" class="btn btn--ghost" id="btnThisWeek" hidden>Esta semana</button>
+          <div class="btn-row">
+            <button type="button" class="btn btn--ghost" id="btnThisWeek" hidden>Esta semana</button>
+            <button type="button" class="btn" id="btnPlanWeek">Planificar</button>
+          </div>
         </div>
 
         <div class="month-nav month-nav--lead">
@@ -299,7 +319,24 @@
             <p class="weight-legend" id="weightLegend">
               <span class="weight-legend__dot" aria-hidden="true"></span> Cada pesada
               <span class="weight-legend__line" aria-hidden="true"></span> Media de 7 días
+              <span class="weight-legend__goal" id="weightLegendGoal" hidden>
+                <span class="weight-legend__dash" aria-hidden="true"></span> Objetivo
+              </span>
             </p>
+
+            <!-- El objetivo se puede poner antes de la primera pesada: por eso
+                 vive fuera de lo que se oculta cuando aún no hay datos. -->
+            <div class="weight-goal">
+              <label class="field__label" for="weightGoalInput">Peso objetivo</label>
+              <div class="weight-goal__row">
+                <div class="amount-field">
+                  <input class="input weight-entry__input" type="number" id="weightGoalInput"
+                         min="20" max="400" step="0.1" inputmode="decimal" placeholder="—">
+                  <span class="amount-field__unit" aria-hidden="true">kg</span>
+                </div>
+                <p class="weight-goal__text" id="weightGoalText" aria-live="polite">—</p>
+              </div>
+            </div>
 
             <div class="blank" id="weightEmpty" hidden>
               <svg class="blank__art" viewBox="0 0 48 48" aria-hidden="true">
@@ -397,6 +434,23 @@
           <input class="input" type="search" id="notesSearch" autocomplete="off"
                  placeholder="Buscar en tus notas" aria-label="Buscar en tus notas">
         </div>
+
+        <!-- Notas libres: no van atadas a un día, así que no cuentan para la
+             racha de registro. Objetivos, listas, ideas. -->
+        <section class="free-notes" aria-labelledby="freeNotesTitle">
+          <header class="free-notes__head">
+            <h2 class="free-notes__title" id="freeNotesTitle">Notas libres</h2>
+            <button type="button" class="btn" id="btnAddFreeNote">
+              <span aria-hidden="true">+</span> Nueva nota
+            </button>
+          </header>
+          <ul class="notes-list" id="freeNotesList"></ul>
+          <p class="free-notes__hint" id="freeNotesHint">
+            Objetivos, listas, ideas… lo que no va atado a un día.
+          </p>
+        </section>
+
+        <h2 class="free-notes__title" id="dayNotesTitle">Notas de cada día</h2>
 
         <ul class="notes-list" id="notesList"></ul>
 
@@ -1107,6 +1161,39 @@
         <footer class="modal__foot">
           <button type="button" class="btn" data-close>Cancelar</button>
           <button type="submit" class="btn btn--primary">Pausar</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Plan de la semana: qué días toca cada hábito en una semana concreta.
+       Los días que ya pasaron se ven pero no se cambian. -->
+  <div class="modal" id="planModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="planModalTitle">
+      <header class="modal__head">
+        <h2 class="modal__title" id="planModalTitle">Planificar la semana</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__body" id="planForm" novalidate>
+        <div class="month-nav">
+          <button type="button" class="icon-btn" id="planPrev" aria-label="Semana anterior">‹</button>
+          <span class="month-nav__label month-nav__label--wide" id="planLabel" aria-live="polite">—</span>
+          <button type="button" class="icon-btn" id="planNext" aria-label="Semana siguiente">›</button>
+        </div>
+        <p class="card__text" id="planIntro">
+          Marca qué días toca cada hábito esa semana. Lo que no cambies se queda como siempre.
+        </p>
+
+        <ul class="plan-list" id="planList"></ul>
+        <p class="card__text" id="planEmpty" hidden>No tienes hábitos que planificar.</p>
+
+        <footer class="modal__foot">
+          <button type="button" class="btn btn--ghost" id="btnPlanReset">Como siempre</button>
+          <span class="modal__spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn btn--primary">Guardar plan</button>
         </footer>
       </form>
     </div>

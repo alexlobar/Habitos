@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **1.7.4** · esquema de datos **v11**.
+Versión documentada: **2.0.0** · esquema de datos **v12**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -48,20 +48,35 @@ rango y EXP. Debajo, la barra del día con su cuenta (`5/9`).
 
 **Hoy.** Los hábitos del día agrupados por categoría. Los ya cumplidos se
 apartan a un cajón plegado al final. Debajo: los hábitos en pausa, el botón
-*Anotar el día*, el peso del día y la nota del día.
+*Anotar el día*, el peso del día y la nota del día. De lunes a miércoles, arriba
+del todo, el **resumen de la semana pasada** (cumplimiento contra la anterior,
+días perfectos, racha, lo que más se escapó, Redes y peso) con el botón para
+planificar la semana en curso; se quita con ✕ hasta la semana siguiente.
+
+**Plan de la semana.** Qué días toca cada hábito en una semana concreta, sin
+cambiar sus días de siempre. Se abre desde *Planificar* en Histórico, desde el
+resumen semanal o marcando el hábito *Planificar la semana* (ver más abajo).
+Se puede planificar la semana en curso y hasta ocho por delante; los días que
+ya pasaron se ven pero no se pueden cambiar. *Como siempre* devuelve la semana
+a los días de siempre.
 
 **Histórico.** La semana en rejilla (hábito × día), los totales de los hábitos
 por cantidad, el cumplimiento de la semana y del mes, el calendario en vista
 de mes o de año, la gráfica de evolución y la evolución del peso (30 días,
-90 días o todo, con la media de 7 días).
+90 días o todo, con la media de 7 días). Bajo el peso, el **peso objetivo**:
+cuánto falta, a qué ritmo vas y para cuándo llegarías; en la gráfica, una
+línea discontinua si el objetivo está cerca de tus datos.
 
 **Ejercicios.** La rutina que toca, con sus ejercicios, las series apuntadas,
 el récord de cada uno y el contador de descanso entre series. *Gestionar*
 despliega la tabla para editar rutinas y ejercicios.
 
-**Notas.** Un campo para escribir la nota de hoy, un buscador y todas tus notas
-de día en orden, cada una con cómo fue ese día. La fecha lleva a ese día y el
-lápiz la edita ahí mismo; vaciarla la borra.
+**Notas.** Un campo para escribir la nota de hoy, un buscador, las **notas
+libres** (con título opcional, sin día: objetivos, listas, ideas) y todas tus
+notas de día en orden, cada una con cómo fue ese día. La fecha lleva a ese día y
+el lápiz la edita ahí mismo; vaciarla la borra. Una nota libre que se cierra
+vacía se descarta, y al eliminarla hay 7 segundos para deshacerlo. El buscador
+filtra las dos listas.
 
 **Ajustes.** Apariencia, qué se ve en Hoy, entrenamiento, la lista de todos tus
 hábitos (con archivados y pausados), copia de seguridad y la información de la
@@ -247,7 +262,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 10,
+  "version": 12,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -259,7 +274,8 @@ Una sola clave, `habitTracker.v1`:
     "restSeconds": 150,               // 0, 90, 120, 150, 180, 240 o 300
     "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"
     "weekStart": 1,                   // fijo en lunes desde la 1.6.5
-    "notificationsEnabled": false     // sin uso desde la 1.6.8
+    "notificationsEnabled": false,    // sin uso desde la 1.6.8
+    "weightGoal": 80                  // kg, o null si no hay objetivo
   },
   "habits": [{
     "id": "h_k3f9", "name": "Lectura", "icon": "📖", "color": "#e879f9",
@@ -275,6 +291,10 @@ Una sola clave, `habitTracker.v1`:
     "archived": false,
     // tramos [from, to): "to" es el día en que se reanudó, null si sigue en pausa
     "pauses": [{ "from": "2026-09-13", "to": "2026-09-19", "reason": "vacaciones", "note": "" }],
+    // días de semanas concretas: clave = el lunes; [] = esa semana no toca.
+    // null si no hay ninguna. Una semana igual a activeDays no se guarda.
+    "weekPlan": { "2026-10-26": [2, 4, 6] },
+    "role": null,                     // "planner" en "Planificar la semana"
     "reminder": { "enabled": false, "time": "08:00" }   // sin uso desde la 1.6.8
   }],
   "logs": {
@@ -285,6 +305,8 @@ Una sola clave, `habitTracker.v1`:
   },
   "notes": { "2026-09-15": "Día raro, pero saqué el rato de leer." },
   "weights": { "2026-09-15": 72.4 },  // kg, un decimal, entre 20 y 400
+  // notas sin día, la más reciente primero; "updated" en milisegundos
+  "freeNotes": [{ "id": "n_x1", "title": "Objetivos", "text": "…", "updated": 1793009134893 }],
   "frozen": {
     // marcas de día: el motivo es gratis; "skip": true cuesta un comodín
     "2026-09-20": { "reason": "energia", "note": "", "skip": false },
@@ -306,6 +328,7 @@ Una sola clave, `habitTracker.v1`:
     "habitsCreated": 0,               // los de partida no cuentan
     "avoidXpPaid": 50,                // EXP de hitos de "evitar" ya cobrada
     "lastExport": "2026-09-30",
+    "weekSummarySeen": "2026-10-26", // lunes de la semana cuyo resumen ya se cerró
     "levelLog": [{ "level": 1, "date": "2026-09-16" }],
     "levelLogFrom": 0,                // nivel desde el que el registro es fiable
     "freezes": 2,                     // comodines disponibles (máx. 4)
@@ -340,19 +363,24 @@ Después se ejecutan las migraciones que tocan, según la versión guardada:
 | < 6 | `migrateSeedTweaks()` | Bandera para Japonés, tope 1 para Gula y Lujo |
 | < 8 | `migrateNewDefaults()` | Controles compactos y "apartar cumplidos" por defecto |
 | < 11 | `migrateAddRedes()` | Añade "Redes" (máximo 90 min) si no hay ya un hábito con ese nombre |
+| < 12 | `migratePlannerRole()` | Da el papel `planner` al hábito "Planificar la semana" (por nombre, sin tildes ni mayúsculas) |
 
-Las versiones 7 (`levelLog`), 9 (`pauses`), 10 (marcas de día) y la parte de
-`weights` de la 11 no necesitan migración propia: el saneado rellena los campos
-nuevos o, en el caso de la v10, lee el `true` antiguo de `frozen` como "salvado
-sin motivo".
+Las versiones 7 (`levelLog`), 9 (`pauses`), 10 (marcas de día), la parte de
+`weights` de la 11 y `weekPlan`, `freeNotes`, `weightGoal` y `weekSummarySeen`
+de la 12 no necesitan migración propia: el saneado rellena los campos nuevos o,
+en el caso de la v10, lee el `true` antiguo de `frozen` como "salvado sin
+motivo".
 
-**Importar no ejecuta las migraciones**, solo el saneado. Comprobado que
-importar exportaciones de los esquemas 6 a 9 da el mismo resultado que
-cargarlas; con archivos anteriores no está verificado.
+**Importar no ejecuta las migraciones**, solo el saneado, con una excepción:
+una copia anterior a la v12 pasa también por `migratePlannerRole()`, que es
+inocua si ya hay un hábito con el papel. Comprobado que importar exportaciones
+de los esquemas 6 a 9 da el mismo resultado que cargarlas; con archivos
+anteriores no está verificado.
 
 Comprobado al arrancar: estados guardados con los esquemas 4 a 9 se cargan sin
-perder ningún dato (1.7.0), y el paso de la v9 a la v10 conserva los días
-congelados como "salvados sin motivo" (1.7.2).
+perder ningún dato (1.7.0), el paso de la v9 a la v10 conserva los días
+congelados como "salvados sin motivo" (1.7.2) y el de la v11 a la v12 asigna el
+papel al hábito planificador (2.0.0).
 
 ---
 
@@ -403,6 +431,26 @@ Sustituir `writeNow()` y `load()` por llamadas de red deja intacto el resto.
   el porcentaje del día, ni en rachas de cumplimiento, ni da EXP. Sí cuenta
   como registro. Los cambios se calculan entre **medias de 7 días**, no entre
   pesadas sueltas, porque el peso de un día baila por el agua y la comida.
+- **El plan de la semana es una excepción, no otro horario.** Cada hábito
+  conserva sus días de siempre (`activeDays`) y `weekPlan` solo guarda las
+  semanas que se apartan de ellos. Toda la app pregunta qué toca a través de
+  `S.activeDaysFor()` —la usan `getHabitsForDate()` y `St.isActiveOn()`—, así
+  que tarjetas, porcentajes, rachas, rejilla y EXP lo respetan sin saber que
+  existe.
+- **En el plan, lo pasado no se toca; hoy sí.** Quitar un día ya pasado
+  borraría un fallo de tus rachas a posteriori, así que `setWeekPlan()` lo
+  ignora aunque se le pida. Hoy queda editable porque se planifica el lunes, y
+  el lunes es hoy. Si cambiar lo que toca hoy deja el día perfecto (o deja de
+  serlo), el bonus se paga o se retira por diferencia, como en cualquier acción.
+- **"Planificar la semana" se cumple planificando.** Su ✓ abre el plan, y es
+  guardarlo lo que lo marca. Se puede planificar otro día si se pasa: guardar
+  un plan marca el último día en que tocaba ese hábito dentro de los tres
+  anteriores (el domingo, si planificas el lunes o el martes). Desmarcarlo es
+  un toque normal.
+- **Peso objetivo con ritmo de medias.** El ritmo compara la media de 7 días
+  actual con la de hace 4 semanas (2 si aún no hay tanto). A ±0,3 kg se da por
+  llegado; por debajo de 50 g por semana, por estable. El texto es neutro: no
+  sabe si quieres bajar o subir, solo cuánto falta.
 - **Pausar no es archivar.** Un hábito en pausa sale de Hoy y sus días no
   cuentan ni a favor ni en contra, así que la racha se queda donde estaba. Se
   guardan los tramos, no un "está en pausa": borrar el rastro al reanudar haría

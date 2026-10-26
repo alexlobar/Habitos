@@ -102,7 +102,8 @@ HT.stats = (function () {
     // Una pausa se comporta igual que un día que no toca: dayOutcome lo lee
     // como 'skip', así que no cuenta como cumplido ni corta la racha.
     if (S.isPausedOn(habit, dateKey)) return false;
-    return habit.activeDays.indexOf(U.fromKey(dateKey).getDay()) >= 0;
+    // Los días de esa semana concreta si tiene plan; si no, los de siempre.
+    return S.activeDaysFor(habit, dateKey).indexOf(U.fromKey(dateKey).getDay()) >= 0;
   }
 
   /** ¿Es un hábito que se quiere dejar? Su lógica va al revés. */
@@ -551,6 +552,118 @@ HT.stats = (function () {
       max: enRango.length ? Math.max.apply(null, enRango) : null,
       entries: weightKeys().length
     };
+  }
+
+  /**
+   * Peso objetivo y ritmo. El ritmo sale de comparar la media de la última
+   * semana con la de hace 4 semanas (o 2, si aún no hay tanto histórico):
+   * con medias el agua de un día no cambia la previsión.
+   *   status: 'nodata'  sin pesos todavía
+   *           'arrived' a ±0,3 kg del objetivo
+   *           'norate'  aún no hay histórico para medir el ritmo
+   *           'stable'  te mueves menos de 50 g por semana
+   *           'toward'  vas hacia el objetivo (con `weeks` y `eta`)
+   *           'away'    te alejas de él
+   */
+  function weightGoal(todayKey) {
+    const goal = S.getSettings().weightGoal;
+    if (goal === null || goal === undefined) return null;
+
+    const last = weightOnOrBefore(todayKey || U.todayKey());
+    if (!last) return { goal: goal, status: 'nodata' };
+
+    const current = weightAvg7(last.date);
+    const remaining = round1(goal - current);
+    const out = { goal: goal, current: current, remaining: remaining,
+                  rate: null, weeks: null, eta: null, status: 'norate' };
+
+    if (Math.abs(remaining) <= 0.3) { out.status = 'arrived'; return out; }
+
+    let span = 28;
+    let past = weightAvg7(U.addDaysKey(last.date, -span));
+    if (past === null) { span = 14; past = weightAvg7(U.addDaysKey(last.date, -span)); }
+    if (past === null) return out;
+
+    const rate = (current - past) / (span / 7);           // kg por semana
+    out.rate = Math.round(rate * 100) / 100;
+
+    if (Math.abs(rate) < 0.05) out.status = 'stable';
+    else if ((rate < 0) === (remaining < 0)) {
+      out.status = 'toward';
+      out.weeks = Math.ceil(Math.abs(remaining) / Math.abs(rate));
+      // Más de tres años no es una fecha, es un "a este paso, no".
+      if (out.weeks <= 156) out.eta = U.addDaysKey(last.date, out.weeks * 7);
+    } else out.status = 'away';
+
+    return out;
+  }
+
+  /* ── Resumen de la semana ─────────────────────────────────
+     Lo que se enseña en Hoy los primeros días de la semana siguiente.
+     Solo lee: compara la semana que empieza en `weekKey` (un lunes) con
+     la anterior. ──────────────────────────────────────────────────── */
+
+  function weekSummary(weekKey) {
+    const days = daysFromTo(weekKey, U.addDaysKey(weekKey, 6));
+    const prevDays = days.map(function (k) { return U.addDaysKey(k, -7); });
+
+    const rate = rateOver(days);
+    const prev = rateOver(prevDays);
+    let perfect = 0;
+    let scheduled = 0;
+    days.forEach(function (k) {
+      const d = dayStats(k);
+      if (d.total) scheduled++;
+      if (d.perfect) perfect++;
+    });
+
+    // El hábito que más se escapó: el de menor cumplimiento entre los que
+    // tocaban al menos dos días. Con uno solo, fallarlo no dice nada.
+    let weakest = null;
+    doHabitsList().forEach(function (h) {
+      let tocaba = 0, hecho = 0;
+      days.forEach(function (k) {
+        const o = dayOutcome(h, k);
+        if (o === 'skip') return;
+        tocaba++;
+        if (o === 'done') hecho++;
+      });
+      if (tocaba < 2 || hecho === tocaba) return;
+      const r = hecho / tocaba;
+      if (!weakest || r < weakest.ratio) weakest = { habit: h, done: hecho, total: tocaba, ratio: r };
+    });
+
+    // Los de "máximo al día" (Redes): total de la semana contra la anterior.
+    const capped = S.getHabits().filter(isCapped).map(function (h) {
+      return {
+        habit: h,
+        sum: habitSumOver(h, days),
+        prev: habitSumOver(h, prevDays),
+        over: days.filter(function (k) {
+          return Number(S.getLog(h.id, k)) > h.target.amount;
+        }).length
+      };
+    }).filter(function (c) { return c.sum || c.prev; });
+
+    const sunday = days[6];
+    const wNow = weightAvg7(sunday);
+    const wPrev = weightAvg7(U.addDaysKey(sunday, -7));
+
+    return {
+      weekKey: weekKey,
+      rate: rate,
+      prevPct: prev.total ? prev.pct : null,
+      perfect: perfect,
+      scheduled: scheduled,
+      weakest: weakest,
+      capped: capped,
+      weight: wNow === null ? null : { avg: wNow, change: wPrev === null ? null : round1(wNow - wPrev) }
+    };
+  }
+
+  /** Hábitos positivos activos: los mismos que cuentan en los porcentajes. */
+  function doHabitsList() {
+    return S.getHabits().filter(function (h) { return !isAvoid(h); });
   }
 
   /** Días seguidos cumpliendo el listón de hábitos. */
@@ -1303,7 +1416,8 @@ HT.stats = (function () {
     isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,
     isCapped: isCapped, slipsOf: slipsOf,
     weightSeries: weightSeries, weightSummary: weightSummary,
-    weightAvg7: weightAvg7, weightOnOrBefore: weightOnOrBefore,
+    weightAvg7: weightAvg7, weightOnOrBefore: weightOnOrBefore, weightGoal: weightGoal,
+    weekSummary: weekSummary,
     cardState: cardState, failsThisWeek: failsThisWeek,
     avoidXpFor: avoidXpFor, avoidMilestoneAt: avoidMilestoneAt,
     doHabitsFor: doHabitsFor, avoidHabitsFor: avoidHabitsFor,

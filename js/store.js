@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 11;
+  const VERSION = 12;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -23,6 +23,9 @@ HT.store = (function () {
   const MAX_FREEZES = 4;
   const MAX_LEVEL_LOG = 200;
   const MAX_PAUSES = 40;
+  const MAX_WEEK_PLANS = 600;       // unos once años de semanas planificadas
+  const MAX_FREE_NOTES = 200;
+  const MAX_FREE_TITLE = 60;
 
   /* Catálogos de las opciones con más de dos valores. Están aquí y no en el
      HTML para que el saneado y el desplegable no puedan discrepar. */
@@ -181,8 +184,9 @@ HT.store = (function () {
       mkHabit({ name: 'Planificar el día', icon: '🗒️', color: '#ffb454', category: 'mental',
                 type: 'schedule', slots: ['night'] }, today),
       // El único que no es diario: 0 = domingo, sea cual sea el inicio de semana.
+      // Abre la planificación de la semana; guardar el plan lo marca hecho.
       mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b', category: 'mental',
-                type: 'check', activeDays: [0] }, today),
+                type: 'check', activeDays: [0], role: 'planner' }, today),
       // Con franjas: se cumple por la mañana y por la noche, y cada una es
       // un fallo posible, así que el tope crítico sale de ellas (2).
       mkHabit({ name: 'Evitar pantallas', icon: '📵', color: '#94a3b8',
@@ -210,13 +214,15 @@ HT.store = (function () {
         theme: 'dark', fontSize: 'normal',
         hideDone: true, showBadges: true, backupDays: 14, restSeconds: DEFAULT_REST,
         streakGoal: '2',
-        showDayBar: true, showNotes: true, showFreeze: true, showWeight: true
+        showDayBar: true, showNotes: true, showFreeze: true, showWeight: true,
+        weightGoal: null
       },
       habits: habits,
       logs: {},
       notes: {},
       frozen: {},
       weights: {},
+      freeNotes: [],
       routines: seed.routines,
       exercises: seed.exercises,
       sessions: {},
@@ -225,7 +231,7 @@ HT.store = (function () {
         // Arranca a 0 a propósito: el logro "Coleccionista" premia crear
         // hábitos, y los de partida los regala la app, no los creas tú.
         points: 0, achievements: [], bestStreak: 0, habitsCreated: 0,
-        avoidXpPaid: 0, lastExport: null, levelLog: [], levelLogFrom: 0,
+        avoidXpPaid: 0, lastExport: null, weekSummarySeen: null, levelLog: [], levelLogFrom: 0,
         freezes: 1, freezeWeek: U.toKey(U.startOfWeek(U.fromKey(today), 1))
       }
     };
@@ -324,8 +330,47 @@ HT.store = (function () {
       },
       createdAt: U.isValidKey(raw.createdAt) ? raw.createdAt : U.todayKey(),
       archived: raw.archived === true,
-      pauses: cleanPauses(raw.pauses)
+      pauses: cleanPauses(raw.pauses),
+      // Días distintos para semanas concretas. null si no hay ninguna: es lo
+      // que permite a activeDaysFor() saltarse la cuenta en el caso normal.
+      weekPlan: cleanWeekPlan(raw.weekPlan),
+      // 'planner': el hábito que abre la planificación de la semana.
+      role: raw.role === 'planner' ? 'planner' : null
     };
+  }
+
+  /** Lista de días de la semana (0 = domingo) sin repetidos y ordenada. */
+  function cleanDays(raw) {
+    if (!Array.isArray(raw)) return null;
+    const days = raw.map(Number).filter(function (d) { return d >= 0 && d <= 6 && d === Math.floor(d); });
+    return days.filter(function (d, i) { return days.indexOf(d) === i; }).sort();
+  }
+
+  /** El lunes de la semana de una fecha: la clave con la que se guarda un plan. */
+  function weekKeyOf(dateKey) {
+    return U.toKey(U.startOfWeek(U.fromKey(dateKey), 1));
+  }
+
+  /**
+   * Plan por semanas: { lunes → días }. Solo valen claves que sean lunes, y
+   * un plan vacío es válido —"esta semana no toca"—, así que no se descarta.
+   * No se recorta por antigüedad salvo un tope muy alto: borrar el plan de
+   * una semana pasada cambiaría qué días tocaban, y con ello sus rachas.
+   */
+  function cleanWeekPlan(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+    const keys = Object.keys(raw)
+      .filter(function (k) { return U.isValidKey(k) && U.fromKey(k).getDay() === 1; })
+      .sort()
+      .slice(-MAX_WEEK_PLANS);
+
+    const out = {};
+    keys.forEach(function (k) {
+      const days = cleanDays(raw[k]);
+      if (days) out[k] = days;
+    });
+    return Object.keys(out).length ? out : null;
   }
 
   /**
@@ -516,6 +561,35 @@ HT.store = (function () {
   }
 
   /**
+   * Notas libres: las que no van atadas a un día (objetivos, listas…).
+   * Ordenadas por última edición, la más reciente primero.
+   */
+  function cleanFreeNotes(raw) {
+    if (!Array.isArray(raw)) return [];
+
+    const vistos = {};
+    const out = [];
+    raw.forEach(function (n) {
+      if (!n || typeof n !== 'object') return;
+      const id = typeof n.id === 'string' && n.id ? n.id : U.uid('n');
+      if (vistos[id]) return;
+
+      const title = cleanName(n.title, '').slice(0, MAX_FREE_TITLE);
+      const text = typeof n.text === 'string' ? n.text.slice(0, MAX_NOTE) : '';
+      if (!title && !text.trim()) return;            // vacía: no hay nada que guardar
+
+      vistos[id] = true;
+      out.push({
+        id: id, title: title, text: text,
+        updated: typeof n.updated === 'number' && isFinite(n.updated) ? n.updated : 0
+      });
+    });
+
+    out.sort(function (a, b) { return b.updated - a.updated; });
+    return out.slice(0, MAX_FREE_NOTES);
+  }
+
+  /**
    * Un peso en kg, con un decimal. El rango es amplio a propósito: está para
    * descartar un 7 o un 720 tecleados por error, no para opinar del dato.
    */
@@ -607,7 +681,9 @@ HT.store = (function () {
         showDayBar: s.showDayBar !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false,
-        showWeight: s.showWeight !== false
+        showWeight: s.showWeight !== false,
+        // Peso objetivo en kg, o null si no hay.
+        weightGoal: s.weightGoal === null || s.weightGoal === undefined ? null : cleanWeight(s.weightGoal)
       },
       habits: habits,
       logs: logs,
@@ -620,6 +696,7 @@ HT.store = (function () {
       frozen: cleanByDate(raw.frozen, cleanDayMark),
       // Peso por día, en kg. Ausente antes de la v11: empieza vacío.
       weights: cleanByDate(raw.weights, cleanWeight),
+      freeNotes: cleanFreeNotes(raw.freeNotes),
       routines: routines,
       exercises: exercises,
       sessions: cleanByDate(raw.sessions, function (v) { return cleanSession(v, exerciseIds); }),
@@ -641,6 +718,8 @@ HT.store = (function () {
         avoidXpPaid: Math.max(0, Math.floor(Number(g.avoidXpPaid) || 0)),
         // Última copia exportada, para poder avisar cuando lleve tiempo.
         lastExport: U.isValidKey(g.lastExport) ? g.lastExport : null,
+        // Lunes de la última semana cuyo resumen cerraste.
+        weekSummarySeen: U.isValidKey(g.weekSummarySeen) ? g.weekSummarySeen : null,
         // El único dato de progresión que NO se deriva de la XP: la XP guarda
         // cuánta llevas, no cuándo la ganaste. Si se pierde este registro, las
         // fechas de los ascensos ya no se pueden reconstruir.
@@ -789,6 +868,19 @@ HT.store = (function () {
     state.habits.push(mkHabit(AVOID_SEED[2], U.todayKey()));
   }
 
+  /**
+   * Migración a la v12: "Planificar la semana" pasa a abrir la planificación.
+   * Se reconoce por el nombre, sin tildes ni mayúsculas, porque es el único
+   * dato que tienen los hábitos de antes. Solo uno, aunque haya varios.
+   */
+  function migratePlannerRole() {
+    if (state.habits.some(function (h) { return h.role === 'planner'; })) return;
+    const h = state.habits.filter(function (x) {
+      return plainName(x.name) === 'planificar la semana';
+    })[0];
+    if (h) h.role = 'planner';
+  }
+
   /* ── Carga y guardado ─────────────────────────────────────── */
 
   function load() {
@@ -824,6 +916,7 @@ HT.store = (function () {
       if (incoming < 6) migrateSeedTweaks();
       if (incoming < 8) migrateNewDefaults();
       if (incoming < 11) migrateAddRedes();
+      if (incoming < 12) migratePlannerRole();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);
@@ -908,8 +1001,64 @@ HT.store = (function () {
   function getHabitsForDate(dateKey) {
     const dow = U.fromKey(dateKey).getDay();
     return getHabits().filter(function (h) {
-      return h.activeDays.indexOf(dow) >= 0 && h.createdAt <= dateKey && !isPausedOn(h, dateKey);
+      return activeDaysFor(h, dateKey).indexOf(dow) >= 0 && h.createdAt <= dateKey &&
+             !isPausedOn(h, dateKey);
     });
+  }
+
+  /* ── Plan semanal ─────────────────────────────────────────
+     Un hábito tiene sus días de siempre (`activeDays`) y, si quieres,
+     días distintos para semanas concretas (`weekPlan`). Esta es la ÚNICA
+     pregunta que hace el resto de la app sobre qué días toca: la
+     usan getHabitsForDate() y St.isActiveOn(), y de ellas dependen la
+     tarjeta, el porcentaje del día, las rachas, la rejilla y la EXP.
+     ──────────────────────────────────────────────────────── */
+
+  function activeDaysFor(habit, dateKey) {
+    if (!habit.weekPlan) return habit.activeDays;       // el caso normal, sin cuentas
+    const plan = habit.weekPlan[weekKeyOf(dateKey)];
+    return plan || habit.activeDays;
+  }
+
+  function sameDays(a, b) {
+    return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
+  }
+
+  /**
+   * Guarda los días de un hábito para una semana. `days` null vuelve a los
+   * días de siempre.
+   *
+   * Los días ANTERIORES a hoy no cambian, se pida lo que se pida: ya pasaron,
+   * y quitar uno borraría un fallo de tus rachas a posteriori. Hoy sí se
+   * puede cambiar, porque planificas los lunes y el lunes es hoy.
+   */
+  function setWeekPlan(habitId, weekKey, days) {
+    const habit = getHabit(habitId);
+    if (!habit || !U.isValidKey(weekKey) || U.fromKey(weekKey).getDay() !== 1) return null;
+
+    const hoy = U.todayKey();
+    const antes = activeDaysFor(habit, weekKey);
+    let nuevo = days === null ? habit.activeDays.slice() : (cleanDays(days) || []);
+
+    for (let i = 0; i < 7; i++) {
+      const key = U.addDaysKey(weekKey, i);
+      if (key >= hoy) continue;
+      const dow = U.fromKey(key).getDay();
+      const estaba = antes.indexOf(dow) >= 0;
+      const esta = nuevo.indexOf(dow) >= 0;
+      if (estaba && !esta) nuevo.push(dow);
+      if (!estaba && esta) nuevo = nuevo.filter(function (d) { return d !== dow; });
+    }
+    nuevo = cleanDays(nuevo);
+
+    const plan = habit.weekPlan ? Object.assign({}, habit.weekPlan) : {};
+    // Si coincide con los días de siempre no hace falta guardarlo.
+    if (sameDays(nuevo, habit.activeDays)) delete plan[weekKey];
+    else plan[weekKey] = nuevo;
+
+    habit.weekPlan = Object.keys(plan).length ? plan : null;
+    commit('habit:plan', { habitId: habitId, weekKey: weekKey });
+    return activeDaysFor(habit, weekKey);
   }
 
   /** ¿Estaba en pausa ese día? Se consulta por fecha, nunca "ahora mismo". */
@@ -1194,6 +1343,67 @@ HT.store = (function () {
     return true;
   }
 
+  /* ── Notas libres ─────────────────────────────────────────────
+     No van atadas a ningún día: no cuentan para la racha de registro. ── */
+
+  function getFreeNotes() { return state.freeNotes.slice(); }
+
+  function getFreeNote(id) {
+    return state.freeNotes.filter(function (n) { return n.id === id; })[0] || null;
+  }
+
+  /** Crea una nota vacía arriba del todo. Si se queda vacía, se descarta al cerrar. */
+  function addFreeNote() {
+    if (state.freeNotes.length >= MAX_FREE_NOTES) return null;
+    const note = { id: U.uid('n'), title: '', text: '', updated: Date.now() };
+    state.freeNotes.unshift(note);
+    commit('freenote:change', note.id);
+    return note;
+  }
+
+  /** Cambia título y/o texto. Solo sube arriba si algo cambió de verdad. */
+  function updateFreeNote(id, patch) {
+    const note = getFreeNote(id);
+    if (!note || !patch) return null;
+
+    const title = patch.title !== undefined
+      ? cleanName(patch.title, '').slice(0, MAX_FREE_TITLE) : note.title;
+    const text = patch.text !== undefined
+      ? String(patch.text || '').slice(0, MAX_NOTE) : note.text;
+    if (title === note.title && text === note.text) return note;
+
+    note.title = title;
+    note.text = text;
+    note.updated = Date.now();
+    state.freeNotes.sort(function (a, b) { return b.updated - a.updated; });
+    commit('freenote:change', id);
+    return note;
+  }
+
+  function deleteFreeNote(id) {
+    const antes = state.freeNotes.length;
+    state.freeNotes = state.freeNotes.filter(function (n) { return n.id !== id; });
+    if (state.freeNotes.length === antes) return false;
+    commit('freenote:change', id);
+    return true;
+  }
+
+  /** Deshacer un borrado: vuelve con su id y su fecha de edición. */
+  function restoreFreeNote(note) {
+    if (!note || getFreeNote(note.id) || state.freeNotes.length >= MAX_FREE_NOTES) return false;
+    state.freeNotes.push(note);
+    state.freeNotes.sort(function (a, b) { return b.updated - a.updated; });
+    commit('freenote:change', note.id);
+    return true;
+  }
+
+  /** El resumen de esa semana ya se vio y se cerró: no vuelve a salir. */
+  function dismissWeekSummary(weekKey) {
+    if (!U.isValidKey(weekKey)) return;
+    state.game.weekSummarySeen = weekKey;
+    save();
+  }
+
   /* ── Lectura: ejercicios ──────────────────────────────────── */
 
   function getWorkout() { return state.workout; }
@@ -1400,7 +1610,9 @@ HT.store = (function () {
       showDayBar: next.showDayBar !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false,
-      showWeight: next.showWeight !== false
+      showWeight: next.showWeight !== false,
+      weightGoal: next.weightGoal === null || next.weightGoal === undefined || next.weightGoal === ''
+        ? null : cleanWeight(next.weightGoal)
     };
     commit('settings:change', state.settings);
     return state.settings;
@@ -1512,6 +1724,10 @@ HT.store = (function () {
 
   function replaceState(raw) {
     state = cleanState(raw);
+    // Importar no pasa por las migraciones, pero una copia anterior a la 2.0.0
+    // dejaría "Planificar la semana" como un check sin más. Esta es inocua:
+    // solo actúa si ningún hábito tiene ya el papel.
+    if (!(raw && raw.version >= 12)) migratePlannerRole();
     save(true);
     emit('state:replace');
     return state;
@@ -1539,6 +1755,10 @@ HT.store = (function () {
     setNote: setNote,
     getDayMark: getDayMark, setDayMark: setDayMark, clearDayMark: clearDayMark,
     getWeight: getWeight, getWeights: getWeights, setWeight: setWeight,
+    activeDaysFor: activeDaysFor, setWeekPlan: setWeekPlan, weekKeyOf: weekKeyOf,
+    getFreeNotes: getFreeNotes, getFreeNote: getFreeNote, addFreeNote: addFreeNote,
+    updateFreeNote: updateFreeNote, deleteFreeNote: deleteFreeNote, restoreFreeNote: restoreFreeNote,
+    dismissWeekSummary: dismissWeekSummary,
 
     getWorkout: getWorkout, getRoutines: getRoutines, getRoutine: getRoutine,
     getExercises: getExercises, getExercise: getExercise,

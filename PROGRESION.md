@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **1.7.4** · esquema de datos **v11**.
+Versión documentada: **2.0.0** · esquema de datos **v12**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -302,6 +302,9 @@ registro:
 - escribir una nota del día,
 - **o anotar el motivo de por qué el día no salió.**
 
+Las **notas libres** de la pantalla Notas no cuentan: no van atadas a ningún
+día, así que no dicen que te presentaras ese día.
+
 Ese último punto es lo que la hace valiosa. Un día malo, contado con honestidad,
 **mantiene la racha de registro y rompe la de cumplimiento**. No premia fingir:
 premia aparecer y decir la verdad. Como la de cumplimiento sigue siendo
@@ -319,6 +322,10 @@ estricta, las dos juntas dicen cosas distintas en vez de repetirse.
   00:00 y harían que la racha corriera sola.
 - **Los hábitos en pausa** no tocan esos días, así que tampoco entran en el
   total.
+- **El plan de la semana manda.** Si una semana un hábito solo toca martes,
+  jueves y sábado, el lunes no le tocaba: ni cuenta en el total ni rompe su
+  racha. Por eso el plan no deja cambiar días ya pasados: quitar uno borraría
+  un fallo a posteriori. El día de hoy sí se puede cambiar.
 
 ### En peligro — `streakAtRisk()`
 
@@ -424,6 +431,10 @@ estado de antes y el de después:
   día, antes y después.
 - `withWorkoutScoring()` — ejercicios. Compara cuántos estaban completos, el
   bono de todos los ejercicios y si la sesión estaba cerrada.
+- `onPlanSubmit()` — plan de la semana. Cambiar qué toca hoy puede dejar el día
+  perfecto o quitarle el bono; se mide el bono de hoy antes y después y se paga
+  la diferencia. Marcar *Planificar la semana* al guardar pasa por
+  `withScoring()` como cualquier check.
 
 De ahí salen tres garantías:
 
@@ -462,6 +473,8 @@ ni los entrenos — es la diferencia con *Borrar todo*.
 | Logros | `js/stats.js` — `ACHIEVEMENTS`, `earnedAchievements()` |
 | Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withWorkoutScoring()`, `onLevelUp()` |
 | Marcas de día y comodines | `js/store.js` — `setDayMark()`, `clearDayMark()`, `isFrozen()`, `refillFreezes()` |
+| Plan de la semana | `js/store.js` — `activeDaysFor()`, `setWeekPlan()` · `js/app.js` — `onPlanSubmit()`, `markPlannerDone()` |
+| Resumen semanal y peso objetivo | `js/stats.js` — `weekSummary()`, `weightGoal()` |
 | Registro de ascensos | `js/store.js` — `recordLevelUp()` · `js/ui.js` — `renderAscents()` |
 | Pintado de Progreso | `js/ui.js` — `renderProgress()`, `renderLevelPanel()`, `renderStreakPair()` |
 | Contador de la cabecera | `js/ui.js` — `renderStreakChip()`, `streakMessage()` |

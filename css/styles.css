@@ -3627,3 +3627,161 @@ button.week-cell:disabled:hover { transform: none; }
 @media (min-width: 1440px) {
   :root { --content-max: 1320px; }
 }
+
+/* ── 2.0.0 · PLAN DE LA SEMANA, RESUMEN, OBJETIVO Y NOTAS LIBRES ── */
+
+/* El hábito que abre el plan lo dice bajo el nombre. */
+.habit-card__sub {
+  margin: -2px 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* Resumen de la semana pasada, arriba de Hoy. */
+.recap {
+  margin-bottom: var(--sp-4);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: inset 0 2px 0 0 var(--accent), var(--shadow-1);
+}
+.recap .card__head { align-items: flex-start; margin-bottom: var(--sp-3); }
+.recap__eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.recap__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.recap__stat {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.recap__value {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+.recap__label { font-size: var(--fs-xs); color: var(--text-muted); }
+.recap__lines {
+  display: grid;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* Modal del plan: una fila por hábito con sus siete días. */
+#planModal .month-nav { justify-content: center; margin-bottom: var(--sp-3); }
+.plan-list { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.plan-row {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--habit-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.plan-row.is-changed { border-color: color-mix(in srgb, var(--accent) 55%, transparent); border-left-color: var(--habit-color); }
+.plan-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.plan-row__icon { flex: none; }
+.plan-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-row__count {
+  flex: none;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.plan-row.is-changed .plan-row__count { color: var(--accent-text); font-weight: 600; }
+.plan-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.plan-day {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.plan-day:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
+.plan-day[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--habit-color) 60%, transparent);
+  background: color-mix(in srgb, var(--habit-color) 30%, transparent);
+  color: var(--text);
+}
+/* Lo pasado se ve, pero apagado: está ahí para dar contexto, no para tocarlo. */
+.plan-day:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Peso objetivo */
+.weight-goal {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.weight-goal__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.weight-goal__text { flex: 1; min-width: 12rem; font-size: var(--fs-xs); color: var(--text-muted); }
+.wchart__goal {
+  stroke: var(--success);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.weight-legend__goal { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.weight-legend__goal[hidden] { display: none; }
+.weight-legend__dash {
+  width: 16px;
+  margin-left: var(--sp-2);
+  border-top: 2px dashed var(--success);
+}
+
+/* Notas libres */
+.free-notes__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.free-notes__title { font-size: var(--fs-md); font-weight: 650; }
+.free-notes__hint { font-size: var(--fs-xs); color: var(--text-muted); }
+.free-note__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.free-note__title.is-empty { font-weight: 500; color: var(--text-muted); font-style: italic; }
+.free-note__title-input { margin-bottom: var(--sp-2); font-weight: 600; }
+.free-note__input { margin: 0; }
+.free-note__foot { display: flex; justify-content: flex-end; margin-top: var(--sp-2); }
