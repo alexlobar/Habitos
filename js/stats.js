@@ -24,8 +24,8 @@ HT.stats = (function () {
      se tocan para que la XP acumulada siga significando lo mismo. ──── */
   const XP = {
     habit: 20,          // completar un hábito del día
-    exercise: 10,       // completar todas las series de un ejercicio
-    workout: 50,        // cerrar un entrenamiento
+    // `exercise` y `workout` desaparecieron con la sección Ejercicios (2.2.0).
+    // La EXP que ya dieron se queda: la XP guarda cuánta llevas, no de dónde.
     goal: 100,          // cumplir un objetivo — todavía sin acción que lo dispare
 
     /* Los bonus ya no son cantidades fijas: son un porcentaje de lo que has
@@ -33,8 +33,7 @@ HT.stats = (function () {
        por tierra la jornada entera. */
     perfectDayPct: 0.50,   // 9 de 9  → la mitad de lo ganado
     goodDayPct:    0.25,   // 8 de 9  → un cuarto
-    goodDayFrom:   0.80,   // a partir de este cumplimiento
-    allExercisesPct: 0.50  // todos los ejercicios del día
+    goodDayFrom:   0.80    // a partir de este cumplimiento
   };
 
   // Nombre anterior, conservado porque app.js lo usa.
@@ -82,16 +81,6 @@ HT.stats = (function () {
       habits: faltan,
       xp: faltan * XP.habit + (bonusPleno - dayBonus(dateKey))
     };
-  }
-
-  /** Bonus por completar todos los ejercicios del día. Misma mecánica. */
-  function exerciseBonus(dateKey, exercises) {
-    if (!exercises.length) return 0;
-
-    const summary = sessionSummary(dateKey, exercises);
-    if (summary.complete < summary.total) return 0;
-
-    return round5(summary.complete * XP.exercise * XP.allExercisesPct);
   }
 
   /* ── Completado y progreso ────────────────────────────────── */
@@ -416,8 +405,8 @@ HT.stats = (function () {
 
   /* ── Racha de actividad ───────────────────────────────────
      Mide presentarse, no rendir. Cuenta cualquier registro del día:
-     marcar un hábito, apuntar una cantidad o un fallo, una serie de
-     entreno, una nota... o el propio motivo de por qué el día fue malo.
+     marcar un hábito, apuntar una cantidad o un fallo, el peso, una
+     nota... o el propio motivo de por qué el día fue malo.
 
      Eso último es lo que la hace valiosa: un día malo, anotado con
      honestidad, mantiene la racha. No premia fingir — premia aparecer y
@@ -428,9 +417,6 @@ HT.stats = (function () {
     if (S.getDayMark(dateKey)) return true;
     if (S.getNote(dateKey)) return true;
     if (S.getWeight(dateKey) !== null) return true;
-
-    const session = S.getSession(dateKey);
-    if (session && Object.keys(session.sets).length) return true;
 
     return S.getHabits(true).some(function (h) {
       return S.getLog(h.id, dateKey) !== null;
@@ -718,91 +704,6 @@ HT.stats = (function () {
   function monthRate(todayKey) {
     const today = todayKey || U.todayKey();
     return rateOver(daysFromTo(today.slice(0, 8) + '01', today));
-  }
-
-  /* ── Entrenamiento ────────────────────────────────────────
-     El volumen de un ejercicio de repes y el de uno de tiempo
-     no son la misma unidad, así que se cuentan por separado.
-     ──────────────────────────────────────────────────────── */
-
-  /** ¿Se han hecho ya todas las series previstas de este ejercicio? */
-  function exerciseDone(exercise, sets) {
-    return sets.length >= exercise.sets;
-  }
-
-  function sessionSummary(dateKey, exercises) {
-    let setCount = 0;
-    let reps = 0;
-    let seconds = 0;
-    let complete = 0;
-
-    exercises.forEach(function (ex) {
-      const sets = S.getSets(dateKey, ex.id);
-      setCount += sets.length;
-
-      const sum = sets.reduce(function (a, b) { return a + b; }, 0);
-      if (ex.kind === 'time') seconds += sum; else reps += sum;
-
-      if (exerciseDone(ex, sets)) complete++;
-    });
-
-    return {
-      sets: setCount,
-      reps: reps,
-      seconds: seconds,
-      complete: complete,
-      total: exercises.length,
-      pct: exercises.length ? Math.round((complete / exercises.length) * 100) : 0
-    };
-  }
-
-  /**
-   * Mejor serie y mejor sesión de un ejercicio, para ver si progresas.
-   * `exceptKey` deja fuera un día: pasando el de hoy se obtiene la marca a
-   * batir, que es lo que permite saber si lo de hoy es un récord nuevo.
-   */
-  function exerciseRecord(exerciseId, exceptKey) {
-    let bestSet = 0;
-    let bestSession = 0;
-    let sessions = 0;
-
-    const all = S.getState().sessions;
-    Object.keys(all).forEach(function (dateKey) {
-      if (dateKey === exceptKey) return;
-
-      const sets = all[dateKey].sets[exerciseId];
-      if (!sets || !sets.length) return;
-
-      sessions++;
-      const top = Math.max.apply(null, sets);
-      const sum = sets.reduce(function (a, b) { return a + b; }, 0);
-      if (top > bestSet) bestSet = top;
-      if (sum > bestSession) bestSession = sum;
-    });
-
-    return { bestSet: bestSet, bestSession: bestSession, sessions: sessions };
-  }
-
-  /**
-   * La última sesión con series de esa rutina anterior a `beforeKey`, que es
-   * lo que copia "Repetir el último". Se busca por rutina y no por el día de
-   * antes: si alternas rutinas, el entreno anterior no es el mismo trabajo.
-   */
-  function lastSessionOf(routineId, beforeKey) {
-    const all = S.getState().sessions;
-    let found = null;
-
-    Object.keys(all).forEach(function (dateKey) {
-      if (dateKey >= beforeKey) return;
-
-      const session = all[dateKey];
-      if (session.routineId !== routineId) return;
-      if (!Object.keys(session.sets).length) return;
-
-      if (!found || dateKey > found.date) found = { date: dateKey, sets: session.sets };
-    });
-
-    return found;
   }
 
   /* ── Rejilla semanal ──────────────────────────────────────
@@ -1238,8 +1139,6 @@ HT.stats = (function () {
      se enseña de dónde sale, para que ningún número parezca inventado.
      ──────────────────────────────────────────────────────── */
 
-  const WORKOUT_GOAL_30 = 12;   // entrenos en 30 días que cuentan como 100
-
   /** Cumplimiento medio a 30 días de los hábitos de una categoría. */
   function categoryScore(categoryId, todayKey) {
     const habits = S.getHabits().filter(function (h) { return h.category === categoryId; });
@@ -1260,18 +1159,19 @@ HT.stats = (function () {
     };
   }
 
-  /** Entrenos cerrados en los últimos 30 días. */
-  function workoutScore(todayKey) {
-    const sessions = S.getState().sessions;
-    const desde = U.addDaysKey(todayKey, -29);
+  /**
+   * Cumplimiento a 30 días del hábito de entreno. Hasta la 2.2.0 contaba
+   * entrenos cerrados en la sección Ejercicios; ahora el entreno se apunta
+   * en otra app y aquí solo queda el hábito, que respeta su plan semanal.
+   */
+  function trainingScore(todayKey) {
+    const habit = S.getTrainingHabit();
+    if (!habit) return { value: 0, detail: 'Sin hábito de entreno' };
 
-    const done = Object.keys(sessions).filter(function (key) {
-      return key >= desde && key <= todayKey && sessions[key].done;
-    }).length;
-
+    const r = habitRate(habit, todayKey, 30);
     return {
-      value: U.clamp(Math.round((done / WORKOUT_GOAL_30) * 100), 0, 100),
-      detail: done + (done === 1 ? ' entreno' : ' entrenos') + ' · 30 días'
+      value: r.total ? r.pct : 0,
+      detail: habit.name + ' · ' + r.done + ' de ' + r.total + ' días'
     };
   }
 
@@ -1283,7 +1183,7 @@ HT.stats = (function () {
     const today = todayKey || U.todayKey();
 
     const spec = [
-      { code: 'STR', name: 'Fuerza',        get: function () { return workoutScore(today); } },
+      { code: 'STR', name: 'Fuerza',        get: function () { return trainingScore(today); } },
       { code: 'VIT', name: 'Vitalidad',     get: function () { return categoryScore('fisico', today); } },
       { code: 'AGI', name: 'Agilidad',      get: function () { return categoryScore('evitar', today); } },
       { code: 'INT', name: 'Inteligencia',  get: function () { return categoryScore('aprendizaje', today); } },
@@ -1405,7 +1305,7 @@ HT.stats = (function () {
     SLOT_LABELS: SLOT_LABELS,
     XP: XP, RANKS: RANKS, XP_TABLE: XP_TABLE,
     POINTS_PER_HABIT: POINTS_PER_HABIT,
-    dayBonus: dayBonus, exerciseBonus: exerciseBonus,
+    dayBonus: dayBonus,
     ACHIEVEMENTS: ACHIEVEMENTS,
 
     xpForLevel: xpForLevel, levelFromXp: levelFromXp,
@@ -1431,8 +1331,6 @@ HT.stats = (function () {
     activityStreak: activityStreak, streakGoalFor: streakGoalFor,
     weekRate: weekRate, monthRate: monthRate, rateOver: rateOver, levelInfo: levelInfo,
     weekMatrix: weekMatrix,
-    exerciseDone: exerciseDone, sessionSummary: sessionSummary, exerciseRecord: exerciseRecord,
-    lastSessionOf: lastSessionOf,
     monthSeries: monthSeries, yearSeries: yearSeries, seriesRate: seriesRate,
     habitRate: habitRate, habitTotal: habitTotal, habitSums: habitSums,
     habitSumOver: habitSumOver, logStreak: logStreak, habitValueSeries: habitValueSeries,

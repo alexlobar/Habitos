@@ -580,12 +580,6 @@ svg { display: block; }
 }
 .btn[aria-expanded="true"] .btn__chevron { transform: rotate(180deg); }
 
-/* El panel abierto queda cosido al botón por un filo del color del acento */
-#workoutManager > .card {
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  box-shadow: inset 0 2px 0 0 var(--accent), var(--shadow-1);
-}
-
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .btn-row + .btn-row { margin-top: var(--sp-2); }
 
@@ -1248,107 +1242,6 @@ button.heat:disabled:hover { transform: none; }
 }
 .year-grid .heat { width: 12px; height: 12px; aspect-ratio: auto; border-radius: 3px; }
 
-/* ── 7c. EJERCICIOS ────────────────────────────────────────
-   Una fila por ejercicio, con las series hechas como fichas y
-   un campo para apuntar la siguiente. ──────────────────── */
-.card__title--lg { font-size: var(--fs-xl); letter-spacing: -.02em; }
-
-.session__eyebrow {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-.session__pick { display: grid; gap: var(--sp-1); justify-items: end; }
-.session__pick .field__label { margin-bottom: 0; }
-.session__summary {
-  margin-bottom: var(--sp-4);
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.exercise-list { display: grid; gap: var(--sp-3); }
-.exercise {
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  transition: border-color var(--dur) var(--ease);
-}
-.exercise.is-done { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
-
-.exercise__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-3);
-}
-.exercise__title { flex: 1; min-width: 0; }
-.exercise__name { font-size: var(--fs-md); font-weight: 600; }
-.exercise__target {
-  flex: none;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.exercise.is-done .exercise__target { color: var(--success); }
-
-/* Marca a batir del ejercicio. Debajo del nombre y en tenue: es contexto
-   mientras entrenas, no una cifra que compita con las series. */
-.exercise__record {
-  margin-top: 2px;
-  font-size: var(--fs-xs);
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-.exercise__record[data-new="true"] {
-  color: var(--streak);
-  font-weight: 600;
-}
-
-.exercise__sets { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-
-.set-chip {
-  min-width: 42px;
-  min-height: 36px;
-  padding: 0 var(--sp-2);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  transition: background var(--dur) var(--ease);
-}
-.set-chip:hover { background: var(--danger-soft); color: var(--danger); }
-.set-chip:disabled { background: var(--surface-3); color: var(--text-muted); cursor: default; }
-
-.exercise .set-input {
-  width: 4.5rem;
-  min-height: 36px;
-  padding: 0 var(--sp-2);
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-.set-input::-webkit-outer-spin-button,
-.set-input::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
-.set-add { min-height: 36px; padding: 0 var(--sp-3); }
-
-.session__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-4);
-  margin-top: var(--sp-5);
-  padding-top: var(--sp-4);
-  border-top: 1px solid var(--border);
-}
-.session__hint { flex: 1; min-width: 12rem; font-size: var(--fs-xs); color: var(--text-muted); }
-
 /* ── Las dos rachas ───────────────────────────────────────
    Una al lado de la otra a propósito: separadas no se entienden. Una
    mide cumplir y la otra aparecer, y lo útil es ver cuál fallas. ──── */
@@ -1664,98 +1557,6 @@ button.heat:disabled:hover { transform: none; }
   background: var(--accent-soft);
 }
 .reason:has(.reason__input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* ── Descanso entre series ────────────────────────────────
-   Una franja fina con el tiempo que queda. No bloquea nada: puedes
-   seguir apuntando series con el contador en marcha. ──────────────── */
-.rest {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  margin: var(--sp-3) 0;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid color-mix(in srgb, var(--frost) 35%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--frost) 10%, transparent);
-}
-.rest__label {
-  flex: none;
-  font-size: var(--fs-xs);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.rest__time {
-  flex: none;
-  min-width: 3.2rem;
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--frost);
-}
-.rest__track {
-  flex: 1;
-  min-width: 3rem;
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-elevated);
-  overflow: hidden;
-}
-.rest__fill {
-  display: block;
-  width: calc(var(--pct, 0) * 1%);
-  height: 100%;
-  background: var(--frost);
-}
-.rest__skip { flex: none; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
-
-/* Al llegar a cero la franja avisa un momento antes de irse. */
-.rest[data-state="done"] {
-  border-color: color-mix(in srgb, var(--success) 45%, transparent);
-  background: color-mix(in srgb, var(--success) 12%, transparent);
-}
-.rest[data-state="done"] .rest__time { color: var(--success); }
-.rest[data-state="done"] .rest__fill { background: var(--success); }
-
-/* Gestión de la tabla */
-.routine + .routine { margin-top: var(--sp-5); }
-.routine__head {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-2);
-}
-.routine__order {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-}
-.routine__name { flex: 1; font-size: var(--fs-md); font-weight: 650; }
-
-.routine__list { display: grid; gap: 2px; }
-.routine__item {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  font-size: var(--fs-sm);
-}
-.routine__item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.routine__item-target {
-  color: var(--text-muted);
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
-}
-.routine__empty { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); color: var(--text-faint); }
 
 /* ── 7b. VISTA DE SEMANA ───────────────────────────────────
    Filas de hábitos por columnas de días: el plan y el marcador
@@ -3244,6 +3045,7 @@ button.week-cell:disabled:hover { transform: none; }
 .build[data-state="stale"] { color: var(--warning); }
 .build-quota[data-state="high"] { color: var(--warning); }
 .build-quota[data-state="full"] { color: var(--danger); }
+.build-persist[data-state="risk"] { color: var(--warning); }
 
 .archive-list { display: grid; gap: var(--sp-2); }
 .archive-item {

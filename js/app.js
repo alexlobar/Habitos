@@ -28,7 +28,7 @@
      frame, y solo la parte afectada. ───────────────────────── */
 
   const dirty = {
-    all: false, header: false, progress: false, week: false, workout: false,
+    all: false, header: false, progress: false, week: false,
     extras: false, habit: false, notes: false, cards: {}
   };
   let frame = null;
@@ -49,7 +49,6 @@
       if (dirty.extras) UI.renderDayExtras(currentDate);
       // Semana, progreso y ficha son caros: solo se recalculan si están a la vista.
       if (dirty.week) renderWeekIfOpen();
-      if (dirty.workout) renderExercisesIfOpen();
       if (dirty.progress && !UI.els.views.progress.hidden) UI.renderProgress(currentDate);
       if (dirty.habit) renderHabitIfOpen();
       if (dirty.notes) renderNotesIfOpen();
@@ -59,7 +58,6 @@
     dirty.header = false;
     dirty.progress = false;
     dirty.week = false;
-    dirty.workout = false;
     dirty.extras = false;
     dirty.habit = false;
     dirty.notes = false;
@@ -72,17 +70,10 @@
     UI.renderDayExtras(currentDate);
     UI.renderSettings();
     renderWeekIfOpen();
-    renderExercisesIfOpen();
     if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate);
     renderHabitIfOpen();
     renderNotesIfOpen();
     renderPlanIfOpen();
-  }
-
-  function renderExercisesIfOpen() {
-    if (UI.els.views.exercises.hidden) return;
-    UI.renderExercises(currentDate, S.routineForDate(currentDate), currentDate === today);
-    if (!UI.els.workoutManager.hidden) UI.renderRoutineTable();
   }
 
   /** Los 7 días de la semana que contiene `weekAnchor`. */
@@ -134,10 +125,6 @@
         // Solo cambia la lista de Notas, y mientras se escribe ni eso.
         dirty.notes = true;
         break;
-      case 'session:change':
-      case 'workout:change':
-        dirty.workout = true;
-        break;
       case 'game:points':
       case 'game:achievement':
       case 'game:streak':
@@ -157,7 +144,7 @@
 
   /* ── XP, niveles y logros ─────────────────────────────────
      La XP se otorga y se retira de forma simétrica: si desmarcas
-     un hábito o quitas una serie, la pierdes. Así el total nunca
+     un hábito o borras un registro, la pierdes. Así el total nunca
      se infla repitiendo una acción, y volver a abrir una pantalla
      no paga nada porque no cambia ningún estado. ───────────── */
 
@@ -468,244 +455,6 @@
     withScoring(habit, currentDate, function () {
       S.setLog(habit.id, currentDate, input.value === '' ? null : value);
     });
-  }
-
-  /* ── Ejercicios ───────────────────────────────────────────── */
-
-  /** Foto del avance del entreno de un día, para comparar antes/después. */
-  function workoutSnapshot(dateKey) {
-    const exercises = S.getExercises(S.routineForDate(dateKey));
-    const summary = St.sessionSummary(dateKey, exercises);
-    const session = S.getSession(dateKey);
-
-    return {
-      complete: summary.complete,
-      bonus: St.exerciseBonus(dateKey, exercises),
-      done: !!(session && session.done)
-    };
-  }
-
-  /**
-   * Misma contabilidad que withScoring(), pero para el entreno: compara el
-   * estado antes y después de la acción y paga solo la diferencia. Un
-   * ejercicio ya completado no vuelve a dar XP por añadirle otra serie, y
-   * quitar la serie que lo completó devuelve exactamente lo que dio.
-   */
-  function withWorkoutScoring(dateKey, mutate) {
-    const before = workoutSnapshot(dateKey);
-    mutate();
-    const after = workoutSnapshot(dateKey);
-
-    let delta = (after.complete - before.complete) * St.XP.exercise;
-    delta += after.bonus - before.bonus;
-    if (after.done !== before.done) delta += (after.done ? 1 : -1) * St.XP.workout;
-
-    if (delta) grantXp(delta);
-    return after;
-  }
-
-  function showExercises() {
-    UI.setView('exercises');
-    renderExercisesIfOpen();
-  }
-
-  function onExerciseListClick(e) {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-
-    const row = btn.closest('.exercise');
-    if (!row) return;
-
-    const exerciseId = row.dataset.id;
-
-    if (btn.dataset.action === 'remove-set') {
-      withWorkoutScoring(currentDate, function () {
-        S.removeSet(currentDate, exerciseId, Number(btn.dataset.index));
-      });
-      return;
-    }
-
-    if (btn.dataset.action === 'add-set') {
-      const input = row.querySelector('[data-action="set-value"]');
-      const value = Math.floor(Number(input && input.value));
-
-      if (!isFinite(value) || value <= 0) {
-        UI.toast('Escribe cuántas repeticiones o segundos has hecho.', { type: 'error', icon: '⚠️' });
-        return;
-      }
-
-      let added = null;
-      withWorkoutScoring(currentDate, function () {
-        added = S.addSet(currentDate, exerciseId, value);
-      });
-
-      if (!added) {
-        UI.toast('No se pudo añadir la serie.', { type: 'error', icon: '⚠️' });
-        return;
-      }
-
-      const exercise = S.getExercise(exerciseId);
-      if (S.getSettings().effects) UI.buzz(20);
-
-      const completo = exercise && St.exerciseDone(exercise, S.getSets(currentDate, exerciseId));
-      if (completo) UI.toast(exercise.name + ' completado.', { type: 'success', icon: '✓' });
-
-      // El descanso empieza al apuntar la serie, no al terminarla: es
-      // justo entonces cuando dejas la mancuerna y miras el reloj. No
-      // arranca si acabas de rematar el ejercicio, que ya no hay qué
-      // descansar antes de la siguiente serie.
-      if (!completo) UI.startRest(S.getSettings().restSeconds);
-    }
-  }
-
-  /**
-   * Copia las series del último entreno de esta misma rutina. Solo aparece
-   * con la sesión en blanco, así que no puede duplicar nada: rellena y ya
-   * corriges a mano lo que hoy haya salido distinto.
-   */
-  function repeatLastSession() {
-    const routineId = S.routineForDate(currentDate);
-    const anterior = St.lastSessionOf(routineId, currentDate);
-    if (!anterior) {
-      UI.toast('No hay ningún entreno anterior de esta rutina.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-
-    let copiadas = 0;
-    withWorkoutScoring(currentDate, function () {
-      S.getExercises(routineId).forEach(function (ex) {
-        (anterior.sets[ex.id] || []).forEach(function (value) {
-          if (S.addSet(currentDate, ex.id, value)) copiadas++;
-        });
-      });
-    });
-
-    if (!copiadas) {
-      UI.toast('Ese entreno no tiene series que copiar.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-
-    UI.toast('Copiadas ' + copiadas + ' series del ' +
-             U.formatShort(U.fromKey(anterior.date)) + '. Corrige lo que cambie.',
-             { type: 'success', icon: '📋' });
-  }
-
-  /**
-   * Cerrar el entreno marca el hábito enlazado, así que pasa por el mismo
-   * reparto de puntos que cualquier otro hábito: una sola contabilidad.
-   */
-  function toggleSession() {
-    const session = S.getSession(currentDate);
-    const wasDone = !!(session && session.done);
-    const routineId = S.routineForDate(currentDate);
-    const summary = St.sessionSummary(currentDate, S.getExercises(routineId));
-
-    if (!wasDone && !summary.sets) {
-      UI.toast('Apunta al menos una serie antes de cerrar el entreno.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-
-    const linked = S.getWorkout().linkedHabitId;
-    const habit = linked && S.getHabit(linked);
-
-    // Cerrar el entreno da su XP propia; el hábito enlazado sigue pasando
-    // por withScoring(), así que cada cosa se cobra una sola vez.
-    withWorkoutScoring(currentDate, function () {
-      if (!wasDone && !S.getSession(currentDate)) S.setSessionRoutine(currentDate, routineId);
-
-      S.setSessionDone(currentDate, !wasDone);
-
-      if (habit) {
-        withScoring(habit, currentDate, function () {
-          S.setLog(habit.id, currentDate, wasDone ? null : true);
-        });
-      }
-    });
-
-    if (wasDone) {
-      UI.toast('Entreno reabierto.');
-    } else {
-      UI.toast('Entreno cerrado: ' + summary.sets + ' series.', { type: 'success', icon: '💪' });
-      if (!habit && S.getSettings().effects) UI.celebrate();
-    }
-  }
-
-  function onRoutineTableClick(e) {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-
-    const id = btn.dataset.id;
-
-    if (btn.dataset.action === 'edit-exercise') {
-      const exercise = S.getExercise(id);
-      if (exercise) UI.openExerciseModal(exercise);
-      return;
-    }
-
-    if (btn.dataset.action === 'rename-routine') {
-      const routine = S.getRoutine(id);
-      if (!routine) return;
-      const name = window.prompt('Nuevo nombre de la rutina:', routine.name);
-      if (name && name.trim()) S.renameRoutine(id, name);
-      return;
-    }
-
-    if (btn.dataset.action === 'delete-routine') {
-      const routine = S.getRoutine(id);
-      if (!routine) return;
-
-      const count = S.getExercises(id).length;
-      const warning = count
-        ? '¿Eliminar la rutina "' + routine.name + '" y sus ' + count + ' ejercicios? Se perderá su histórico de series.'
-        : '¿Eliminar la rutina "' + routine.name + '"?';
-
-      if (!window.confirm(warning)) return;
-      S.deleteRoutine(id);
-      UI.toast('Rutina eliminada.', { icon: '🗑️' });
-    }
-  }
-
-  function onExerciseFormSubmit(e) {
-    e.preventDefault();
-    const data = UI.readExerciseForm();
-    if (!data) return;
-
-    const editing = UI.els.exerciseForm.dataset.editing;
-
-    if (editing) {
-      // Cambiar el número de series puede dar por completado (o no) un
-      // ejercicio del día: pasa por la misma contabilidad que las series.
-      withWorkoutScoring(currentDate, function () {
-        S.updateExercise(editing, data);
-      });
-      UI.toast('Ejercicio actualizado.', { type: 'success', icon: '✓' });
-    } else if (S.addExercise(data)) {
-      UI.toast('Ejercicio añadido.', { type: 'success', icon: '✓' });
-    } else {
-      UI.toast('Necesitas una rutina antes de añadir ejercicios.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-
-    UI.closeExerciseModal();
-  }
-
-  function onDeleteExercise() {
-    const id = UI.els.exerciseForm.dataset.editing;
-    const exercise = S.getExercise(id);
-    if (!exercise) return;
-
-    if (!window.confirm('¿Eliminar "' + exercise.name + '"? Se borrarán también sus series registradas.')) return;
-
-    S.deleteExercise(id);
-    UI.closeExerciseModal();
-    UI.toast('Ejercicio eliminado.', { icon: '🗑️' });
-  }
-
-  function newRoutine() {
-    const name = window.prompt('Nombre de la rutina nueva:', '');
-    if (!name || !name.trim()) return;
-    S.addRoutine(name);
-    UI.toast('Rutina creada. Se alterna al final de la rotación.', { type: 'success', icon: '✓' });
   }
 
   /* ── Ficha de un hábito ───────────────────────────────────── */
@@ -1335,7 +1084,6 @@
       btn.addEventListener('click', function () {
         if (btn.dataset.view === 'progress') showProgress();
         else if (btn.dataset.view === 'week') showWeek();
-        else if (btn.dataset.view === 'exercises') showExercises();
         else if (btn.dataset.view === 'notes') showNotes();
         else if (btn.dataset.view === 'plan') showPlan();
         else UI.setView(btn.dataset.view);
@@ -1363,34 +1111,6 @@
       renderWeekIfOpen();
     });
     els.weekGrid.addEventListener('click', onCalendarClick);
-
-    // Ejercicios
-    els.exerciseList.addEventListener('click', onExerciseListClick);
-    els.exerciseList.addEventListener('keydown', function (e) {
-      if (e.key !== 'Enter' || e.target.dataset.action !== 'set-value') return;
-      e.preventDefault();
-      const add = e.target.closest('.exercise').querySelector('[data-action="add-set"]');
-      if (add) add.click();
-    });
-    els.routinePick.addEventListener('change', function () {
-      S.setSessionRoutine(currentDate, els.routinePick.value);
-    });
-    els.btnFinishSession.addEventListener('click', toggleSession);
-    els.btnRepeatLast.addEventListener('click', repeatLastSession);
-    els.restSkip.addEventListener('click', UI.stopRest);
-    els.btnManageWorkout.addEventListener('click', function () { UI.toggleWorkoutManager(); });
-    els.routineTable.addEventListener('click', onRoutineTableClick);
-    byId('btnNewExercise').addEventListener('click', function () { UI.openExerciseModal(null); });
-    byId('btnNewRoutine').addEventListener('click', newRoutine);
-
-    els.exerciseForm.addEventListener('submit', onExerciseFormSubmit);
-    els.btnDeleteExercise.addEventListener('click', onDeleteExercise);
-    els.exerciseModal.addEventListener('click', function (e) {
-      if (e.target.closest('[data-close]')) UI.closeExerciseModal();
-    });
-    els.exerciseModal.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') UI.closeExerciseModal();
-    });
 
     // Navegación de días
     els.prevDay.addEventListener('click', function () { stepDay(-1); });
@@ -1790,11 +1510,6 @@
     els.setStreakGoal.addEventListener('change', function () {
       S.setSettings({ streakGoal: els.setStreakGoal.value });
     });
-    els.setRest.addEventListener('change', function () {
-      S.setSettings({ restSeconds: Number(els.setRest.value) });
-      // Cambiar la duración no alarga el descanso que ya esté corriendo:
-      // vale desde la siguiente serie.
-    });
     els.setAccent.addEventListener('input', function () {
       UI.applyAccent(els.setAccent.value);
     });
@@ -1925,7 +1640,26 @@
       installPrompt = null;
       UI.els.installRow.hidden = true;
       UI.toast('App instalada. Ya la tienes en la pantalla de inicio.', { type: 'success', icon: '📲' });
+      // Instalada, Chrome ya suele conceder la protección que antes negó.
+      requestPersist();
     });
+  }
+
+  /* ── Datos protegidos ─────────────────────────────────────
+     Sin esto el almacenamiento es "best-effort": el navegador puede
+     borrarlo si le falta espacio y, en Safari, tras siete días sin abrir
+     la web. persist() lo marca como persistente. Chrome lo concede sin
+     preguntar si la app está instalada o se usa a menudo; Firefox pregunta
+     una vez y recuerda la respuesta. No amplía el límite de 5 MB: protege
+     lo que ya hay. Se pide en cada arranque mientras no esté concedido,
+     porque las condiciones de Chrome cambian con el uso. ────────────── */
+  function requestPersist() {
+    if (!navigator.storage || !navigator.storage.persist) return;
+
+    navigator.storage.persisted()
+      .then(function (yes) { return yes || navigator.storage.persist(); })
+      .catch(function () { /* sin permiso para preguntar: se queda como esté */ })
+      .then(function () { UI.renderPersist(); });
   }
 
   function registerServiceWorker() {
@@ -2026,6 +1760,7 @@
     listenInstall();                     // antes del manifest: si no, el aviso puede perderse
     linkManifest();
     registerServiceWorker();
+    requestPersist();
 
     const err = S.getLastError();
     if (err && err.type === 'corrupt') {

@@ -62,7 +62,7 @@ HT.ui = (function () {
   // Como ningún `data-view` vale 'progress', no se marca nada, igual que
   // pasa con la ficha de un hábito.
   const NAV_OF_VIEW = {
-    today: 'today', week: 'week', exercises: 'exercises', notes: 'notes',
+    today: 'today', week: 'week', notes: 'notes',
     progress: 'progress', habit: 'today', plan: 'plan', settings: 'settings'
   };
 
@@ -113,17 +113,12 @@ HT.ui = (function () {
       'weekGrid', 'weekLabel', 'weekSummary', 'weekTotals', 'emptyWeek', 'btnThisWeek',
       'hChartCard', 'habitChart', 'hChartReadout',
       'emojiPicker', 'btnEmoji',
-      'sessionEyebrow', 'routineName', 'routinePick', 'sessionSummary', 'exerciseList',
-      'emptyWorkout', 'btnFinishSession', 'sessionHint', 'btnManageWorkout',
-      'btnRepeatLast', 'restBar', 'restTime', 'restFill', 'restSkip',
-      'workoutManager', 'routineTable',
-      'exerciseModal', 'exerciseForm', 'exModalTitle', 'exNameError', 'btnDeleteExercise',
       'habitIcon', 'habitTitle', 'habitMeta', 'hStreak', 'hBest', 'hRate', 'hTotal',
       'hSumsCard', 'hSumWeek', 'hSumMonth', 'hSumTotal', 'hSumAvg', 'hSumBest',
       'hSumDays', 'hSumsNote', 'hSumTotalLabel', 'hSumBestLabel', 'hSumDaysLabel', 'hChartTitle',
       'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
-      'setAccent', 'btnResetAccent', 'setEffects', 'setRest',
+      'setAccent', 'btnResetAccent', 'setEffects',
       'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup',
       'backupStatus', 'backupIcon', 'backupTitle', 'backupHint', 'btnBackupNow',
       'setHideDone', 'setShowBadges', 'setDayBar', 'setShowFreeze', 'setShowNotes',
@@ -131,7 +126,7 @@ HT.ui = (function () {
       'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
       'emptyNotes', 'emptyNotesTitle', 'emptyNotesText',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
-      'buildCache', 'buildQuota', 'buildHint', 'installRow', 'btnInstall',
+      'buildCache', 'buildQuota', 'buildPersist', 'buildHint', 'installRow', 'btnInstall',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
       'fCategory', 'limitField', 'fLimit', 'avoidModeFields', 'capHint', 'fTargetLabel',
       'fName', 'fNameError',
@@ -163,7 +158,6 @@ HT.ui = (function () {
     els.views = {
       today: $('#view-today'),
       week: $('#view-week'),
-      exercises: $('#view-exercises'),
       progress: $('#view-progress'),
       habit: $('#view-habit'),
       notes: $('#view-notes'),
@@ -2376,359 +2370,6 @@ HT.ui = (function () {
     els.weekGrid.appendChild(frag);
   }
 
-  /* ── Ejercicios ───────────────────────────────────────────
-     Una fila por ejercicio: objetivo, las series ya hechas como
-     fichas y un campo para apuntar la siguiente. ──────────── */
-
-  function unitOf(exercise) {
-    return exercise.kind === 'time' ? 's' : 'rep';
-  }
-
-  function renderExercises(dateKey, routineId, isToday) {
-    const routine = S.getRoutine(routineId);
-    const exercises = routine ? S.getExercises(routineId) : [];
-    const session = S.getSession(dateKey);
-    const done = !!(session && session.done);
-
-    els.routineName.textContent = routine ? routine.name : 'Sin rutinas';
-    els.sessionEyebrow.textContent = done
-      ? 'Entreno cerrado'
-      : isToday ? 'Hoy toca' : 'Ese día toca';
-
-    // Selector de rutina
-    const routines = S.getRoutines();
-    els.routinePick.textContent = '';
-    routines.forEach(function (r) {
-      const opt = el('option', { value: r.id, text: r.name });
-      if (r.id === routineId) opt.selected = true;
-      els.routinePick.appendChild(opt);
-    });
-    els.routinePick.disabled = done || routines.length < 2;
-
-    const summary = St.sessionSummary(dateKey, exercises);
-    const parts = [];
-    if (summary.sets) parts.push(summary.sets + (summary.sets === 1 ? ' serie' : ' series'));
-    if (summary.reps) parts.push(summary.reps + ' repes');
-    if (summary.seconds) parts.push(summary.seconds + ' s');
-
-    els.sessionSummary.textContent = exercises.length
-      ? summary.complete + ' de ' + summary.total + ' ejercicios' +
-        (parts.length ? ' · ' + parts.join(' · ') : '')
-      : '';
-
-    els.emptyWorkout.hidden = exercises.length > 0;
-    els.exerciseList.hidden = exercises.length === 0;
-
-    const frag = document.createDocumentFragment();
-    exercises.forEach(function (ex) {
-      frag.appendChild(buildExerciseRow(ex, dateKey, done));
-    });
-    els.exerciseList.textContent = '';
-    els.exerciseList.appendChild(frag);
-
-    els.btnFinishSession.textContent = done ? 'Reabrir entreno' : 'Terminar entreno';
-    els.btnFinishSession.classList.toggle('btn--primary', !done);
-    els.btnFinishSession.disabled = !exercises.length;
-
-    // "Repetir el último" solo con la sesión en blanco: si ya hay series,
-    // copiar las de la otra vez las sumaría a las de hoy en vez de
-    // sustituirlas, y eso no es lo que nadie espera de ese botón.
-    const anterior = exercises.length && !done && !summary.sets
-      ? St.lastSessionOf(routineId, dateKey)
-      : null;
-
-    els.btnRepeatLast.hidden = !anterior;
-    if (anterior) {
-      els.btnRepeatLast.textContent =
-        'Repetir el del ' + U.formatShort(U.fromKey(anterior.date));
-    }
-
-    els.sessionHint.textContent = done
-      ? 'Cuenta para tu racha. La próxima vez toca ' + nextRoutineName() + '.'
-      : summary.sets
-        ? 'Al terminar se marca el hábito Entrenar y pasa el turno a la siguiente rutina.'
-        : 'Apunta al menos una serie para que el entreno cuente.';
-  }
-
-  /* ── Descanso entre series ────────────────────────────────
-     Se guarda la hora de fin, no los segundos que quedan: así el contador
-     sigue siendo correcto aunque el móvil suspenda la pestaña y deje de
-     llamar al intervalo un rato. ──────────────────────────────────── */
-
-  let restTimer = null;
-  let restEnd = 0;
-  let restTotal = 0;
-
-  function fmtClock(seconds) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return m + ':' + String(s).padStart(2, '0');
-  }
-
-  function startRest(seconds) {
-    const total = Math.floor(Number(seconds) || 0);
-    if (total <= 0) return;                     // "Sin descanso" en Ajustes
-
-    restTotal = total;
-    restEnd = Date.now() + total * 1000;
-
-    els.restBar.hidden = false;
-    els.restBar.removeAttribute('data-state');
-
-    clearInterval(restTimer);
-    restTimer = setInterval(tickRest, 250);
-    tickRest();
-  }
-
-  function tickRest() {
-    const left = Math.max(0, Math.ceil((restEnd - Date.now()) / 1000));
-
-    els.restTime.textContent = fmtClock(left);
-    els.restFill.style.setProperty('--pct', restTotal ? (left / restTotal) * 100 : 0);
-
-    if (left > 0) return;
-
-    clearInterval(restTimer);
-    restTimer = null;
-    els.restBar.dataset.state = 'done';
-    els.restTime.textContent = '¡Ya!';
-    if (S.getSettings().effects) buzz([90, 60, 90]);
-
-    // Se queda un momento para que se vea que ha terminado, y se va sola.
-    setTimeout(function () {
-      if (!restTimer) stopRest();
-    }, 4000);
-  }
-
-  function stopRest() {
-    clearInterval(restTimer);
-    restTimer = null;
-    els.restBar.hidden = true;
-    els.restBar.removeAttribute('data-state');
-  }
-
-  function nextRoutineName() {
-    const routine = S.getRoutine(S.suggestedRoutineId());
-    return routine ? routine.name : 'ninguna';
-  }
-
-  /**
-   * La marca a batir de un ejercicio, o el aviso de que hoy la has batido.
-   *
-   * El récord se calcula SIN el día que se está mirando: si contara lo de
-   * hoy, en cuanto superases tu marca la fila diría que tu récord es lo que
-   * acabas de hacer y nunca se vería que lo has mejorado.
-   */
-  function recordLine(exercise, sets, dateKey) {
-    const record = St.exerciseRecord(exercise.id, dateKey);
-    if (!record.sessions) return null;          // primera vez: nada que batir
-
-    const unidad = unitOf(exercise);
-    const hoyTop = sets.length ? Math.max.apply(null, sets) : 0;
-    const superado = hoyTop > record.bestSet;
-
-    return el('p', {
-      class: 'exercise__record',
-      'data-new': superado ? 'true' : null,
-      text: superado
-        ? '¡Récord! ' + hoyTop + ' ' + unidad + ' · antes ' + record.bestSet
-        : 'Tu récord: ' + record.bestSet + ' ' + unidad
-    });
-  }
-
-  function buildExerciseRow(exercise, dateKey, locked) {
-    const sets = S.getSets(dateKey, exercise.id);
-    const complete = St.exerciseDone(exercise, sets);
-
-    const li = el('li', {
-      class: 'exercise' + (complete ? ' is-done' : ''),
-      'data-id': exercise.id
-    });
-
-    const head = el('div', { class: 'exercise__head' });
-
-    const title = el('div', { class: 'exercise__title' });
-    title.appendChild(el('h3', { class: 'exercise__name', text: exercise.name }));
-
-    const record = recordLine(exercise, sets, dateKey);
-    if (record) title.appendChild(record);
-    head.appendChild(title);
-
-    head.appendChild(el('p', {
-      class: 'exercise__target',
-      text: sets.length + '/' + exercise.sets + ' × ' + exercise.target + ' ' + unitOf(exercise)
-    }));
-    li.appendChild(head);
-
-    const row = el('div', { class: 'exercise__sets' });
-
-    sets.forEach(function (value, i) {
-      const chip = el('button', {
-        type: 'button',
-        class: 'set-chip',
-        'data-action': 'remove-set',
-        'data-index': i,
-        title: 'Quitar esta serie',
-        'aria-label': 'Quitar la serie de ' + value + ' ' + unitOf(exercise) + ' de ' + exercise.name,
-        text: String(value)
-      });
-      chip.disabled = locked;
-      row.appendChild(chip);
-    });
-
-    if (!locked && sets.length < 20) {
-      const input = el('input', {
-        type: 'number',
-        class: 'input set-input',
-        'data-action': 'set-value',
-        min: '1',
-        step: '1',
-        inputmode: 'numeric',
-        value: String(sets.length ? sets[sets.length - 1] : exercise.target),
-        'aria-label': 'Valor de la siguiente serie de ' + exercise.name
-      });
-      row.appendChild(input);
-
-      row.appendChild(el('button', {
-        type: 'button',
-        class: 'btn set-add',
-        'data-action': 'add-set',
-        'aria-label': 'Añadir serie a ' + exercise.name,
-        text: '+ Serie'
-      }));
-    }
-
-    li.appendChild(row);
-    return li;
-  }
-
-  /** Tabla completa para gestionar: rutinas en su orden de rotación. */
-  function renderRoutineTable() {
-    const frag = document.createDocumentFragment();
-    const routines = S.getRoutines();
-
-    if (!routines.length) {
-      frag.appendChild(el('p', { class: 'card__text', text: 'No hay rutinas todavía.' }));
-    }
-
-    routines.forEach(function (routine, i) {
-      const block = el('section', { class: 'routine' });
-
-      const head = el('div', { class: 'routine__head' });
-      head.appendChild(el('span', { class: 'routine__order', 'aria-hidden': 'true', text: String(i + 1) }));
-      head.appendChild(el('h3', { class: 'routine__name', text: routine.name }));
-
-      head.appendChild(el('button', {
-        type: 'button', class: 'icon-btn', 'data-action': 'rename-routine', 'data-id': routine.id,
-        title: 'Renombrar', 'aria-label': 'Renombrar ' + routine.name, text: '✎'
-      }));
-      head.appendChild(el('button', {
-        type: 'button', class: 'icon-btn icon-btn--danger', 'data-action': 'delete-routine',
-        'data-id': routine.id, title: 'Eliminar rutina',
-        'aria-label': 'Eliminar la rutina ' + routine.name, text: '🗑'
-      }));
-      block.appendChild(head);
-
-      const list = el('ul', { class: 'routine__list' });
-      const exercises = S.getExercises(routine.id);
-
-      if (!exercises.length) {
-        list.appendChild(el('li', { class: 'routine__empty', text: 'Sin ejercicios.' }));
-      }
-
-      exercises.forEach(function (ex) {
-        const item = el('li', { class: 'routine__item' });
-        item.appendChild(el('span', { class: 'routine__item-name', text: ex.name }));
-        item.appendChild(el('span', {
-          class: 'routine__item-target',
-          text: ex.sets + ' × ' + ex.target + ' ' + unitOf(ex)
-        }));
-        item.appendChild(el('button', {
-          type: 'button', class: 'icon-btn', 'data-action': 'edit-exercise', 'data-id': ex.id,
-          title: 'Editar', 'aria-label': 'Editar ' + ex.name, text: '✎'
-        }));
-        list.appendChild(item);
-      });
-
-      block.appendChild(list);
-      frag.appendChild(block);
-    });
-
-    els.routineTable.textContent = '';
-    els.routineTable.appendChild(frag);
-  }
-
-  function toggleWorkoutManager(open) {
-    const next = open === undefined ? els.workoutManager.hidden : open;
-    els.workoutManager.hidden = !next;
-    els.btnManageWorkout.setAttribute('aria-expanded', next ? 'true' : 'false');
-    if (next) renderRoutineTable();
-  }
-
-  /* ── Modal de ejercicio ───────────────────────────────────── */
-
-  function exField(name) {
-    return els.exerciseForm.elements.namedItem(name);
-  }
-
-  function openExerciseModal(exercise) {
-    const form = els.exerciseForm;
-    form.reset();
-    els.exNameError.hidden = true;
-
-    els.exModalTitle.textContent = exercise ? 'Editar ejercicio' : 'Nuevo ejercicio';
-    els.btnDeleteExercise.hidden = !exercise;
-    form.dataset.editing = exercise ? exercise.id : '';
-
-    const select = exField('routineId');
-    select.textContent = '';
-    S.getRoutines().forEach(function (r) {
-      select.appendChild(el('option', { value: r.id, text: r.name }));
-    });
-
-    if (exercise) {
-      exField('name').value = exercise.name;
-      select.value = exercise.routineId;
-      U.$$('input[name="kind"]', form).forEach(function (r) { r.checked = r.value === exercise.kind; });
-      exField('sets').value = exercise.sets;
-      exField('target').value = exercise.target;
-    }
-
-    lastFocused = document.activeElement;
-    els.exerciseModal.hidden = false;
-    document.body.style.overflow = 'hidden';
-    exField('name').focus();
-  }
-
-  function closeExerciseModal() {
-    els.exerciseModal.hidden = true;
-    document.body.style.overflow = '';
-    if (lastFocused && lastFocused.focus) lastFocused.focus();
-    lastFocused = null;
-  }
-
-  function readExerciseForm() {
-    const form = els.exerciseForm;
-    const name = exField('name').value.trim();
-
-    if (!name) {
-      els.exNameError.textContent = 'Ponle un nombre al ejercicio.';
-      els.exNameError.hidden = false;
-      exField('name').focus();
-      return null;
-    }
-
-    const kind = form.querySelector('input[name="kind"]:checked');
-
-    return {
-      name: name,
-      routineId: exField('routineId').value,
-      kind: kind ? kind.value : 'reps',
-      sets: Number(exField('sets').value) || 3,
-      target: Number(exField('target').value) || 10
-    };
-  }
-
   /* ── Selector de emojis ───────────────────────────────────── */
 
   function buildEmojiPicker() {
@@ -3569,7 +3210,6 @@ HT.ui = (function () {
   function renderSettings() {
     const s = S.getSettings();
     els.setAccent.value = s.accent;
-    els.setRest.value = String(s.restSeconds);
     els.setStreakGoal.value = s.streakGoal;
     els.streakGoalHint.textContent = 'Hoy tocan ' + St.dayStats(U.todayKey()).total +
       ' hábitos: necesitas ' + St.streakGoalFor(U.todayKey()) + '.';
@@ -3668,6 +3308,28 @@ HT.ui = (function () {
       'los hábitos, nota y peso ocupa menos de 1 KB.';
   }
 
+  /**
+   * ¿Puede el navegador borrar los datos por su cuenta? app.js pide la
+   * protección al arrancar; aquí solo se enseña el resultado. Sin la API
+   * (navegadores viejos) no se dice nada: no hay nada que el usuario pueda
+   * hacer con esa información.
+   */
+  function renderPersist() {
+    const box = els.buildPersist;
+    if (!navigator.storage || !navigator.storage.persisted) { box.hidden = true; return; }
+
+    navigator.storage.persisted().then(function (yes) {
+      box.hidden = false;
+      box.dataset.state = yes ? 'ok' : 'risk';
+      box.textContent = yes ? '🔒 Protegidos: el navegador no los borrará'
+                            : '⚠️ Sin proteger: el navegador podría borrarlos';
+      box.title = yes
+        ? 'El navegador los trata como persistentes: no los borra aunque le falte espacio.'
+        : 'Si le falta espacio (o, en Safari, tras días sin abrirla) podría borrarlos. ' +
+          'Instalar la app y usarla a menudo suele bastar para que los proteja. Exporta copias.';
+    }).catch(function () { box.hidden = true; });
+  }
+
   function setBuildHint(text) {
     els.buildHint.textContent = text;
     els.buildHint.hidden = !text;
@@ -3683,6 +3345,7 @@ HT.ui = (function () {
     const uso = S.storageUse();
     const datos = uso.mine;
     renderQuota(uso);
+    renderPersist();
     const linea = function (version, appBytes) {
       return 'v' + version + (version === U.version ? ' · ' + U.buildDate() : '') +
              ' · ' + formatKB(appBytes + datos);
@@ -4177,11 +3840,6 @@ HT.ui = (function () {
     renderHeader: renderHeader, renderHabitList: renderHabitList, updateCard: updateCard,
     renderDayExtras: renderDayExtras, pulse: pulse,
     renderWeek: renderWeek,
-    renderExercises: renderExercises, renderRoutineTable: renderRoutineTable,
-    startRest: startRest, stopRest: stopRest,
-    toggleWorkoutManager: toggleWorkoutManager,
-    openExerciseModal: openExerciseModal, closeExerciseModal: closeExerciseModal,
-    readExerciseForm: readExerciseForm,
     openPauseModal: openPauseModal, closePauseModal: closePauseModal,
     renderPlanView: renderPlanView, setPlanOffset: setPlanOffset, getPlanOffset: getPlanOffset,
     resetPlanDraft: resetPlanDraft,
@@ -4201,7 +3859,7 @@ HT.ui = (function () {
     renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,
-    renderSettings: renderSettings, applyAccent: applyAccent, applyControls: applyControls,
+    renderSettings: renderSettings, renderPersist: renderPersist, applyAccent: applyAccent, applyControls: applyControls,
     applyTheme: applyTheme, applyFontSize: applyFontSize,
     openModal: openModal, closeModal: closeModal,
     toggleEmojiPicker: toggleEmojiPicker, markSelectedEmoji: markSelectedEmoji,

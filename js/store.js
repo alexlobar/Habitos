@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 13;
+  const VERSION = 14;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -31,15 +31,10 @@ HT.store = (function () {
      HTML para que el saneado y el desplegable no puedan discrepar. */
   const CONTROLS = ['compact', 'comfy', 'roomy'];
   const FONT_SIZES = ['small', 'normal', 'large', 'xlarge'];
-  /* Descansos largos: por debajo de minuto y medio no se usaba el contador,
-     se miraba y ya. Los tramos cortos salieron en la 1.6.8. */
-  const REST_SECONDS = [0, 90, 120, 150, 180, 240, 300];
-  const DEFAULT_REST = 150;
   /* Cuántos hábitos hay que cumplir para que el día sostenga la racha.
      'half' y 'quarter' se calculan sobre los que tocaban ESE día: dos de
      nueve un miércoles y dos de tres un domingo no son el mismo esfuerzo. */
   const STREAK_GOALS = ['1', '2', '3', 'half', 'quarter'];
-  const MAX_SETS = 20;
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
   let state = null;
@@ -61,62 +56,6 @@ HT.store = (function () {
    */
   function mkHabit(data, today) {
     return cleanHabit(Object.assign({ createdAt: today }, data));
-  }
-
-  /**
-   * Tabla de calistenia de partida, en cuatro rutinas que se van
-   * alternando. Solo se usa la primera vez: después manda lo guardado.
-   */
-  function seedWorkout() {
-    const plan = [
-      ['Empuje', [
-        ['Flexiones', 'reps', 4, 12],
-        ['Fondos en paralelas', 'reps', 3, 10],
-        ['Flexiones pica', 'reps', 3, 8],
-        ['Flexiones diamante', 'reps', 3, 10]
-      ]],
-      ['Tirón', [
-        ['Dominadas', 'reps', 4, 6],
-        ['Dominadas supinas', 'reps', 3, 6],
-        ['Remo invertido', 'reps', 3, 12],
-        ['Encogimiento escapular', 'reps', 3, 10]
-      ]],
-      ['Piernas', [
-        ['Sentadillas', 'reps', 4, 20],
-        ['Zancadas', 'reps', 3, 12],
-        ['Sentadilla búlgara', 'reps', 3, 10],
-        ['Puente de glúteo', 'reps', 3, 15],
-        ['Elevación de gemelos', 'reps', 3, 20]
-      ]],
-      ['Core', [
-        ['Plancha', 'time', 3, 45],
-        ['Elevación de piernas', 'reps', 3, 12],
-        ['Plancha lateral', 'time', 3, 30],
-        ['Hollow hold', 'time', 3, 30]
-      ]]
-    ];
-
-    const routines = [];
-    const exercises = [];
-
-    plan.forEach(function (entry) {
-      const routine = { id: U.uid('r'), name: entry[0] };
-      routines.push(routine);
-
-      entry[1].forEach(function (ex) {
-        exercises.push({
-          id: U.uid('e'),
-          name: ex[0],
-          routineId: routine.id,
-          kind: ex[1],
-          sets: ex[2],
-          target: ex[3],
-          archived: false
-        });
-      });
-    });
-
-    return { routines: routines, exercises: exercises };
   }
 
   /* Los dos hábitos a evitar que se añaden a todo el mundo, no solo a las
@@ -200,8 +139,6 @@ HT.store = (function () {
                                category: 'fisico', type: 'check' }, today);
     habits.push(training);
 
-    const seed = seedWorkout();
-
     return {
       version: VERSION,
       settings: {
@@ -210,7 +147,7 @@ HT.store = (function () {
         weekStart: 1, accent: U.DEFAULT_ACCENT, notificationsEnabled: false,
         effects: true, controls: 'compact',
         theme: 'dark', fontSize: 'normal',
-        hideDone: true, showBadges: true, backupDays: 14, restSeconds: DEFAULT_REST,
+        hideDone: true, showBadges: true, backupDays: 14,
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true,
         weightGoal: null
@@ -222,10 +159,8 @@ HT.store = (function () {
       weights: {},
       freeNotes: [],
       plannedWeeks: {},
-      routines: seed.routines,
-      exercises: seed.exercises,
-      sessions: {},
-      workout: { lastRoutineId: null, linkedHabitId: training.id },
+      // El hábito que mide el atributo Fuerza en Progreso.
+      trainingHabitId: training.id,
       game: {
         // Arranca a 0 a propósito: el logro "Coleccionista" premia crear
         // hábitos, y los de partida los regala la app, no los creas tú.
@@ -496,63 +431,6 @@ HT.store = (function () {
     return out;
   }
 
-  function cleanRoutine(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const name = cleanName(raw.name, '');
-    if (!name) return null;
-    return {
-      id: typeof raw.id === 'string' && raw.id ? raw.id : U.uid('r'),
-      name: name
-    };
-  }
-
-  function cleanExercise(raw, routineIds) {
-    if (!raw || typeof raw !== 'object') return null;
-
-    const name = cleanName(raw.name, '');
-    if (!name) return null;
-    if (routineIds.indexOf(raw.routineId) < 0) return null;   // rutina borrada
-
-    const sets = Number(raw.sets);
-    const target = Number(raw.target);
-
-    return {
-      id: typeof raw.id === 'string' && raw.id ? raw.id : U.uid('e'),
-      name: name,
-      routineId: raw.routineId,
-      kind: raw.kind === 'time' ? 'time' : 'reps',
-      sets: isFinite(sets) && sets > 0 ? Math.min(Math.floor(sets), MAX_SETS) : 3,
-      target: isFinite(target) && target > 0 ? Math.floor(target) : 10,
-      archived: raw.archived === true
-    };
-  }
-
-  /** Una sesión: qué rutina tocaba, qué series se hicieron y si se cerró. */
-  function cleanSession(raw, exerciseIds) {
-    if (!raw || typeof raw !== 'object') return null;
-
-    const sets = {};
-    const rawSets = (raw.sets && typeof raw.sets === 'object') ? raw.sets : {};
-
-    Object.keys(rawSets).forEach(function (exerciseId) {
-      if (exerciseIds.indexOf(exerciseId) < 0) return;
-      const list = (Array.isArray(rawSets[exerciseId]) ? rawSets[exerciseId] : [])
-        .map(Number)
-        .filter(function (n) { return isFinite(n) && n > 0; })
-        .slice(0, MAX_SETS);
-      if (list.length) sets[exerciseId] = list;
-    });
-
-    const done = raw.done === true;
-    if (!done && !Object.keys(sets).length) return null;   // sesión vacía: se descarta
-
-    return {
-      routineId: typeof raw.routineId === 'string' ? raw.routineId : null,
-      done: done,
-      sets: sets
-    };
-  }
-
   /**
    * Historial de ascensos: un apunte por nivel, ordenado y sin repetidos.
    * De cada nivel se queda el primero que aparezca, porque lo que se guarda
@@ -655,19 +533,9 @@ HT.store = (function () {
       if (Object.keys(kept).length) logs[habitId] = kept;
     });
 
-    const routines = (Array.isArray(raw.routines) ? raw.routines : [])
-      .map(cleanRoutine)
-      .filter(Boolean);
-    const routineIds = routines.map(function (r) { return r.id; });
-
-    const exercises = (Array.isArray(raw.exercises) ? raw.exercises : [])
-      .map(function (e) { return cleanExercise(e, routineIds); })
-      .filter(Boolean);
-    const exerciseIds = exercises.map(function (e) { return e.id; });
-
     const s = raw.settings || {};
     const g = raw.game || {};
-    const w = raw.workout || {};
+    const trainingId = raw.trainingHabitId || (raw.workout && raw.workout.linkedHabitId);
     const today = U.todayKey();
 
     return {
@@ -690,10 +558,6 @@ HT.store = (function () {
         showBadges: s.showBadges !== false,
         backupDays: [0, 7, 14, 30].indexOf(Number(s.backupDays)) >= 0
           ? Number(s.backupDays) : 14,
-        // Quien tuviera 30, 45 o 60 s cae solo al predeterminado nuevo: esos
-        // valores ya no existen y no hay a qué acercarlos sin inventar.
-        restSeconds: REST_SECONDS.indexOf(Number(s.restSeconds)) >= 0
-          ? Number(s.restSeconds) : DEFAULT_REST,
         streakGoal: STREAK_GOALS.indexOf(s.streakGoal) >= 0 ? s.streakGoal : '2',
         showDayBar: s.showDayBar !== false,
         showNotes: s.showNotes !== false,
@@ -715,13 +579,10 @@ HT.store = (function () {
       weights: cleanByDate(raw.weights, cleanWeight),
       freeNotes: cleanFreeNotes(raw.freeNotes),
       plannedWeeks: cleanPlannedWeeks(raw.plannedWeeks),
-      routines: routines,
-      exercises: exercises,
-      sessions: cleanByDate(raw.sessions, function (v) { return cleanSession(v, exerciseIds); }),
-      workout: {
-        lastRoutineId: routineIds.indexOf(w.lastRoutineId) >= 0 ? w.lastRoutineId : null,
-        linkedHabitId: byId[w.linkedHabitId] ? w.linkedHabitId : null
-      },
+      // Hasta la v13 vivía en workout.linkedHabitId, junto a la tabla de
+      // ejercicios. La tabla, las rutinas y las series se descartan aquí:
+      // la sección salió en la 2.2.0 y el hábito es lo único que sigue.
+      trainingHabitId: byId[trainingId] ? trainingId : null,
       game: {
         points: Math.max(0, Math.floor(Number(g.points) || 0)),
         achievements: Array.isArray(g.achievements)
@@ -775,24 +636,17 @@ HT.store = (function () {
   }
 
   /**
-   * Migración a la v3: quien ya usaba la app no tenía tabla de ejercicios
-   * ni hábito de entreno. Se crean, pero solo si no hay nada: una tabla
-   * vaciada a propósito no se repuebla.
+   * Migración a la v3: quien ya usaba la app no tenía hábito de entreno.
+   * (La v3 también traía la tabla de ejercicios, que salió en la 2.2.0.)
    */
   function migrateToWorkout() {
-    if (!state.routines.length && !state.exercises.length) {
-      const seed = seedWorkout();
-      state.routines = seed.routines;
-      state.exercises = seed.exercises;
-    }
-
-    if (!state.workout.linkedHabitId) {
+    if (!state.trainingHabitId) {
       const training = mkHabit(
         { name: 'Entrenar', icon: '💪', color: '#f472b6', type: 'check' }, U.todayKey()
       );
       state.habits.push(training);
       state.game.habitsCreated++;
-      state.workout.linkedHabitId = training.id;
+      state.trainingHabitId = training.id;
     }
   }
 
@@ -1378,10 +1232,12 @@ HT.store = (function () {
     const habit = getHabit(id);
     if (!habit) return null;
 
-    const snapshot = { habit: habit, logs: state.logs[id] || {} };
+    const snapshot = {
+      habit: habit, logs: state.logs[id] || {}, training: state.trainingHabitId === id
+    };
     state.habits = state.habits.filter(function (h) { return h.id !== id; });
     delete state.logs[id];
-    if (state.workout.linkedHabitId === id) state.workout.linkedHabitId = null;
+    if (snapshot.training) state.trainingHabitId = null;
 
     commit('habit:delete', habit);
     return snapshot;
@@ -1391,6 +1247,7 @@ HT.store = (function () {
     if (!snapshot || getHabit(snapshot.habit.id)) return false;
     state.habits.push(snapshot.habit);
     if (Object.keys(snapshot.logs).length) state.logs[snapshot.habit.id] = snapshot.logs;
+    if (snapshot.training) state.trainingHabitId = snapshot.habit.id;
     commit('habit:add', snapshot.habit);
     return true;
   }
@@ -1592,188 +1449,9 @@ HT.store = (function () {
     save();
   }
 
-  /* ── Lectura: ejercicios ──────────────────────────────────── */
-
-  function getWorkout() { return state.workout; }
-  function getRoutines() { return state.routines.slice(); }
-
-  function getRoutine(id) {
-    return state.routines.filter(function (r) { return r.id === id; })[0] || null;
-  }
-
-  function getExercises(routineId) {
-    return state.exercises.filter(function (e) {
-      return !e.archived && (!routineId || e.routineId === routineId);
-    });
-  }
-
-  function getExercise(id) {
-    return state.exercises.filter(function (e) { return e.id === id; })[0] || null;
-  }
-
-  function getSession(dateKey) {
-    return state.sessions[dateKey] || null;
-  }
-
-  function getSets(dateKey, exerciseId) {
-    const session = state.sessions[dateKey];
-    return (session && session.sets[exerciseId]) || [];
-  }
-
-  /**
-   * Rutina que toca: la siguiente a la última cerrada. Con rotación no
-   * importa cuántos días pases sin entrenar — retomas donde lo dejaste.
-   */
-  function suggestedRoutineId() {
-    if (!state.routines.length) return null;
-
-    const last = state.workout.lastRoutineId;
-    let index = -1;
-    state.routines.forEach(function (r, i) { if (r.id === last) index = i; });
-
-    return state.routines[(index + 1) % state.routines.length].id;
-  }
-
-  /** La rutina de ese día: la ya elegida, o la sugerida por la rotación. */
-  function routineForDate(dateKey) {
-    const session = state.sessions[dateKey];
-    if (session && getRoutine(session.routineId)) return session.routineId;
-    return suggestedRoutineId();
-  }
-
-  /* ── Escritura: ejercicios ────────────────────────────────── */
-
-  function addRoutine(name) {
-    const routine = cleanRoutine({ name: name });
-    if (!routine) return null;
-    state.routines.push(routine);
-    commit('workout:change', routine);
-    return routine;
-  }
-
-  function renameRoutine(id, name) {
-    const routine = getRoutine(id);
-    const clean = cleanName(name, '');
-    if (!routine || !clean) return null;
-    routine.name = clean;
-    commit('workout:change', routine);
-    return routine;
-  }
-
-  /** Borra la rutina, sus ejercicios y las series registradas de estos. */
-  function deleteRoutine(id) {
-    const routine = getRoutine(id);
-    if (!routine) return false;
-
-    const dropped = state.exercises
-      .filter(function (e) { return e.routineId === id; })
-      .map(function (e) { return e.id; });
-
-    state.routines = state.routines.filter(function (r) { return r.id !== id; });
-    state.exercises = state.exercises.filter(function (e) { return e.routineId !== id; });
-    if (state.workout.lastRoutineId === id) state.workout.lastRoutineId = null;
-
-    Object.keys(state.sessions).forEach(function (dateKey) {
-      const session = state.sessions[dateKey];
-      dropped.forEach(function (exId) { delete session.sets[exId]; });
-      if (session.routineId === id) session.routineId = null;
-    });
-
-    commit('workout:change', routine);
-    return true;
-  }
-
-  function addExercise(data) {
-    const exercise = cleanExercise(data, state.routines.map(function (r) { return r.id; }));
-    if (!exercise) return null;
-    state.exercises.push(exercise);
-    commit('workout:change', exercise);
-    return exercise;
-  }
-
-  function updateExercise(id, patch) {
-    const current = getExercise(id);
-    if (!current) return null;
-
-    const merged = cleanExercise(
-      Object.assign({}, current, patch, { id: id }),
-      state.routines.map(function (r) { return r.id; })
-    );
-    if (!merged) return null;
-
-    state.exercises[state.exercises.indexOf(current)] = merged;
-    commit('workout:change', merged);
-    return merged;
-  }
-
-  function deleteExercise(id) {
-    const exercise = getExercise(id);
-    if (!exercise) return false;
-
-    state.exercises = state.exercises.filter(function (e) { return e.id !== id; });
-    Object.keys(state.sessions).forEach(function (dateKey) {
-      delete state.sessions[dateKey].sets[id];
-    });
-
-    commit('workout:change', exercise);
-    return true;
-  }
-
-  /* ── Escritura: sesiones ──────────────────────────────────── */
-
-  function ensureSession(dateKey) {
-    if (!state.sessions[dateKey]) {
-      state.sessions[dateKey] = { routineId: suggestedRoutineId(), done: false, sets: {} };
-    }
-    return state.sessions[dateKey];
-  }
-
-  function setSessionRoutine(dateKey, routineId) {
-    if (!U.isValidKey(dateKey) || !getRoutine(routineId)) return null;
-
-    const session = ensureSession(dateKey);
-    session.routineId = routineId;
-    commit('session:change', dateKey);
-    return session;
-  }
-
-  function addSet(dateKey, exerciseId, value) {
-    if (!U.isValidKey(dateKey) || !getExercise(exerciseId)) return null;
-
-    const n = Math.floor(Number(value));
-    if (!isFinite(n) || n <= 0) return null;
-
-    const session = ensureSession(dateKey);
-    if (!session.sets[exerciseId]) session.sets[exerciseId] = [];
-    if (session.sets[exerciseId].length >= MAX_SETS) return null;
-
-    session.sets[exerciseId].push(n);
-    commit('session:change', dateKey);
-    return session.sets[exerciseId];
-  }
-
-  function removeSet(dateKey, exerciseId, index) {
-    const session = state.sessions[dateKey];
-    const list = session && session.sets[exerciseId];
-    if (!list || index < 0 || index >= list.length) return null;
-
-    list.splice(index, 1);
-    if (!list.length) delete session.sets[exerciseId];
-    commit('session:change', dateKey);
-    return list;
-  }
-
-  /** Cerrar la sesión avanza la rotación; reabrirla la deja donde estaba. */
-  function setSessionDone(dateKey, done) {
-    const session = ensureSession(dateKey);
-    session.done = !!done;
-
-    if (done && session.routineId) state.workout.lastRoutineId = session.routineId;
-
-    if (!session.done && !Object.keys(session.sets).length) delete state.sessions[dateKey];
-
-    commit('session:change', dateKey);
-    return session;
+  /** El hábito que alimenta el atributo Fuerza, o null si se borró. */
+  function getTrainingHabit() {
+    return state.trainingHabitId ? getHabit(state.trainingHabitId) : null;
   }
 
   /* ── Escritura: ajustes y gamificación ────────────────────── */
@@ -1792,8 +1470,6 @@ HT.store = (function () {
       showBadges: next.showBadges !== false,
       backupDays: [0, 7, 14, 30].indexOf(Number(next.backupDays)) >= 0
         ? Number(next.backupDays) : 14,
-      restSeconds: REST_SECONDS.indexOf(Number(next.restSeconds)) >= 0
-        ? Number(next.restSeconds) : DEFAULT_REST,
       streakGoal: STREAK_GOALS.indexOf(next.streakGoal) >= 0 ? next.streakGoal : '2',
       showDayBar: next.showDayBar !== false,
       showNotes: next.showNotes !== false,
@@ -1951,14 +1627,7 @@ HT.store = (function () {
     updateFreeNote: updateFreeNote, deleteFreeNote: deleteFreeNote, restoreFreeNote: restoreFreeNote,
     dismissWeekSummary: dismissWeekSummary,
 
-    getWorkout: getWorkout, getRoutines: getRoutines, getRoutine: getRoutine,
-    getExercises: getExercises, getExercise: getExercise,
-    getSession: getSession, getSets: getSets,
-    suggestedRoutineId: suggestedRoutineId, routineForDate: routineForDate,
-    addRoutine: addRoutine, renameRoutine: renameRoutine, deleteRoutine: deleteRoutine,
-    addExercise: addExercise, updateExercise: updateExercise, deleteExercise: deleteExercise,
-    setSessionRoutine: setSessionRoutine, addSet: addSet, removeSet: removeSet,
-    setSessionDone: setSessionDone,
+    getTrainingHabit: getTrainingHabit,
 
     setSettings: setSettings,
     addPoints: addPoints, unlockAchievement: unlockAchievement, setBestStreak: setBestStreak,

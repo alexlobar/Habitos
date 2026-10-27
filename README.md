@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.1.1** · esquema de datos **v13**.
+Versión documentada: **2.2.0** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -37,8 +37,9 @@ Los `<script>` deben cargarse en ese orden.
 
 ## Las pantallas
 
-La barra de navegación tiene seis secciones: **Hoy · Histórico · Ejercicios ·
-Notas · Plan · Ajustes**. Progreso no está en ella: se abre desde la chapa de nivel y
+La barra de navegación tiene cinco secciones: **Hoy · Histórico · Notas · Plan ·
+Ajustes**. (Ejercicios salió en la 2.2.0: el entreno se apunta en otra app y
+aquí queda el hábito "Entrenar".) Progreso no está en ella: se abre desde la chapa de nivel y
 rango de arriba a la derecha.
 
 **Cabecera.** El día que estás mirando en grande, con flechas para ir hacia
@@ -77,10 +78,6 @@ de mes o de año, la gráfica de evolución y la evolución del peso (30 días,
 90 días o todo, con la media de 7 días). Bajo el peso, el **peso objetivo**:
 cuánto falta, a qué ritmo vas y para cuándo llegarías; en la gráfica, una
 línea discontinua si el objetivo está cerca de tus datos.
-
-**Ejercicios.** La rutina que toca, con sus ejercicios, las series apuntadas,
-el récord de cada uno y el contador de descanso entre series. *Gestionar*
-despliega la tabla para editar rutinas y ejercicios.
 
 **Notas.** Un campo para escribir la nota de hoy, un buscador, las **notas
 libres** (con título opcional, sin día: objetivos, listas, ideas) y todas tus
@@ -193,6 +190,13 @@ desajuste se note en vez de pasar en silencio:
   ahí resta del mismo saco (se enseña si pasa de 1 KB). Pasa a ámbar al 70 % y
   a rojo al 90 %. La caché de la app no cuenta: va aparte y su cuota es de
   gigas. Como referencia, un día con 13 hábitos, nota y peso son ~0,4 KB.
+- Y debajo, si los datos están **protegidos** (🔒) o **sin proteger** (⚠️, en
+  ámbar). Al arrancar, `requestPersist()` en `app.js` pide
+  `navigator.storage.persist()` mientras no esté concedido, y otra vez al
+  instalar la app. Sin protección el navegador puede borrarlos si le falta
+  espacio (y Safari tras días sin abrir la web). Chrome la concede sin
+  preguntar a apps instaladas o muy usadas; Firefox pregunta una vez. No
+  amplía los 5 MB.
 - Cuando el service worker nuevo releva al viejo con la página abierta, la app
   se recarga sola una vez para no quedarse con archivos de dos versiones.
 
@@ -263,15 +267,14 @@ contador `◆` de la racha.
 | Motivos de un día flojo | `DAY_REASONS` en `js/utils.js` |
 | Iconos sugeridos | `EMOJI_GROUPS` al principio de `js/ui.js` |
 | Hábitos de partida | `defaultState()` y `AVOID_SEED` en `js/store.js` |
-| Tabla de ejercicios de partida | `seedWorkout()` en `js/store.js` |
-| Opciones con más de dos valores | `CONTROLS`, `FONT_SIZES`, `REST_SECONDS`, `STREAK_GOALS` en `js/store.js` |
+| Opciones con más de dos valores | `CONTROLS`, `FONT_SIZES`, `STREAK_GOALS` en `js/store.js` |
 
 Los catálogos de opciones están en el almacén y no solo en el HTML para que el
 saneado y el desplegable no puedan discrepar. Los iconos sugeridos son arrays de
 emoji, no cadenas que luego se parten: `🏋️` ocupa dos unidades UTF-16.
 
-Los hábitos y la tabla de partida solo se usan la primera vez que se abre la
-app; después manda lo guardado.
+Los hábitos de partida solo se usan la primera vez que se abre la app; después
+manda lo guardado.
 
 ---
 
@@ -281,7 +284,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 12,
+  "version": 14,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -290,7 +293,6 @@ Una sola clave, `habitTracker.v1`:
     "hideDone": true, "showBadges": true,
     "showDayBar": true, "showNotes": true, "showFreeze": true, "showWeight": true,
     "backupDays": 14,                 // aviso de copia: 0, 7, 14 o 30 días
-    "restSeconds": 150,               // 0, 90, 120, 150, 180, 240 o 300
     "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"
     "weekStart": 1,                   // fijo en lunes desde la 1.6.5
     "notificationsEnabled": false,    // sin uso desde la 1.6.8
@@ -336,13 +338,10 @@ Una sola clave, `habitTracker.v1`:
     "2026-09-12": { "reason": null,      "note": "", "skip": true }
   },
 
-  // Entrenamiento. Las rutinas se alternan en el orden del array.
-  "routines":  [{ "id": "r_1", "name": "Empuje" }],
-  "exercises": [{ "id": "e_1", "name": "Flexiones", "routineId": "r_1",
-                  "kind": "reps", "sets": 4, "target": 12, "archived": false }],
-  "sessions":  { "2026-09-16": { "routineId": "r_1", "done": true,
-                                 "sets": { "e_1": [12, 11, 9] } } },
-  "workout":   { "lastRoutineId": "r_1", "linkedHabitId": "h_xxx" },
+  // El hábito que mide el atributo Fuerza (STR). Hasta la v13 era
+  // workout.linkedHabitId; routines, exercises, sessions y workout se
+  // descartan al sanear desde la 2.2.0.
+  "trainingHabitId": "h_xxx",
 
   "game": {
     "points": 1240,                   // acumulador de EXP; nivel y rango se derivan
@@ -380,7 +379,7 @@ Después se ejecutan las migraciones que tocan, según la versión guardada:
 
 | Esquema | Migración | Qué hace |
 |---|---|---|
-| < 3 | `migrateToWorkout()` | Crea la tabla de calistenia y el hábito "Entrenar" |
+| < 3 | `migrateToWorkout()` | Crea el hábito "Entrenar" (hasta la 2.2.0 creaba también la tabla de calistenia) |
 | < 4 | `migrateToCategories()` | Asigna categoría a los hábitos que existían |
 | < 5 | `migrateToScreenSlots()` | Pasa "Evitar pantallas" a franjas y convierte su histórico |
 | < 6 | `migrateSeedTweaks()` | Bandera para Japonés, tope 1 para Gula y Lujo |
@@ -391,9 +390,13 @@ Después se ejecutan las migraciones que tocan, según la versión guardada:
 La v12 (2.0.0) daba a ese hábito un campo `role`; desde la v13 el saneado lo
 descarta. Las versiones 7 (`levelLog`), 9 (`pauses`), 10 (marcas de día), la
 parte de `weights` de la 11, `weekPlan`, `freeNotes`, `weightGoal` y
-`weekSummarySeen` de la 12, y `plannedWeeks` y el `trip` de las pausas de la 13
-no necesitan migración propia: el saneado rellena los campos nuevos o, en el
-caso de la v10, lee el `true` antiguo de `frozen` como "salvado sin motivo".
+`weekSummarySeen` de la 12, `plannedWeeks` y el `trip` de las pausas de la 13 y
+la 14 no necesitan migración propia: el saneado rellena los campos nuevos o, en
+el caso de la v10, lee el `true` antiguo de `frozen` como "salvado sin motivo".
+En la v14 el saneado copia `workout.linkedHabitId` a `trainingHabitId` y deja
+fuera rutinas, ejercicios, sesiones y el ajuste `restSeconds`; eso vale igual
+al cargar que al importar una copia antigua. La EXP que dieron los entrenos se
+queda.
 
 **Importar no ejecuta las migraciones**, solo el saneado, con una excepción:
 una copia anterior a la v13 pasa también por `migrateDropPlanner()`, para que
@@ -404,7 +407,8 @@ archivos anteriores no está verificado.
 Comprobado al arrancar: estados guardados con los esquemas 4 a 9 se cargan sin
 perder ningún dato (1.7.0), el paso de la v9 a la v10 conserva los días
 congelados como "salvados sin motivo" (1.7.2) y el de la v12 a la v13 archiva
-el hábito planificador y conserva las ausencias (2.1.0).
+el hábito planificador y conserva las ausencias (2.1.0). De la v13 a la v14 se
+conserva el enlace con "Entrenar", tanto al cargar como al importar (2.2.0).
 
 ---
 
@@ -490,12 +494,10 @@ Sustituir `writeNow()` y `load()` por llamadas de red deja intacto el resto.
   exactamente lo que dio.
 - **Escribir el valor es un modo de Cantidad, no un tipo aparte.** Pasos y
   minutos guardan el mismo dato; solo cambia cómo se introduce.
-- **El entreno se contabiliza a través de un hábito.** Cerrar la sesión marca
-  "Entrenar", y de ahí salen la EXP, la racha y el calendario. Una sola
-  contabilidad en vez de dos sistemas que se ignoran.
-- **Las rutinas van por rotación, no por día de la semana.** Si dejas de entrenar
-  tres días, retomas donde lo dejaste.
-- **Una sesión cerrada se bloquea.** Para tocar sus series hay que reabrirla.
+- **El entreno es solo un hábito.** La sección Ejercicios (rutinas, series,
+  descanso) salió en la 2.2.0 porque el entreno se apunta en otra app más
+  completa. Aquí queda "Entrenar" como cualquier otro hábito, y el atributo
+  Fuerza es su cumplimiento a 30 días (respeta el plan semanal y las pausas).
 - **Se puede registrar hacia atrás, nunca hacia delante.** Marcar mañana no
   significaría nada.
 - **Las rachas perdonan el día en curso.** Se rompen cuando el día termina sin

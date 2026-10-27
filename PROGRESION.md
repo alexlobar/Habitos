@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.1.1** · esquema de datos **v13**.
+Versión documentada: **2.2.0** · esquema de datos **v14**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -54,7 +54,7 @@ del nivel, el tramo llega al final y el número real lo da el texto. Lo calcula
 
 ```
    Acciones que dan EXP
-   (hábito, bono del día, ejercicio, entreno, hito de "evitar")
+   (hábito, bono del día, hito de "evitar")
               │
               ▼
         grantXp()                  ← único punto de entrada  ·  js/app.js
@@ -89,17 +89,16 @@ los bonos se redondean con `round5()`.
 | Completar un hábito | **20** |
 | Día bueno: cumplir el 80% o más de los hábitos del día | **+25%** de lo ganado en hábitos ese día |
 | Día perfecto: cumplirlos todos | **+50%** de lo ganado en hábitos ese día |
-| Completar un ejercicio (todas sus series) | **10** |
-| Completar todos los ejercicios del día | **+50%** de lo ganado en ejercicios |
-| Cerrar el entrenamiento | **50** |
 | Cumplir un objetivo | 100 — *definido, sin acción que lo dispare* |
 
 Los bonos son un porcentaje y no una cantidad fija para que escalen con lo que
 haces: un día perfecto con nueve hábitos vale más que uno con tres. Y tienen dos
 escalones para que fallar un hábito no tire por tierra la jornada entera.
 
-Cerrar el entreno marca además el hábito "Entrenar", que paga sus 20 como
-cualquier otro.
+Hasta la 2.1.x la sección Ejercicios pagaba aparte: 10 por ejercicio completo,
++50% por completarlos todos y 50 por cerrar el entreno. Salió en la 2.2.0 (el
+entreno se apunta en otra app); "Entrenar" sigue siendo un hábito y paga sus 20
+como cualquier otro. La EXP que ya dieron los entrenos se queda.
 
 ### Un día de ejemplo
 
@@ -111,7 +110,6 @@ Con los hábitos de partida tocan **9 al día** de lunes a sábado y 10 el domin
 | 7 de 9 | 7 × 20 — por debajo del 80%, sin bono | 140 |
 | 8 de 9 | 160 + 25% (40) | 200 |
 | 9 de 9 | 180 + 50% (90) | 270 |
-| 9 de 9 con entreno de 4 ejercicios | 270 + 40 + 20 + 50 | 380 |
 
 ### Hábitos a evitar
 
@@ -190,7 +188,6 @@ Con los hábitos de partida y sin contar los hitos de "evitar":
 |---|---:|---:|
 | 200 EXP — días buenos | ~330 días | ~3 años y medio |
 | 270 EXP — días perfectos | ~245 días | ~2 años y medio |
-| 380 EXP — perfectos con entreno | ~175 días | ~1 año y 10 meses |
 
 Son cuentas a ritmo constante: cualquier cambio en el número de hábitos las
 mueve.
@@ -231,7 +228,7 @@ reales**: si una rama no tiene hábitos, su atributo vale 0 y lo dice.
 
 | Código | Atributo | De dónde sale |
 |---|---|---|
-| STR | Fuerza | Entrenos cerrados en los últimos 30 días (12 = 100) |
+| STR | Fuerza | Cumplimiento a 30 días del hábito "Entrenar" (`trainingHabitId`), con su plan y sus pausas. Hasta la 2.2.0: entrenos cerrados en Ejercicios |
 | VIT | Vitalidad | Cumplimiento medio a 30 días de *Salud y bienestar físico* |
 | AGI | Agilidad | Ídem de *Hábitos a evitar* |
 | INT | Inteligencia | Ídem de *Aprendizaje y conocimiento* |
@@ -298,7 +295,7 @@ listón nunca pide más de los que hay ni menos de uno. En `streakGoalFor()`.
 registro:
 
 - marcar un hábito, apuntar una cantidad o un fallo de un hábito a evitar,
-- apuntar una serie de entrenamiento o el peso del día,
+- apuntar el peso del día,
 - escribir una nota del día,
 - **o anotar el motivo de por qué el día no salió.**
 
@@ -435,8 +432,6 @@ estado de antes y el de después:
 
 - `withScoring()` — hábitos. Compara si el hábito estaba cumplido y el bono del
   día, antes y después.
-- `withWorkoutScoring()` — ejercicios. Compara cuántos estaban completos, el
-  bono de todos los ejercicios y si la sesión estaba cerrada.
 - `withTodayBonus()` — plan de la semana y ausencias. Confirmar un plan,
   programar una ausencia que empieza hoy o terminarla puede dejar el día
   perfecto o quitarle el bono; se mide el bono de hoy antes y después y se paga
@@ -444,8 +439,8 @@ estado de antes y el de después:
 
 De ahí salen tres garantías:
 
-1. Repetir una acción ya cumplida vale 0. Una serie extra sobre un ejercicio
-   completo no suma.
+1. Repetir una acción ya cumplida vale 0. Sumar páginas a una lectura ya
+   cumplida no suma más.
 2. Deshacer devuelve exactamente lo que dio, bonos incluidos.
 3. Volver a abrir una pantalla no cambia ningún estado, así que no paga nada.
 
@@ -462,7 +457,7 @@ registro sobrevive.
 *Ajustes → Reiniciar progresión* (`resetProgress()`) pone a cero la EXP, los
 logros, el récord de racha, la EXP cobrada por hitos de "evitar" y el registro
 de ascensos. **No toca** los hábitos, su histórico, las notas, las marcas de día
-ni los entrenos — es la diferencia con *Borrar todo*.
+ni las ausencias — es la diferencia con *Borrar todo*.
 
 ---
 
@@ -470,14 +465,14 @@ ni los entrenos — es la diferencia con *Borrar todo*.
 
 | Qué | Dónde |
 |---|---|
-| Tabla de EXP, bonos y previsión | `js/stats.js` — `XP`, `dayBonus()`, `exerciseBonus()`, `pendingToday()` |
+| Tabla de EXP, bonos y previsión | `js/stats.js` — `XP`, `dayBonus()`, `pendingToday()` |
 | Curva y rangos | `js/stats.js` — `XP_TABLE`, `XP_STEP`, `xpForLevel()`, `levelFromXp()`, `RANKS` |
 | Atributos | `js/stats.js` — `attributes()` |
 | Rachas generales | `js/stats.js` — `dayStreak()`, `activityStreak()`, `streakGoalFor()`, `streakAtRisk()` |
 | Rachas por hábito | `js/stats.js` — `currentStreak()`, `bestStreak()`, `topStreak()` |
 | Hitos de "evitar" | `js/stats.js` — `AVOID_MILESTONES` |
 | Logros | `js/stats.js` — `ACHIEVEMENTS`, `earnedAchievements()` |
-| Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withWorkoutScoring()`, `onLevelUp()` |
+| Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withTodayBonus()`, `onLevelUp()` |
 | Marcas de día y comodines | `js/store.js` — `setDayMark()`, `clearDayMark()`, `isFrozen()`, `refillFreezes()` |
 | Plan de la semana | `js/store.js` — `activeDaysFor()`, `confirmWeekPlan()`, `undoWeekPlan()`, `isWeekLocked()` · `js/app.js` — `confirmPlan()` |
 | Ausencias | `js/store.js` — `addAbsence()`, `getAbsences()`, `cancelAbsence()` · `js/app.js` — `onAbsenceSubmit()`, `cancelAbsence()` |
