@@ -1553,7 +1553,6 @@
       });
     };
     toggle(els.setHideDone, 'hideDone');
-    toggle(els.setShowBadges, 'showBadges');
     toggle(els.setDayBar, 'showDayBar');
     toggle(els.setShowFreeze, 'showFreeze');
     toggle(els.setShowNotes, 'showNotes');

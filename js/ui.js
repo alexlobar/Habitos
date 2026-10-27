@@ -121,7 +121,7 @@ HT.ui = (function () {
       'setAccent', 'btnResetAccent', 'setEffects',
       'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup',
       'backupStatus', 'backupIcon', 'backupTitle', 'backupHint', 'btnBackupNow',
-      'setHideDone', 'setShowBadges', 'setDayBar', 'setShowFreeze', 'setShowNotes',
+      'setHideDone', 'setDayBar', 'setShowFreeze', 'setShowNotes',
       'btnResetProgress', 'noteCard', 'btnBackFromProgress',
       'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
       'emptyNotes', 'emptyNotesTitle', 'emptyNotesText',
@@ -578,8 +578,8 @@ HT.ui = (function () {
 
   /**
    * La tarjeta se monta una vez con toda su estructura y después solo se
-   * repinta (paintCard). Secciones, de arriba abajo: cabecera con categoría,
-   * nombre y estado; barra de progreso; controles; métricas; mensaje.
+   * repinta (paintCard). Secciones, de arriba abajo: cabecera con icono,
+   * nombre y controles; barra de progreso y porcentaje.
    */
   function buildCard(habit, dateKey) {
     const avoid = St.isAvoid(habit);
@@ -617,19 +617,10 @@ HT.ui = (function () {
     }));
     head.appendChild(title);
 
-    // El distintivo se puede apagar en Ajustes: es útil al principio y ruido
-    // cuando ya te sabes los colores. Si no está, paintCard no lo busca.
-    if (S.getSettings().showBadges) head.appendChild(el('span', { class: 'badge' }));
-    li.appendChild(head);
-
-
-    /* ── Barra de progreso ── */
-    const track = el('div', { class: 'progress progress--sm habit-card__bar' });
-    track.appendChild(el('div', { class: 'progress__fill' }));
-    li.appendChild(track);
-    li.appendChild(el('p', { class: 'habit-card__pct' }));
-
-    /* ── Controles ── */
+    /* ── Controles ──
+       Van en la cabecera, a la derecha del nombre, donde antes estaba el
+       distintivo de estado. Si no caben al lado, el CSS los baja a su
+       propia línea en vez de comerle sitio al nombre, que abre la ficha. */
     const controls = el('div', { class: 'habit-card__controls' });
 
     if (habit.type === 'check') {
@@ -712,36 +703,20 @@ HT.ui = (function () {
       controls.appendChild(stepper);
     }
 
-    li.appendChild(controls);
+    head.appendChild(controls);
+    li.appendChild(head);
+
+    /* ── Barra de progreso ── */
+    const track = el('div', { class: 'progress progress--sm habit-card__bar' });
+    track.appendChild(el('div', { class: 'progress__fill' }));
+    li.appendChild(track);
+    li.appendChild(el('p', { class: 'habit-card__pct' }));
 
     // Sin métricas ni mensajes de racha: "Hoy" sirve para marcar hábitos.
     // Rachas, récords, tasas y logros viven todos en Progreso.
 
     paintCard(li, habit, dateKey);
     return li;
-  }
-
-  // Texto del badge por estado. El color lo pone el CSS con data-state.
-  const BADGE = {
-    done: 'Hecho', partial: 'En marcha', pending: 'Pendiente', clean: 'Sin'
-  };
-
-  /**
-   * Texto del badge. En los hábitos a evitar no se usa una palabra vaga:
-   * se dice el número de fallos, que es el dato y no admite interpretación.
-   */
-  function badgeText(habit, state, value) {
-    // Con límite de cantidad el dato es lo que llevas: "45 min" dice más
-    // que "Sin", que aquí sería falso en cuanto hayas apuntado algo.
-    if (St.isCapped(habit)) {
-      const n = Number(value) || 0;
-      if (!n) return BADGE.clean;
-      return (Math.round(n * 10) / 10) + ' ' + habit.target.unit;
-    }
-
-    if (state !== 'warn' && state !== 'critical') return BADGE[state];
-    const fallos = St.failsOf(value);
-    return fallos + (fallos === 1 ? ' fallo' : ' fallos');
   }
 
   /** Vuelca el estado del día sobre una tarjeta ya construida. */
@@ -756,8 +731,6 @@ HT.ui = (function () {
     li.classList.toggle('is-done', state === 'done');
     li.style.setProperty('--card-pct', pct);
 
-    const badge = $('.badge', li);
-    if (badge) badge.textContent = badgeText(habit, state, value);
     $('.progress__fill', li).style.setProperty('--pct', pct);
     $('.habit-card__pct', li).textContent = pct + '%';
 
@@ -3218,7 +3191,6 @@ HT.ui = (function () {
     els.setFontSize.value = s.fontSize;
     els.setBackup.value = String(s.backupDays);
     els.setHideDone.setAttribute('aria-checked', s.hideDone ? 'true' : 'false');
-    els.setShowBadges.setAttribute('aria-checked', s.showBadges ? 'true' : 'false');
     els.setDayBar.setAttribute('aria-checked', s.showDayBar ? 'true' : 'false');
     els.setShowFreeze.setAttribute('aria-checked', s.showFreeze ? 'true' : 'false');
     els.setShowNotes.setAttribute('aria-checked', s.showNotes ? 'true' : 'false');

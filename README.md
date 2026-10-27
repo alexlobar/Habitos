@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.2.0** · esquema de datos **v14**.
+Versión documentada: **2.2.1** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -290,7 +290,7 @@ Una sola clave, `habitTracker.v1`:
     "theme": "dark",                  // "dark" | "light"
     "fontSize": "normal",             // "small" | "normal" | "large" | "xlarge"
     "controls": "compact",            // "compact" | "comfy" | "roomy"
-    "hideDone": true, "showBadges": true,
+    "hideDone": true,
     "showDayBar": true, "showNotes": true, "showFreeze": true, "showWeight": true,
     "backupDays": 14,                 // aviso de copia: 0, 7, 14 o 30 días
     "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"

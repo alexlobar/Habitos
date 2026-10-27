@@ -147,7 +147,7 @@ HT.store = (function () {
         weekStart: 1, accent: U.DEFAULT_ACCENT, notificationsEnabled: false,
         effects: true, controls: 'compact',
         theme: 'dark', fontSize: 'normal',
-        hideDone: true, showBadges: true, backupDays: 14,
+        hideDone: true, backupDays: 14,
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true,
         weightGoal: null
@@ -555,7 +555,7 @@ HT.store = (function () {
         theme: s.theme === 'light' ? 'light' : 'dark',
         fontSize: FONT_SIZES.indexOf(s.fontSize) >= 0 ? s.fontSize : 'normal',
         hideDone: s.hideDone !== false,
-        showBadges: s.showBadges !== false,
+        // `showBadges` salió en la 2.2.1 con los distintivos: se descarta aquí.
         backupDays: [0, 7, 14, 30].indexOf(Number(s.backupDays)) >= 0
           ? Number(s.backupDays) : 14,
         streakGoal: STREAK_GOALS.indexOf(s.streakGoal) >= 0 ? s.streakGoal : '2',
@@ -1467,7 +1467,6 @@ HT.store = (function () {
       theme: next.theme === 'light' ? 'light' : 'dark',
       fontSize: FONT_SIZES.indexOf(next.fontSize) >= 0 ? next.fontSize : 'normal',
       hideDone: next.hideDone !== false,
-      showBadges: next.showBadges !== false,
       backupDays: [0, 7, 14, 30].indexOf(Number(next.backupDays)) >= 0
         ? Number(next.backupDays) : 14,
       streakGoal: STREAK_GOALS.indexOf(next.streakGoal) >= 0 ? next.streakGoal : '2',

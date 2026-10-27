@@ -243,7 +243,7 @@ HT.stats = (function () {
 
   /**
    * El estado con el que se pinta la tarjeta. Lo decide un solo sitio para
-   * que el badge, el fondo y el mensaje no puedan contradecirse.
+   * que el fondo, el borde y la barra no puedan contradecirse.
    *   positivos → 'done' | 'partial' | 'pending'
    *   a evitar  → 'clean' | 'warn' | 'critical'
    */

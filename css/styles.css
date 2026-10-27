@@ -687,7 +687,7 @@ svg { display: block; }
 
 /* ── Estados de la tarjeta ────────────────────────────────
    Un solo atributo manda: data-state, que lo calcula St.cardState(). El
-   fondo, el badge y el borde salen todos de aquí, así que no pueden
+   fondo, la barra y el borde salen todos de aquí, así que no pueden
    contradecirse entre sí. ─────────────────────────────────── */
 .habit-card[data-state="done"],
 .habit-card[data-state="clean"] {
@@ -709,41 +709,19 @@ svg { display: block; }
   50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 0%, transparent); }
 }
 
-/* ── Cabecera ── */
+/* ── Cabecera: icono, nombre y controles ──
+   Los controles van a la derecha del nombre. El nombre se reserva un
+   mínimo (flex-basis): si al lado no le queda eso, los controles saltan a
+   su propia línea, alineados a la derecha, en vez de dejar el nombre
+   —que es el botón que abre la ficha— reducido a dos letras. */
 .habit-card__head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
 }
-.badge {
-  flex: none;
-  padding: 2px var(--sp-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--text-muted);
-}
-.habit-card[data-state="done"] .badge,
-.habit-card[data-state="clean"] .badge {
-  border-color: color-mix(in srgb, var(--success) 55%, transparent);
-  background: color-mix(in srgb, var(--success) 16%, transparent);
-  color: var(--success);
-}
-.habit-card[data-state="warn"] .badge {
-  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
-  background: color-mix(in srgb, var(--warning) 16%, transparent);
-  color: var(--warning);
-}
-.habit-card[data-state="critical"] .badge {
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 20%, transparent);
-  color: var(--danger);
-}
+.habit-card__head > .habit-card__icon { flex: none; }
+.habit-card__head > .habit-card__name { flex: 1 1 7rem; min-width: 0; }
 
 /* ── Barra y porcentaje ── */
 .habit-card__bar { margin-top: 2px; }
@@ -764,12 +742,16 @@ svg { display: block; }
 /* ── Controles ── */
 .habit-card__controls {
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--sp-2);
-  min-height: 48px;
+  max-width: 100%;
+  margin-left: auto;
 }
+/* Las franjas ya van en la cabecera: sin el margen que las separaba. */
+.habit-card__controls .slots { justify-content: flex-end; margin-top: 0; }
 .habit-card__value {
   min-width: 4.5rem;
   font-size: var(--fs-sm);
@@ -939,32 +921,24 @@ button.habit-card__icon:active { transform: scale(.94); }
 .check-btn[aria-pressed="true"]:active { transform: scale(.9); }
 
 /* ── Tarjeta de hábito en móvil ───────────────────────────
-   A ~165px no caben icono, nombre y control en una fila. Se reordena en
-   dos: arriba icono y nombre, abajo el control alineado a la derecha.
-   El control va en su propia fila de altura automática y la de arriba se
-   queda el sobrante, así los controles de una misma fila quedan a la
-   misma altura aunque un nombre ocupe dos líneas. ─────────────────── */
+   A ~165px no caben icono, nombre y control en una fila. La cabecera va
+   siempre en dos: arriba icono y nombre, abajo el control alineado a la
+   derecha, ocupando la línea entera. ─────────────────── */
 @media (max-width: 767.98px) {
   .habit-card {
     gap: 6px;
     padding: var(--sp-2) var(--sp-2) var(--sp-3) var(--sp-3);
   }
-  /* A ~165px no cabe el badge junto al nombre: baja a su propia línea. */
-  .habit-card__head {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "icon name" "badge badge";
-    row-gap: 4px;
-    align-items: center;
-  }
-  .habit-card__icon { grid-area: icon; width: 30px; height: 30px; font-size: var(--fs-sm); }
-  .habit-card__name { grid-area: name; }
-  .badge { grid-area: badge; justify-self: start; }
+  .habit-card__head { row-gap: 6px; }
+  .habit-card__head > .habit-card__name { flex-basis: 0; }
+  .habit-card__head > .habit-card__controls { flex-basis: 100%; }
+  .habit-card__icon { width: 30px; height: 30px; font-size: var(--fs-sm); }
 
   .habit-groups { gap: var(--sp-4); }
   .cat-group__head { margin-bottom: var(--sp-2); }
   .cat-group__name { font-size: var(--fs-sm); }
 
-  .habit-card__controls { min-height: 42px; gap: 4px; }
+  .habit-card__controls { gap: 4px; }
   .round-btn { width: 42px; height: 42px; font-size: var(--fs-lg); }
   .habit-card__value { min-width: 0; flex: 1; font-size: var(--fs-xs); }
   .habit-card__value strong { font-size: var(--fs-md); }
@@ -1028,7 +1002,6 @@ button.habit-card__icon:active { transform: scale(.94); }
   font-size: var(--fs-lg);
 }
 [data-controls="comfy"] .slot { padding: 8px var(--sp-4); font-size: var(--fs-sm); }
-[data-controls="comfy"] .habit-card__controls { min-height: 54px; }
 
 [data-controls="compact"] .check-btn { width: 38px; height: 38px; }
 [data-controls="compact"] .round-btn { width: 42px; height: 42px; }
@@ -1045,7 +1018,6 @@ button.habit-card__icon:active { transform: scale(.94); }
   font-size: var(--fs-xl);
 }
 [data-controls="roomy"] .slot { padding: 12px var(--sp-5); font-size: var(--fs-md); }
-[data-controls="roomy"] .habit-card__controls { min-height: 66px; }
 [data-controls="roomy"] .habit-card { padding: var(--sp-4); }
 
 /* Campo para escribir el total del día a mano.

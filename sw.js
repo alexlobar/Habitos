@@ -5,7 +5,10 @@
    ============================================================ */
 /* Este número tiene que coincidir con VERSION en js/utils.js. Si se
    desincronizan, la pantalla de Ajustes lo avisa en lugar de callarse. */
-const CACHE = 'habitos-v2.2.0';
+const CACHE = 'habitos-v2.2.1';
+/* Todas las apps de alexlobar.github.io comparten el almacén de cachés:
+   al actualizar, sólo se borran las de esta app (las que empiezan así). */
+const PREFIX = 'habitos-v';
 
 const ASSETS = [
   './',
@@ -37,7 +40,7 @@ self.addEventListener('activate', function (event) {
     caches.keys()
       .then(function (keys) {
         return Promise.all(keys
-          .filter(function (k) { return k !== CACHE; })
+          .filter(function (k) { return k.indexOf(PREFIX) === 0 && k !== CACHE; })
           .map(function (k) { return caches.delete(k); }));
       })
       .then(function () { return self.clients.claim(); })
