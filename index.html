@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.0.0">
+<html lang="es" data-theme="dark" data-build="2.1.1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -129,8 +129,16 @@
         <!-- Recordatorio de lo que has apartado tú mismo: en pausa no sale
              en ningún otro sitio de Hoy y es fácil olvidarse. -->
         <button type="button" class="paused-note" id="pausedNote" hidden>
-          <span aria-hidden="true">⏸</span>
+          <span aria-hidden="true" id="pausedNoteIcon">⏸</span>
           <span id="pausedNoteText">—</span>
+          <span class="paused-note__go" aria-hidden="true">›</span>
+        </button>
+
+        <!-- Recuerda que la semana está sin planificar. Discreto a propósito:
+             planificar es opcional y sin plan todo sigue sus días de siempre. -->
+        <button type="button" class="paused-note" id="planNote" hidden>
+          <span aria-hidden="true">📅</span>
+          <span id="planNoteText">—</span>
           <span class="paused-note__go" aria-hidden="true">›</span>
         </button>
 
@@ -462,6 +470,59 @@
             Dentro de unos meses es lo que te dirá por qué una racha se rompió.
           </p>
         </div>
+      </section>
+
+      <!-- ─── Vista: Plan ───
+           La semana se planifica cuando quieras —hoy en adelante— y al
+           confirmarla queda bloqueada hasta que termina. La que viene se
+           puede dejar hecha desde ya. Abajo, las ausencias programadas. -->
+      <section class="view view--stack" id="view-plan" aria-labelledby="titlePlan" hidden>
+        <div class="view__head">
+          <h1 class="view__title" id="titlePlan">Plan</h1>
+          <div class="seg seg--compact" role="radiogroup" aria-label="Semana que se planifica">
+            <label class="seg__opt">
+              <input type="radio" name="planWeek" value="0" checked>
+              <span>Esta semana</span>
+            </label>
+            <label class="seg__opt">
+              <input type="radio" name="planWeek" value="1">
+              <span>La que viene</span>
+            </label>
+          </div>
+        </div>
+
+        <article class="card" id="planCard">
+          <header class="card__head">
+            <div>
+              <p class="recap__eyebrow" id="planRange">—</p>
+              <h2 class="card__title" id="planStatus">—</h2>
+            </div>
+            <span class="plan-lock" id="planLock" aria-hidden="true" hidden>🔒</span>
+          </header>
+          <p class="card__text" id="planHint">—</p>
+
+          <ul class="plan-list" id="planList"></ul>
+          <p class="card__text" id="planEmpty" hidden>No tienes hábitos que planificar.</p>
+
+          <div class="btn-row" id="planActions">
+            <button type="button" class="btn btn--primary" id="btnPlanConfirm">Confirmar y bloquear</button>
+            <button type="button" class="btn btn--ghost" id="btnPlanReset">Como siempre</button>
+          </div>
+        </article>
+
+        <article class="card" aria-labelledby="absenceTitle">
+          <header class="card__head">
+            <h2 class="card__title" id="absenceTitle">Ausencias</h2>
+            <button type="button" class="btn" id="btnAddAbsence">
+              <span aria-hidden="true">+</span> Programar
+            </button>
+          </header>
+          <p class="card__text">
+            ¿Un viaje o una temporada en la que no podrás con tus hábitos? Pon las
+            fechas y elige cuáles se pausan: esos días no cuentan ni rompen rachas.
+          </p>
+          <ul class="absence-list" id="absenceList"></ul>
+        </article>
       </section>
 
       <!-- ─── Vista: Progreso ─── -->
@@ -863,20 +924,17 @@
         </article>
 
         <article class="card">
-          <header class="card__head"><h2 class="card__title">Esta instalación</h2></header>
+          <!-- La versión que guarda la caché offline, su fecha y lo que ocupa
+               todo (app + datos). Debajo, tus datos frente al tope de 5 MB de
+               localStorage. La pista solo aparece si hay algo que hacer. -->
           <div class="field-row">
-            <span>Versión</span>
-            <span class="build" id="buildVersion">—</span>
-          </div>
-          <div class="field-row">
-            <span>Origen</span>
-            <span class="build" id="buildOrigin">—</span>
-          </div>
-          <div class="field-row">
-            <span>Caché offline</span>
+            <span class="field-row__text">
+              <span>Versión</span>
+              <span class="field-row__hint build-quota" id="buildQuota"></span>
+            </span>
             <span class="build" id="buildCache">—</span>
           </div>
-          <p class="card__text card__text--tight" id="buildHint"></p>
+          <p class="card__text card__text--tight" id="buildHint" hidden></p>
 
           <!-- Solo aparece cuando el navegador permite instalar la app. Existe
                por un fallo de Chrome para Android (hasta la 157): si ya hay
@@ -920,6 +978,13 @@
           <path d="M5.5 3.5h13v17h-13z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>
         </svg>
         <span>Notas</span>
+      </button>
+      <button type="button" class="nav__item" data-view="plan">
+        <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/>
+          <path d="M8 15l2.4 2.4L16 13"/>
+        </svg>
+        <span>Plan</span>
       </button>
       <button type="button" class="nav__item" data-view="settings">
         <svg class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -1166,34 +1231,56 @@
     </div>
   </div>
 
-  <!-- Plan de la semana: qué días toca cada hábito en una semana concreta.
-       Los días que ya pasaron se ven pero no se cambian. -->
-  <div class="modal" id="planModal" hidden>
+  <!-- Ausencia programada: varios hábitos en pausa entre dos fechas. -->
+  <div class="modal" id="absenceModal" hidden>
     <div class="modal__backdrop" data-close></div>
-    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="planModalTitle">
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="absenceModalTitle">
       <header class="modal__head">
-        <h2 class="modal__title" id="planModalTitle">Planificar la semana</h2>
+        <h2 class="modal__title" id="absenceModalTitle">Programar una ausencia</h2>
         <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
       </header>
 
-      <form class="modal__body" id="planForm" novalidate>
-        <div class="month-nav">
-          <button type="button" class="icon-btn" id="planPrev" aria-label="Semana anterior">‹</button>
-          <span class="month-nav__label month-nav__label--wide" id="planLabel" aria-live="polite">—</span>
-          <button type="button" class="icon-btn" id="planNext" aria-label="Semana siguiente">›</button>
-        </div>
-        <p class="card__text" id="planIntro">
-          Marca qué días toca cada hábito esa semana. Lo que no cambies se queda como siempre.
+      <form class="modal__body" id="absenceForm" novalidate>
+        <p class="card__text">
+          Los hábitos que marques quedan en pausa esos días: no te los pide, no
+          cuentan como fallados y tus rachas se quedan donde estén.
         </p>
 
-        <ul class="plan-list" id="planList"></ul>
-        <p class="card__text" id="planEmpty" hidden>No tienes hábitos que planificar.</p>
+        <div class="absence-dates">
+          <label class="field">
+            <span class="field__label">Desde</span>
+            <input class="input" type="date" id="absenceFrom" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Hasta (incluido)</span>
+            <input class="input" type="date" id="absenceTo" required>
+          </label>
+        </div>
+        <p class="absence-length" id="absenceLength" aria-live="polite"></p>
+
+        <fieldset class="reasons" id="absenceReasons">
+          <legend class="field__label">Motivo</legend>
+        </fieldset>
+
+        <div class="field">
+          <label class="field__label" for="absenceNote">Nota (opcional)</label>
+          <input class="input" type="text" id="absenceNote" maxlength="80"
+                 placeholder="Ej. Japón" autocomplete="off">
+        </div>
+
+        <fieldset class="absence-habits">
+          <legend class="field__label">Hábitos en pausa</legend>
+          <div class="btn-row absence-habits__quick">
+            <button type="button" class="btn btn--ghost" data-absence-all="1">Todos</button>
+            <button type="button" class="btn btn--ghost" data-absence-all="0">Ninguno</button>
+          </div>
+          <ul class="absence-habits__list" id="absenceHabits"></ul>
+        </fieldset>
 
         <footer class="modal__foot">
-          <button type="button" class="btn btn--ghost" id="btnPlanReset">Como siempre</button>
           <span class="modal__spacer"></span>
           <button type="button" class="btn" data-close>Cancelar</button>
-          <button type="submit" class="btn btn--primary">Guardar plan</button>
+          <button type="submit" class="btn btn--primary">Programar</button>
         </footer>
       </form>
     </div>

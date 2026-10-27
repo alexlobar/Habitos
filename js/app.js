@@ -76,6 +76,7 @@
     if (!UI.els.views.progress.hidden) UI.renderProgress(currentDate);
     renderHabitIfOpen();
     renderNotesIfOpen();
+    renderPlanIfOpen();
   }
 
   function renderExercisesIfOpen() {
@@ -318,14 +319,6 @@
     const action = btn.dataset.action;
 
     if (action === 'detail') { openHabit(habit.id); return; }
-
-    // "Planificar la semana" se cumple planificando: el ✓ abre el plan y es
-    // guardarlo lo que lo marca. Desmarcarlo sigue siendo un toque.
-    if (action === 'check' && habit.role === 'planner' &&
-        !St.isComplete(habit, S.getLog(habit.id, currentDate))) {
-      openPlanner(currentDate, planWeekFor(currentDate));
-      return;
-    }
 
     // Una franja de un hábito a evitar apunta un fallo, no un logro: va por
     // el mismo camino que el ✗, fuera de withScoring.
@@ -785,91 +778,108 @@
   }
 
   /* ── Plan de la semana ────────────────────────────────────
-     Se puede planificar cualquier día. Guardar el plan es lo que da por
-     hecho el hábito "Planificar la semana": marcarlo pasa a significar
-     que de verdad has mirado la semana. ───────────────────────────── */
+     Se planifica cualquier día: la semana en curso desde hoy, o la que
+     viene. Al confirmar, la semana se bloquea hasta el domingo. Planificar
+     no da EXP: es una herramienta, no un hábito. ───────────────────── */
 
-  let planMarkDate = null;      // día del hábito que se marca al guardar (null = buscarlo)
-  let planFromRecap = false;    // abierto desde el resumen: al guardar, el resumen se cierra
-
-  function plannerHabit() {
-    return S.getHabits().filter(function (h) { return h.role === 'planner'; })[0] || null;
+  /** Abre Plan. Sin semana indicada, el domingo ofrece ya la que viene. */
+  function showPlan(offset) {
+    const o = offset === undefined ? (U.fromKey(today).getDay() === 0 ? 1 : 0) : offset;
+    UI.setPlanOffset(o);
+    UI.resetPlanDraft();
+    UI.setView('plan');
+    UI.renderPlanView();
+    window.scrollTo(0, 0);
   }
 
-  /** La semana que se ofrece: el domingo ya se piensa en la que viene. */
-  function planWeekFor(dateKey) {
-    const lunes = S.weekKeyOf(dateKey);
-    return U.fromKey(dateKey).getDay() === 0 ? U.addDaysKey(lunes, 7) : lunes;
-  }
-
-  function openPlanner(markDate, weekKey, fromRecap) {
-    planMarkDate = markDate || null;
-    planFromRecap = !!fromRecap;
-    UI.openPlanModal(weekKey || planWeekFor(today));
+  function renderPlanIfOpen() {
+    if (UI.els.views.plan.hidden) return;
+    UI.renderPlanView();
   }
 
   /**
-   * Marca el hábito planificador. Si no se dice qué día, vale el último en
-   * que tocaba dentro de los tres anteriores: el del domingo, si planificas
-   * el lunes o el martes porque se te pasó. Más atrás ya no es esa semana.
+   * Cambiar qué toca hoy —un plan, una ausencia que empieza hoy— puede
+   * dejar el día perfecto o quitarle el bonus. Se mide entero antes y
+   * después y se paga la diferencia, igual que en withScoring(). Los días
+   * pasados no cambian y los futuros aún no tienen bonus.
    */
-  function markPlannerDone(dateKey) {
-    const habit = plannerHabit();
-    if (!habit || habit.type !== 'check') return false;
-
-    let key = dateKey;
-    for (let i = 0; !key && i <= 3; i++) {
-      const k = U.addDaysKey(today, -i);
-      if (St.isActiveOn(habit, k)) key = k;
-    }
-    if (!key || !St.isActiveOn(habit, key)) return false;
-    if (St.isComplete(habit, S.getLog(habit.id, key))) return false;
-
-    withScoring(habit, key, function () { S.toggleCheck(habit.id, key); });
-    return true;
+  function withTodayBonus(mutate) {
+    const antes = St.dayBonus(today);
+    const result = mutate();
+    const delta = St.dayBonus(today) - antes;
+    if (delta) grantXp(delta);
+    syncProgressState();
+    return result;
   }
 
-  function onPlanSubmit(e) {
-    e.preventDefault();
-
-    const draft = UI.readPlan();
-    const same = function (a, b) {
-      return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
-    };
-
-    // Cambiar qué toca hoy puede dejar el día perfecto, o dejar de serlo. El
-    // bonus se mide entero antes y después y se paga la diferencia, como en
-    // withScoring(). Los días pasados no cambian y los futuros no tienen bonus.
-    const bonusAntes = St.dayBonus(today);
-    let cambios = 0;
-
-    Object.keys(draft).forEach(function (weekKey) {
-      Object.keys(draft[weekKey]).forEach(function (id) {
-        const habit = S.getHabit(id);
-        if (!habit || same(S.activeDaysFor(habit, weekKey), draft[weekKey][id])) return;
-        S.setWeekPlan(id, weekKey, draft[weekKey][id]);
-        cambios++;
-      });
+  function confirmPlan() {
+    const data = UI.readPlan();
+    const snapshot = withTodayBonus(function () {
+      return S.confirmWeekPlan(data.weekKey, data.draft);
     });
+    if (!snapshot) {
+      UI.toast('Esa semana ya está planificada.', { type: 'error', icon: '⚠️' });
+      return;
+    }
 
-    const delta = St.dayBonus(today) - bonusAntes;
-    if (delta) grantXp(delta);
-
-    UI.closePlanModal();
-    if (planFromRecap) {
-      S.dismissWeekSummary(S.weekKeyOf(today));
+    UI.resetPlanDraft();
+    // Planificada la semana en curso, el resumen de la pasada ya cumplió.
+    if (data.weekKey === S.planWeeks()[0]) {
+      S.dismissWeekSummary(data.weekKey);
       UI.els.weekRecap.hidden = true;
     }
-    const marcado = markPlannerDone(planMarkDate);
-    planMarkDate = null;
-    planFromRecap = false;
-    syncProgressState();
 
-    // Un cambio es un hábito en una semana: el mismo en dos semanas cuenta dos.
-    UI.toast((cambios ? 'Plan guardado: ' + cambios + (cambios === 1 ? ' cambio.' : ' cambios.')
-                      : 'Plan revisado: todo como siempre.') +
-             (marcado ? ' «' + plannerHabit().name + '» hecho.' : ''),
-             { type: 'success', icon: '📅' });
+    UI.toast('Semana planificada y bloqueada hasta el domingo.', {
+      icon: '🔒',
+      action: {
+        label: 'Deshacer',
+        onClick: function () {
+          withTodayBonus(function () { return S.undoWeekPlan(snapshot); });
+          UI.toast('Plan deshecho: la semana vuelve a estar abierta.', { icon: '↩' });
+        }
+      }
+    });
+  }
+
+  /* ── Ausencias programadas ────────────────────────────────── */
+
+  const ABSENCE_ERRORS = {
+    fechas: 'Elige las dos fechas.',
+    pasado: 'Una ausencia no puede empezar antes de hoy.',
+    orden: 'La fecha final va antes que la inicial.',
+    larga: 'Como mucho 180 días. Para algo más largo, pausa o archiva el hábito.',
+    vacia: 'Marca al menos un hábito (los que ya están en pausa no cuentan).'
+  };
+
+  function onAbsenceSubmit(e) {
+    e.preventDefault();
+
+    const data = UI.readAbsenceForm();
+    const res = withTodayBonus(function () { return S.addAbsence(data); });
+    if (res.error) {
+      UI.toast(ABSENCE_ERRORS[res.error] || 'No se pudo programar.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+
+    UI.closeAbsenceModal();
+    UI.toast('Ausencia programada: ' + res.count + (res.count === 1 ? ' hábito' : ' hábitos') +
+             ' en pausa del ' + U.formatShort(U.fromKey(data.from)) + ' al ' +
+             U.formatShort(U.fromKey(data.to)) + '.', { type: 'success', icon: '✈️' });
+  }
+
+  function cancelAbsence(id) {
+    const a = S.getAbsences().filter(function (x) { return x.id === id; })[0];
+    if (!a) return;
+
+    const enCurso = a.from <= today;
+    const pregunta = enCurso
+      ? '¿Terminar la ausencia hoy? Desde hoy tus hábitos vuelven a contar; los días ya pasados siguen sin contar.'
+      : '¿Cancelar esta ausencia? Esos días volverán a contar con normalidad.';
+    if (!window.confirm(pregunta)) return;
+
+    withTodayBonus(function () { return S.cancelAbsence(id); });
+    UI.toast(enCurso ? 'Ausencia terminada: desde hoy todo vuelve a contar.' : 'Ausencia cancelada.',
+             { icon: '↩' });
   }
 
   /* ── Anotar un día ────────────────────────────────────────
@@ -1327,6 +1337,7 @@
         else if (btn.dataset.view === 'week') showWeek();
         else if (btn.dataset.view === 'exercises') showExercises();
         else if (btn.dataset.view === 'notes') showNotes();
+        else if (btn.dataset.view === 'plan') showPlan();
         else UI.setView(btn.dataset.view);
       });
     });
@@ -1618,28 +1629,49 @@
     });
 
     // Plan de la semana
-    els.btnPlanWeek.addEventListener('click', function () { openPlanner(null, planWeekFor(today)); });
-    els.btnRecapPlan.addEventListener('click', function () {
-      openPlanner(null, S.weekKeyOf(today), true);
-    });
+    els.btnPlanWeek.addEventListener('click', function () { showPlan(); });
+    els.btnRecapPlan.addEventListener('click', function () { showPlan(0); });
+    els.planNote.addEventListener('click', function () { showPlan(Number(els.planNote.dataset.week) || 0); });
     els.btnRecapClose.addEventListener('click', function () {
       S.dismissWeekSummary(els.weekRecap.dataset.week || S.weekKeyOf(today));
       els.weekRecap.hidden = true;
+      UI.renderDayExtras(currentDate);      // ahora puede tocar el aviso de "sin planificar"
+    });
+    U.$$('input[name="planWeek"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        UI.setPlanOffset(Number(radio.value));
+        UI.renderPlanView();
+      });
     });
     els.planList.addEventListener('click', function (e) {
       const btn = e.target.closest('.plan-day');
       if (!btn || btn.disabled) return;
       UI.togglePlanDay(btn.closest('.plan-row').dataset.id, Number(btn.dataset.dow));
     });
-    els.planPrev.addEventListener('click', function () { UI.stepPlanWeek(-1); });
-    els.planNext.addEventListener('click', function () { UI.stepPlanWeek(1); });
     els.btnPlanReset.addEventListener('click', UI.resetPlanWeek);
-    els.planForm.addEventListener('submit', onPlanSubmit);
-    els.planModal.addEventListener('click', function (e) {
-      if (e.target.closest('[data-close]')) UI.closePlanModal();
+    els.btnPlanConfirm.addEventListener('click', confirmPlan);
+
+    // Ausencias
+    els.btnAddAbsence.addEventListener('click', UI.openAbsenceModal);
+    els.absenceForm.addEventListener('submit', onAbsenceSubmit);
+    els.absenceFrom.addEventListener('change', function () {
+      // El final nunca antes del principio: se arrastra con él.
+      if (els.absenceTo.value < els.absenceFrom.value) els.absenceTo.value = els.absenceFrom.value;
+      els.absenceTo.min = els.absenceFrom.value;
+      UI.syncAbsenceLength();
     });
-    els.planModal.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') UI.closePlanModal();
+    els.absenceTo.addEventListener('change', UI.syncAbsenceLength);
+    els.absenceModal.addEventListener('click', function (e) {
+      const todos = e.target.closest('[data-absence-all]');
+      if (todos) { UI.setAbsenceAll(todos.dataset.absenceAll === '1'); return; }
+      if (e.target.closest('[data-close]')) UI.closeAbsenceModal();
+    });
+    els.absenceModal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') UI.closeAbsenceModal();
+    });
+    els.absenceList.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-absence-cancel]');
+      if (btn) cancelAbsence(btn.dataset.absenceCancel);
     });
 
     // Peso objetivo. Vacío lo quita; fuera de rango se avisa y no se toca.
@@ -1738,7 +1770,10 @@
       if (e.key === 'Escape') UI.closePauseModal();
     });
 
-    els.pausedNote.addEventListener('click', function () { UI.setView('settings'); });
+    els.pausedNote.addEventListener('click', function () {
+      if (els.pausedNote.dataset.go === 'plan') showPlan();
+      else UI.setView('settings');
+    });
     byId('btnDeleteFromHabit').addEventListener('click', function () { confirmDelete(habitId); });
     els.habitHeatmap.addEventListener('click', onCalendarClick);
 

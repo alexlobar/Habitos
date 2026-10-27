@@ -22,8 +22,8 @@ HT.utils = (function () {
      otro sitio donde aparece es CACHE en sw.js, porque un service worker
      no puede leer este archivo; si se desincronizan, Ajustes lo avisa en
      vez de callarse. ─────────────────────────────────────── */
-  const VERSION = '2.0.0';
-  const BUILD_DATE = '2026-10-26';
+  const VERSION = '2.1.1';
+  const BUILD_DATE = '2026-10-27';
 
   /* ── Colores predeterminados ──────────────────────────────
      Catálogo de acentos. Hoy solo se usa el primero, pero la tabla ya
@@ -65,6 +65,7 @@ HT.utils = (function () {
      ──────────────────────────────────────────────────────── */
   const PAUSE_REASONS = [
     { id: 'vacaciones', name: 'Vacaciones',       icon: '🏖️' },
+    { id: 'viaje',      name: 'Viaje',            icon: '✈️' },
     { id: 'lesion',     name: 'Lesión',           icon: '🤕' },
     { id: 'enfermedad', name: 'Enfermedad',       icon: '🤒' },
     { id: 'carga',      name: 'Mucho trabajo',    icon: '💼' },
@@ -223,11 +224,10 @@ HT.utils = (function () {
   const fmtMonth = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' });
   const fmtShort = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
 
-  /** "v1.0.0 · 17/09/2026" */
-  function buildLabel() {
+  /** Fecha de esta versión: "17/09/2026" */
+  function buildDate() {
     const d = fromKey(BUILD_DATE);
-    return 'v' + VERSION + ' · ' +
-           String(d.getDate()).padStart(2, '0') + '/' +
+    return String(d.getDate()).padStart(2, '0') + '/' +
            String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
   }
 
@@ -283,7 +283,7 @@ HT.utils = (function () {
   }
 
   return {
-    version: VERSION, buildLabel: buildLabel,
+    version: VERSION, buildDate: buildDate,
     ACCENTS: ACCENTS, DEFAULT_ACCENT: DEFAULT_ACCENT, accentById: accentById,
     CATEGORIES: CATEGORIES, categoryById: categoryById,
     PAUSE_REASONS: PAUSE_REASONS, pauseReasonById: pauseReasonById,

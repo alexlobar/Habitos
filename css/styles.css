@@ -1382,7 +1382,7 @@ button.heat:disabled:hover { transform: none; }
   color: var(--text-muted);
 }
 
-/* Botón de instalación propio, en Ajustes → Esta instalación. */
+/* Botón de instalación propio, en Ajustes, junto a la versión. */
 .install-row {
   margin-top: var(--sp-3);
   padding-top: var(--sp-3);
@@ -3242,6 +3242,8 @@ button.week-cell:disabled:hover { transform: none; }
 }
 .build[data-state="ok"] { color: var(--success); }
 .build[data-state="stale"] { color: var(--warning); }
+.build-quota[data-state="high"] { color: var(--warning); }
+.build-quota[data-state="full"] { color: var(--danger); }
 
 .archive-list { display: grid; gap: var(--sp-2); }
 .archive-item {
@@ -3630,13 +3632,6 @@ button.week-cell:disabled:hover { transform: none; }
 
 /* ── 2.0.0 · PLAN DE LA SEMANA, RESUMEN, OBJETIVO Y NOTAS LIBRES ── */
 
-/* El hábito que abre el plan lo dice bajo el nombre. */
-.habit-card__sub {
-  margin: -2px 0 var(--sp-2);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-}
-
 /* Resumen de la semana pasada, arriba de Hoy. */
 .recap {
   margin-bottom: var(--sp-4);
@@ -3678,9 +3673,18 @@ button.week-cell:disabled:hover { transform: none; }
   color: var(--text-muted);
 }
 
-/* Modal del plan: una fila por hábito con sus siete días. */
-#planModal .month-nav { justify-content: center; margin-bottom: var(--sp-3); }
+/* Pestaña Plan: una fila por hábito con sus siete días. */
+#view-plan .view__head { flex-wrap: wrap; }
+.plan-lock { font-size: var(--fs-lg); }
 .plan-list { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+@media (min-width: 768px) {
+  .plan-list { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+}
+/* Bloqueada se lee de un vistazo, pero sin apagar los días marcados: el
+   plan de la semana sigue siendo lo que hay que consultar. */
+.plan-list.is-locked .plan-day:disabled { opacity: 1; cursor: default; }
+.plan-list.is-locked .plan-day[aria-pressed="false"] { opacity: .45; }
+.plan-day.is-paused { text-decoration: line-through; }
 .plan-row {
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
@@ -3735,6 +3739,55 @@ button.week-cell:disabled:hover { transform: none; }
 }
 /* Lo pasado se ve, pero apagado: está ahí para dar contexto, no para tocarlo. */
 .plan-day:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Ausencias programadas */
+.absence-list { display: grid; gap: var(--sp-2); }
+.absence {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.absence.is-active { border-color: color-mix(in srgb, var(--frost) 55%, transparent); }
+.absence__icon { flex: none; font-size: var(--fs-lg); }
+.absence__body { flex: 1; min-width: 0; }
+.absence__title { font-size: var(--fs-sm); font-weight: 600; }
+.absence__meta { font-size: var(--fs-xs); color: var(--text-muted); }
+.absence-empty { font-size: var(--fs-sm); color: var(--text-muted); }
+
+.absence-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.absence-length { min-height: 1.2em; margin: var(--sp-1) 0 var(--sp-4); font-size: var(--fs-xs); color: var(--text-muted); }
+.absence-habits { margin-top: var(--sp-4); border: 0; padding: 0; }
+.absence-habits__quick { margin: var(--sp-2) 0; }
+.absence-habits__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-1) var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.absence-habit {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.absence-habit__box { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.absence-habit__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Seis pestañas en la barra inferior: en pantallas muy estrechas la letra
+   baja un punto para que "Ejercicios" no se salga. */
+@media (max-width: 360px) {
+  .nav__item { font-size: 10.5px; }
+}
 
 /* Peso objetivo */
 .weight-goal {

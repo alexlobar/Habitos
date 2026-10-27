@@ -63,7 +63,7 @@ HT.ui = (function () {
   // pasa con la ficha de un hábito.
   const NAV_OF_VIEW = {
     today: 'today', week: 'week', exercises: 'exercises', notes: 'notes',
-    progress: 'progress', habit: 'today', settings: 'settings'
+    progress: 'progress', habit: 'today', plan: 'plan', settings: 'settings'
   };
 
   // Iconos sugeridos. Se guardan como array y no como una cadena para
@@ -131,13 +131,16 @@ HT.ui = (function () {
       'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
       'emptyNotes', 'emptyNotesTitle', 'emptyNotesText',
       'archivedCard', 'archiveList', 'toastStack', 'confetti',
-      'buildVersion', 'buildOrigin', 'buildCache', 'buildHint', 'installRow', 'btnInstall',
+      'buildCache', 'buildQuota', 'buildHint', 'installRow', 'btnInstall',
       'quantityFields', 'stepField', 'entryFields', 'slotFields', 'avoidHint',
       'fCategory', 'limitField', 'fLimit', 'avoidModeFields', 'capHint', 'fTargetLabel',
       'fName', 'fNameError',
       'weekRecap', 'recapRange', 'btnRecapClose', 'recapStats', 'recapLines', 'btnRecapPlan',
-      'btnPlanWeek', 'planModal', 'planForm', 'planPrev', 'planNext', 'planLabel',
-      'planList', 'planEmpty', 'btnPlanReset',
+      'btnPlanWeek', 'planRange', 'planStatus', 'planLock', 'planHint',
+      'planList', 'planEmpty', 'planActions', 'btnPlanConfirm', 'btnPlanReset',
+      'planNote', 'planNoteText', 'pausedNoteIcon',
+      'btnAddAbsence', 'absenceList', 'absenceModal', 'absenceForm', 'absenceFrom', 'absenceTo',
+      'absenceLength', 'absenceReasons', 'absenceNote', 'absenceHabits',
       'weightLegendGoal', 'weightGoalInput', 'weightGoalText',
       'btnAddFreeNote', 'freeNotesList', 'freeNotesHint'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
@@ -164,6 +167,7 @@ HT.ui = (function () {
       progress: $('#view-progress'),
       habit: $('#view-habit'),
       notes: $('#view-notes'),
+      plan: $('#view-plan'),
       settings: $('#view-settings')
     };
     els.navItems = U.$$('.nav__item');
@@ -624,10 +628,6 @@ HT.ui = (function () {
     if (S.getSettings().showBadges) head.appendChild(el('span', { class: 'badge' }));
     li.appendChild(head);
 
-    // Este se cumple planificando: el ✓ abre el plan y guardarlo lo marca.
-    if (habit.role === 'planner' && habit.type === 'check') {
-      li.appendChild(el('p', { class: 'habit-card__sub', text: 'Al marcarlo se abre el plan de la semana' }));
-    }
 
     /* ── Barra de progreso ── */
     const track = el('div', { class: 'progress progress--sm habit-card__bar' });
@@ -864,11 +864,28 @@ HT.ui = (function () {
      olvidarse de él es este aviso al final de la lista. ──────────────── */
 
   function renderPausedNote() {
+    // Una ausencia en curso manda: es lo que explica que falte medio Hoy.
+    const hoy = U.todayKey();
+    const ausencia = S.getAbsences().filter(function (a) { return a.from <= hoy; })[0];
+
+    if (ausencia) {
+      const motivo = U.pauseReasonById(ausencia.reason);
+      const n = ausencia.habitIds.length;
+      els.pausedNote.hidden = false;
+      els.pausedNote.dataset.go = 'plan';
+      els.pausedNoteIcon.textContent = motivo ? motivo.icon : '⏸';
+      els.pausedNoteText.textContent = pauseLabel(ausencia) + ' hasta el ' +
+        U.formatShort(U.fromKey(ausencia.to)) + ' · ' + n + (n === 1 ? ' hábito en pausa' : ' hábitos en pausa');
+      return;
+    }
+
     const pausados = S.getHabits().filter(function (h) { return !!S.pauseInfo(h); });
 
     els.pausedNote.hidden = !pausados.length;
     if (!pausados.length) return;
 
+    els.pausedNote.dataset.go = 'settings';
+    els.pausedNoteIcon.textContent = '⏸';
     els.pausedNoteText.textContent = pausados.length === 1
       ? '"' + pausados[0].name + '" está en pausa'
       : pausados.length + ' hábitos en pausa';
@@ -945,13 +962,13 @@ HT.ui = (function () {
   }
 
   /* ── Plan de la semana ────────────────────────────────────
-     El borrador vive aquí mientras el modal está abierto: se puede ir y
-     volver entre semanas sin perder lo marcado, y nada se guarda hasta
-     pulsar Guardar. Quien escribe en el almacén sigue siendo app.js. ── */
+     Se planifica la semana en curso —de hoy al domingo, lo pasado se
+     queda como estaba— o la siguiente. Al confirmar, la semana queda
+     bloqueada hasta que termina. El borrador vive aquí hasta entonces;
+     quien escribe en el almacén sigue siendo app.js. ───────────────── */
 
   const PLAN_ORDER = [1, 2, 3, 4, 5, 6, 0];   // de lunes a domingo, como el resto de la app
-  const PLAN_AHEAD = 8;                        // semanas por delante que se pueden planificar
-  const plan = { weekKey: null, minWeek: null, draft: {} };
+  const plan = { offset: 0, draft: {} };      // offset: 0 = esta semana, 1 = la que viene
 
   function sameDayList(a, b) {
     return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
@@ -962,64 +979,71 @@ HT.ui = (function () {
     return S.getHabits().filter(function (h) { return !St.isAvoid(h); }).sort(byName);
   }
 
-  function maxPlanWeek() {
-    return U.addDaysKey(plan.minWeek, PLAN_AHEAD * 7);
+  function planWeekKey() {
+    return S.planWeeks()[plan.offset];
+  }
+
+  /** Cambia de semana sin perder lo marcado en la otra. */
+  function setPlanOffset(offset) {
+    plan.offset = offset ? 1 : 0;
+  }
+
+  function getPlanOffset() { return plan.offset; }
+
+  function resetPlanDraft() {
+    plan.draft = {};
   }
 
   /** La fecha de un día de la semana del plan. */
   function planDateOf(dow) {
-    return U.addDaysKey(plan.weekKey, PLAN_ORDER.indexOf(dow));
+    return U.addDaysKey(planWeekKey(), PLAN_ORDER.indexOf(dow));
   }
 
   /** Días marcados de un hábito en la semana que se ve: el borrador si lo hay. */
   function planDaysOf(habit) {
-    const w = plan.draft[plan.weekKey];
-    return w && w[habit.id] ? w[habit.id] : S.activeDaysFor(habit, plan.weekKey);
+    const w = plan.draft[planWeekKey()];
+    return w && w[habit.id] ? w[habit.id] : S.activeDaysFor(habit, planWeekKey());
   }
 
   function setPlanDraft(habitId, days) {
-    if (!plan.draft[plan.weekKey]) plan.draft[plan.weekKey] = {};
-    plan.draft[plan.weekKey][habitId] = days.slice().sort();
+    const wk = planWeekKey();
+    if (!plan.draft[wk]) plan.draft[wk] = {};
+    plan.draft[wk][habitId] = days.slice().sort();
   }
 
-  function openPlanModal(weekKey) {
-    plan.minWeek = S.weekKeyOf(U.todayKey());
-    plan.weekKey = weekKey < plan.minWeek ? plan.minWeek
-      : weekKey > maxPlanWeek() ? maxPlanWeek() : weekKey;
-    plan.draft = {};
+  function renderPlanView() {
     renderPlan();
-
-    lastFocused = document.activeElement;
-    els.planModal.hidden = false;
-    document.body.style.overflow = 'hidden';
-  }
-
-  function closePlanModal() {
-    els.planModal.hidden = true;
-    document.body.style.overflow = '';
-    plan.draft = {};
-    if (lastFocused && lastFocused.focus) lastFocused.focus();
-    lastFocused = null;
-  }
-
-  function stepPlanWeek(delta) {
-    const next = U.addDaysKey(plan.weekKey, delta * 7);
-    if (next < plan.minWeek || next > maxPlanWeek()) return;
-    plan.weekKey = next;
-    renderPlan();
+    renderAbsences();
   }
 
   function renderPlan() {
     const hoy = U.todayKey();
-    const wk = plan.weekKey;
+    const wk = planWeekKey();
     const fin = U.addDaysKey(wk, 6);
-    const nombre = wk === plan.minWeek ? 'Esta semana · '
-      : wk === U.addDaysKey(plan.minWeek, 7) ? 'La que viene · ' : '';
+    const bloqueada = S.isWeekLocked(wk);
+    const cuando = S.weekPlannedOn(wk);
 
-    els.planLabel.textContent = nombre +
+    U.$$('input[name="planWeek"]').forEach(function (r) {
+      r.checked = Number(r.value) === plan.offset;
+    });
+
+    els.planRange.textContent = (plan.offset ? 'La que viene' : 'Esta semana') + ' · ' +
       U.formatShort(U.fromKey(wk)) + ' – ' + U.formatShort(U.fromKey(fin));
-    els.planPrev.disabled = wk <= plan.minWeek;
-    els.planNext.disabled = wk >= maxPlanWeek();
+    els.planStatus.textContent = bloqueada ? 'Planificada' : 'Sin planificar';
+    els.planLock.hidden = !bloqueada;
+
+    let pista;
+    if (bloqueada) {
+      pista = 'Confirmada el ' + U.formatShort(U.fromKey(cuando)) + '. Queda así hasta el domingo. ' +
+              'Si surge algo, anota el día, pausa el hábito o programa una ausencia.';
+    } else if (plan.offset === 0 && hoy > wk) {
+      pista = 'Empiezas hoy: lo que ya pasó se queda como estaba y planificas de hoy al domingo. ' +
+              'Al confirmar, la semana queda bloqueada.';
+    } else {
+      pista = 'Marca qué días toca cada hábito. Sin plan, todo sigue sus días de siempre. ' +
+              'Al confirmar, la semana queda bloqueada.';
+    }
+    els.planHint.textContent = pista;
 
     const letras = U.weekdayLabels(0);
     const habits = planHabits();
@@ -1042,11 +1066,11 @@ HT.ui = (function () {
         const pasado = key < hoy;
         const pausa = S.isPausedOn(h, key);
         const btn = el('button', {
-          type: 'button', class: 'plan-day', 'data-dow': String(dow),
-          title: pasado ? 'Ya pasó' : pausa ? 'En pausa' : null,
+          type: 'button', class: 'plan-day' + (pausa ? ' is-paused' : ''), 'data-dow': String(dow),
+          title: pausa ? 'En pausa' : pasado ? 'Ya pasó' : null,
           text: letras[dow]
         });
-        btn.disabled = pasado || pausa || h.createdAt > key;
+        btn.disabled = bloqueada || pasado || pausa || h.createdAt > key;
         group.appendChild(btn);
       });
       li.appendChild(group);
@@ -1058,7 +1082,9 @@ HT.ui = (function () {
     els.planList.textContent = '';
     els.planList.appendChild(frag);
     els.planList.hidden = !habits.length;
+    els.planList.classList.toggle('is-locked', bloqueada);
     els.planEmpty.hidden = habits.length > 0;
+    els.planActions.hidden = bloqueada || !habits.length;
   }
 
   /** Vuelca el borrador sobre una fila sin reconstruirla: el foco no se pierde. */
@@ -1080,7 +1106,7 @@ HT.ui = (function () {
   function togglePlanDay(habitId, dow) {
     const habit = S.getHabit(habitId);
     const li = $('.plan-row[data-id="' + habitId + '"]', els.planList);
-    if (!habit || !li) return;
+    if (!habit || !li || S.isWeekLocked(planWeekKey())) return;
 
     const days = planDaysOf(habit).slice();
     const i = days.indexOf(dow);
@@ -1095,7 +1121,7 @@ HT.ui = (function () {
   function resetPlanWeek() {
     const hoy = U.todayKey();
     planHabits().forEach(function (h) {
-      const actual = S.activeDaysFor(h, plan.weekKey);
+      const actual = S.activeDaysFor(h, planWeekKey());
       const days = PLAN_ORDER.filter(function (dow) {
         const fuente = planDateOf(dow) < hoy ? actual : h.activeDays;
         return fuente.indexOf(dow) >= 0;
@@ -1105,9 +1131,141 @@ HT.ui = (function () {
     renderPlan();
   }
 
-  /** El borrador entero: { lunes → { hábito → días } }. */
+  /** La semana que se ve y su borrador: { weekKey, draft: { hábito → días } }. */
   function readPlan() {
-    return JSON.parse(JSON.stringify(plan.draft));
+    const wk = planWeekKey();
+    return { weekKey: wk, draft: JSON.parse(JSON.stringify(plan.draft[wk] || {})) };
+  }
+
+  /* ── Ausencias ────────────────────────────────────────────── */
+
+  function absenceRange(a) {
+    const dias = U.daysBetween(a.from, a.to) + 1;
+    return U.formatShort(U.fromKey(a.from)) + ' – ' + U.formatShort(U.fromKey(a.to)) +
+           ' · ' + dias + (dias === 1 ? ' día' : ' días');
+  }
+
+  function renderAbsences() {
+    const hoy = U.todayKey();
+    const lista = S.getAbsences();
+    const frag = document.createDocumentFragment();
+
+    lista.forEach(function (a) {
+      const motivo = U.pauseReasonById(a.reason);
+      const enCurso = a.from <= hoy;
+      const n = a.habitIds.length;
+      const li = el('li', { class: 'absence' + (enCurso ? ' is-active' : '') });
+
+      li.appendChild(el('span', { class: 'absence__icon', 'aria-hidden': 'true', text: motivo ? motivo.icon : '⏸' }));
+
+      const body = el('div', { class: 'absence__body' });
+      body.appendChild(el('p', { class: 'absence__title', text: pauseLabel(a) }));
+      const faltan = U.daysBetween(hoy, a.from);
+      body.appendChild(el('p', {
+        class: 'absence__meta',
+        text: absenceRange(a) + ' · ' + n + (n === 1 ? ' hábito' : ' hábitos') + ' · ' +
+              (enCurso ? 'en curso' : faltan === 1 ? 'empieza mañana' : 'empieza en ' + faltan + ' días')
+      }));
+      li.appendChild(body);
+
+      li.appendChild(el('button', {
+        type: 'button', class: 'btn btn--ghost', 'data-absence-cancel': a.id,
+        text: enCurso ? 'Terminar hoy' : 'Cancelar'
+      }));
+      frag.appendChild(li);
+    });
+
+    if (!lista.length) {
+      frag.appendChild(el('li', { class: 'absence-empty', text: 'Ninguna programada.' }));
+    }
+
+    els.absenceList.textContent = '';
+    els.absenceList.appendChild(frag);
+  }
+
+  function openAbsenceModal() {
+    const hoy = U.todayKey();
+    els.absenceFrom.min = hoy;
+    els.absenceTo.min = hoy;
+    els.absenceFrom.value = hoy;
+    els.absenceTo.value = U.addDaysKey(hoy, 6);
+    els.absenceNote.value = '';
+
+    const frag = document.createDocumentFragment();
+    U.PAUSE_REASONS.forEach(function (motivo) {
+      const label = el('label', { class: 'reason' });
+      const radio = el('input', {
+        type: 'radio', name: 'absenceReason', value: motivo.id, class: 'reason__input'
+      });
+      radio.checked = motivo.id === 'viaje';
+      label.appendChild(radio);
+      label.appendChild(el('span', { class: 'reason__icon', 'aria-hidden': 'true', text: motivo.icon }));
+      label.appendChild(el('span', { class: 'reason__name', text: motivo.name }));
+      frag.appendChild(label);
+    });
+    const legend = $('legend', els.absenceReasons);
+    els.absenceReasons.textContent = '';
+    if (legend) els.absenceReasons.appendChild(legend);
+    els.absenceReasons.appendChild(frag);
+
+    // Todos marcados de entrada: en un viaje lo normal es parar casi todo,
+    // y es más rápido desmarcar los dos que sigues haciendo.
+    const lista = document.createDocumentFragment();
+    S.getHabits().slice().sort(byName).forEach(function (h) {
+      const li = el('li');
+      const label = el('label', { class: 'absence-habit' });
+      const box = el('input', { type: 'checkbox', value: h.id, class: 'absence-habit__box' });
+      box.checked = true;
+      label.appendChild(box);
+      label.appendChild(el('span', { 'aria-hidden': 'true', text: h.icon }));
+      label.appendChild(el('span', { class: 'absence-habit__name', text: h.name }));
+      li.appendChild(label);
+      lista.appendChild(li);
+    });
+    els.absenceHabits.textContent = '';
+    els.absenceHabits.appendChild(lista);
+
+    syncAbsenceLength();
+
+    lastFocused = document.activeElement;
+    els.absenceModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    els.absenceFrom.focus();
+  }
+
+  function closeAbsenceModal() {
+    els.absenceModal.hidden = true;
+    document.body.style.overflow = '';
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  function setAbsenceAll(on) {
+    U.$$('.absence-habit__box', els.absenceHabits).forEach(function (b) { b.checked = on; });
+  }
+
+  /** Cuántos días son, dicho al lado de las fechas: evita equivocarse de mes. */
+  function syncAbsenceLength() {
+    const a = els.absenceFrom.value;
+    const b = els.absenceTo.value;
+    if (!U.isValidKey(a) || !U.isValidKey(b)) { els.absenceLength.textContent = ''; return; }
+    if (b < a) { els.absenceLength.textContent = 'La fecha final va antes que la inicial.'; return; }
+    const dias = U.daysBetween(a, b) + 1;
+    els.absenceLength.textContent = dias + (dias === 1 ? ' día' : ' días') + ', del ' +
+      U.formatLong(U.fromKey(a)) + ' al ' + U.formatLong(U.fromKey(b)) + '.';
+  }
+
+  function readAbsenceForm() {
+    const motivo = $('input[name="absenceReason"]:checked', els.absenceReasons);
+    return {
+      from: els.absenceFrom.value,
+      to: els.absenceTo.value,
+      reason: motivo ? motivo.value : 'otro',
+      note: els.absenceNote.value.trim(),
+      habitIds: U.$$('.absence-habit__box', els.absenceHabits)
+        .filter(function (b) { return b.checked; })
+        .map(function (b) { return b.value; })
+    };
   }
 
   /** El cajón de los cumplidos: plegado, con su cuenta, y abrible. */
@@ -1265,6 +1423,7 @@ HT.ui = (function () {
 
     renderWeightEntry(dateKey);
     renderWeekRecap(dateKey);
+    renderPlanNote(dateKey);
   }
 
   /* ── Resumen de la semana pasada ──────────────────────────
@@ -1333,8 +1492,34 @@ HT.ui = (function () {
     els.recapLines.hidden = !lineas.length;
 
     // Si ya planificaste esta semana, el botón lo dice.
-    const conPlan = S.getHabits().some(function (h) { return h.weekPlan && h.weekPlan[estaSemana]; });
-    els.btnRecapPlan.textContent = conPlan ? 'Revisar el plan de esta semana' : 'Planificar esta semana';
+    els.btnRecapPlan.textContent = S.isWeekLocked(estaSemana)
+      ? 'Ver el plan de esta semana' : 'Planificar esta semana';
+  }
+
+  /**
+   * Una línea en Hoy cuando la semana está sin planificar; el domingo, si la
+   * que viene aún no lo está. Mientras se ve el resumen semanal no sale:
+   * el resumen ya tiene su botón para planificar.
+   */
+  function renderPlanNote(dateKey) {
+    const hoy = U.todayKey();
+    const semanas = S.planWeeks();
+    let texto = null;
+    let offset = 0;
+
+    if (dateKey === hoy && els.weekRecap.hidden && planHabits().length) {
+      if (U.fromKey(hoy).getDay() === 0 && !S.isWeekLocked(semanas[1])) {
+        texto = 'La semana que viene está sin planificar';
+        offset = 1;
+      } else if (!S.isWeekLocked(semanas[0])) {
+        texto = 'Esta semana está sin planificar';
+      }
+    }
+
+    els.planNote.hidden = !texto;
+    if (!texto) return;
+    els.planNote.dataset.week = String(offset);
+    els.planNoteText.textContent = texto;
   }
 
   /* ── Peso ─────────────────────────────────────────────────── */
@@ -3155,7 +3340,7 @@ HT.ui = (function () {
     // Si esta semana tiene plan propio, se dice: si no, la ficha diría unos
     // días y Hoy enseñaría otros.
     const semana = S.activeDaysFor(habit, U.todayKey());
-    const plan = semana === habit.activeDays ? ''
+    const plan = sameDayList(semana, habit.activeDays) ? ''
       : ' · Esta semana: ' + (semana.length ? semana.map(U.weekdayName).join(', ') : 'ninguno');
 
     return what + ' · ' + days + plan;
@@ -3168,9 +3353,23 @@ HT.ui = (function () {
    */
   function renderPauseBanner(habit, todayKey) {
     const pausa = S.pauseInfo(habit);
+    const ausencia = pausa ? null : S.absenceOf(habit);
 
-    els.pauseBanner.hidden = !pausa;
+    els.pauseBanner.hidden = !pausa && !ausencia;
     els.btnPauseHabit.hidden = !!pausa || habit.archived;
+    // Reanudar es para la pausa indefinida; una ausencia se cancela en Plan.
+    els.btnResumeHabit.hidden = !pausa;
+
+    if (ausencia) {
+      const m = U.pauseReasonById(ausencia.reason);
+      const ultimo = U.addDaysKey(ausencia.to, -1);
+      els.pauseBannerIcon.textContent = m ? m.icon : '⏸';
+      els.pauseBannerTitle.textContent = (ausencia.from <= todayKey ? 'En pausa · ' : 'Ausencia programada · ') +
+        pauseLabel(ausencia);
+      els.pauseBannerMeta.textContent = 'Del ' + U.formatShort(U.fromKey(ausencia.from)) +
+        ' al ' + U.formatShort(U.fromKey(ultimo)) + ' · se gestiona en Plan';
+      return;
+    }
 
     if (!pausa) return;
 
@@ -3431,26 +3630,73 @@ HT.ui = (function () {
       ', el ' + U.formatShort(U.fromKey(last)) + '.';
   }
 
+  /** 1234 bytes → "1,2 KB"; por debajo de 10 KB con un decimal. */
+  function formatKB(bytes) {
+    const kb = bytes / 1024;
+    return kb.toLocaleString('es-ES', { maximumFractionDigits: kb < 10 ? 1 : 0 }) + ' KB';
+  }
+
+  /** Suma lo que ocupan las respuestas guardadas en una caché. */
+  function cacheBytes(name) {
+    return caches.open(name).then(function (cache) {
+      return cache.keys().then(function (reqs) {
+        return Promise.all(reqs.map(function (req) {
+          return cache.match(req)
+            .then(function (res) { return res ? res.blob() : null; })
+            .then(function (b) { return b ? b.size : 0; });
+        }));
+      });
+    }).then(function (sizes) {
+      return sizes.reduce(function (a, b) { return a + b; }, 0);
+    });
+  }
+
   /**
-   * Qué versión está corriendo y, sobre todo, si el service worker sigue
-   * sirviendo una caché antigua — que es la causa habitual de "he subido los
-   * cambios y el móvil no los ve".
+   * Tus datos frente al tope de localStorage (5 MB). La caché de la app no
+   * cuenta: va aparte y su cuota es de gigas. Lo que ocupen otras apps de
+   * alexlobar.github.io sí resta, porque el tope es del origen entero.
+   */
+  function renderQuota(uso) {
+    const pct = (uso.mine + uso.others) / uso.max * 100;
+    let texto = 'Datos: ' + formatKB(uso.mine) + ' de ' + formatKB(uso.max) + ' máx.';
+    if (uso.others >= 1024) texto += ' · otras apps: ' + formatKB(uso.others);
+    if (pct >= 1) texto += ' (' + Math.round(pct) + ' %)';
+
+    els.buildQuota.textContent = texto;
+    els.buildQuota.dataset.state = pct >= 90 ? 'full' : pct >= 70 ? 'high' : 'ok';
+    els.buildQuota.title = 'El navegador guarda hasta 5 MB por sitio. Un día con todos ' +
+      'los hábitos, nota y peso ocupa menos de 1 KB.';
+  }
+
+  function setBuildHint(text) {
+    els.buildHint.textContent = text;
+    els.buildHint.hidden = !text;
+  }
+
+  /**
+   * Una sola línea: la versión que guarda la caché offline, su fecha y lo
+   * que ocupa todo (app guardada + tus datos). Solo dice algo más cuando la
+   * caché no coincide con el código, que es la causa habitual de "he subido
+   * los cambios y el móvil no los ve".
    */
   function renderBuildInfo() {
-    els.buildVersion.textContent = U.buildLabel();
-    els.buildOrigin.textContent = location.protocol === 'file:'
-      ? 'Archivo local'
-      : location.host;
+    const uso = S.storageUse();
+    const datos = uso.mine;
+    renderQuota(uso);
+    const linea = function (version, appBytes) {
+      return 'v' + version + (version === U.version ? ' · ' + U.buildDate() : '') +
+             ' · ' + formatKB(appBytes + datos);
+    };
 
-    els.buildHint.textContent = '';
+    setBuildHint('');
     els.buildCache.dataset.state = 'plain';
+    els.buildCache.title = '';
 
     // Se comprueba el protocolo y no isSecureContext: file:// cuenta como
     // contexto seguro, pero su CacheStorage no se puede leer.
     if (location.protocol === 'file:' || !window.caches) {
-      els.buildCache.textContent = 'No aplica aquí';
-      els.buildHint.textContent = 'Abierta como archivo local: no hay caché offline, ' +
-                                  'así que siempre ves la última versión guardada.';
+      els.buildCache.textContent = linea(U.version, 0);
+      els.buildCache.title = 'Sin caché offline: solo cuentan tus datos';
       return;
     }
 
@@ -3461,20 +3707,27 @@ HT.ui = (function () {
       const mias = keys.filter(function (k) { return k.indexOf('habitos-') === 0; });
 
       if (!mias.length) {
-        els.buildCache.textContent = 'Sin instalar';
-        els.buildHint.textContent = 'Todavía no se ha guardado una copia offline.';
-        return;
+        els.buildCache.textContent = linea(U.version, 0);
+        setBuildHint('Todavía no se ha guardado una copia offline.');
+        return null;
       }
 
+      // Si conviven dos (justo al actualizar) se enseña la nueva y se suman ambas.
       const vieja = mias.indexOf(esperada) < 0;
-      els.buildCache.textContent = mias.join(', ');
-      els.buildCache.dataset.state = vieja ? 'stale' : 'ok';
-      els.buildHint.textContent = vieja
-        ? 'La copia guardada no coincide con ' + esperada +
-          '. Cierra la app del todo y ábrela otra vez para que se actualice.'
-        : 'Al día: la copia offline coincide con esta versión.';
+      const nombre = vieja ? mias[mias.length - 1] : esperada;
+      return Promise.all(mias.map(cacheBytes)).then(function (sizes) {
+        const app = sizes.reduce(function (a, b) { return a + b; }, 0);
+        els.buildCache.textContent = linea(nombre.replace('habitos-v', ''), app);
+        els.buildCache.title = 'App ' + formatKB(app) + ' + datos ' + formatKB(datos);
+        els.buildCache.dataset.state = vieja ? 'stale' : 'ok';
+        if (vieja) {
+          setBuildHint('La copia offline no coincide con la v' + U.version +
+            '. Cierra la app del todo y ábrela otra vez para que se actualice.');
+        }
+      });
     }).catch(function () {
-      els.buildCache.textContent = 'No se pudo leer';
+      els.buildCache.textContent = linea(U.version, 0);
+      els.buildCache.title = 'No se pudo leer la caché: solo cuentan tus datos';
     });
   }
 
@@ -3930,8 +4183,12 @@ HT.ui = (function () {
     openExerciseModal: openExerciseModal, closeExerciseModal: closeExerciseModal,
     readExerciseForm: readExerciseForm,
     openPauseModal: openPauseModal, closePauseModal: closePauseModal,
-    openPlanModal: openPlanModal, closePlanModal: closePlanModal, stepPlanWeek: stepPlanWeek,
+    renderPlanView: renderPlanView, setPlanOffset: setPlanOffset, getPlanOffset: getPlanOffset,
+    resetPlanDraft: resetPlanDraft,
     togglePlanDay: togglePlanDay, resetPlanWeek: resetPlanWeek, readPlan: readPlan,
+    openAbsenceModal: openAbsenceModal, closeAbsenceModal: closeAbsenceModal,
+    setAbsenceAll: setAbsenceAll, syncAbsenceLength: syncAbsenceLength,
+    readAbsenceForm: readAbsenceForm,
     readPauseForm: readPauseForm, syncPauseNote: syncPauseNote, pauseLabel: pauseLabel,
     openDayModal: openDayModal, closeDayModal: closeDayModal,
     readDayForm: readDayForm, syncDayNote: syncDayNote, dayMarkLabel: dayMarkLabel,

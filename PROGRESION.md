@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.0.0** · esquema de datos **v12**.
+Versión documentada: **2.1.1** · esquema de datos **v13**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -325,7 +325,13 @@ estricta, las dos juntas dicen cosas distintas en vez de repetirse.
 - **El plan de la semana manda.** Si una semana un hábito solo toca martes,
   jueves y sábado, el lunes no le tocaba: ni cuenta en el total ni rompe su
   racha. Por eso el plan no deja cambiar días ya pasados: quitar uno borraría
-  un fallo a posteriori. El día de hoy sí se puede cambiar.
+  un fallo a posteriori. Hoy solo se puede cambiar mientras la semana no esté
+  confirmada; después queda bloqueada hasta el domingo.
+- **Las ausencias programadas** son pausas con fecha: los hábitos elegidos no
+  tocan esos días. Si durante un viaje mantienes alguno (Japonés, por
+  ejemplo), el listón se calcula solo con ellos y nunca pide más de los que
+  hay: con uno solo, hacerlo mantiene la racha. Si los pausas todos, los días
+  son neutros y la racha te espera a la vuelta.
 
 ### En peligro — `streakAtRisk()`
 
@@ -431,10 +437,10 @@ estado de antes y el de después:
   día, antes y después.
 - `withWorkoutScoring()` — ejercicios. Compara cuántos estaban completos, el
   bono de todos los ejercicios y si la sesión estaba cerrada.
-- `onPlanSubmit()` — plan de la semana. Cambiar qué toca hoy puede dejar el día
+- `withTodayBonus()` — plan de la semana y ausencias. Confirmar un plan,
+  programar una ausencia que empieza hoy o terminarla puede dejar el día
   perfecto o quitarle el bono; se mide el bono de hoy antes y después y se paga
-  la diferencia. Marcar *Planificar la semana* al guardar pasa por
-  `withScoring()` como cualquier check.
+  la diferencia. Planificar en sí no da EXP.
 
 De ahí salen tres garantías:
 
@@ -473,7 +479,8 @@ ni los entrenos — es la diferencia con *Borrar todo*.
 | Logros | `js/stats.js` — `ACHIEVEMENTS`, `earnedAchievements()` |
 | Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withWorkoutScoring()`, `onLevelUp()` |
 | Marcas de día y comodines | `js/store.js` — `setDayMark()`, `clearDayMark()`, `isFrozen()`, `refillFreezes()` |
-| Plan de la semana | `js/store.js` — `activeDaysFor()`, `setWeekPlan()` · `js/app.js` — `onPlanSubmit()`, `markPlannerDone()` |
+| Plan de la semana | `js/store.js` — `activeDaysFor()`, `confirmWeekPlan()`, `undoWeekPlan()`, `isWeekLocked()` · `js/app.js` — `confirmPlan()` |
+| Ausencias | `js/store.js` — `addAbsence()`, `getAbsences()`, `cancelAbsence()` · `js/app.js` — `onAbsenceSubmit()`, `cancelAbsence()` |
 | Resumen semanal y peso objetivo | `js/stats.js` — `weekSummary()`, `weightGoal()` |
 | Registro de ascensos | `js/store.js` — `recordLevelUp()` · `js/ui.js` — `renderAscents()` |
 | Pintado de Progreso | `js/ui.js` — `renderProgress()`, `renderLevelPanel()`, `renderStreakPair()` |

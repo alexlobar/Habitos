@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 12;
+  const VERSION = 13;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -183,10 +183,8 @@ HT.store = (function () {
       // "Noche" en lugar de un check mudo.
       mkHabit({ name: 'Planificar el día', icon: '🗒️', color: '#ffb454', category: 'mental',
                 type: 'schedule', slots: ['night'] }, today),
-      // El único que no es diario: 0 = domingo, sea cual sea el inicio de semana.
-      // Abre la planificación de la semana; guardar el plan lo marca hecho.
-      mkHabit({ name: 'Planificar la semana', icon: '📅', color: '#f59e0b', category: 'mental',
-                type: 'check', activeDays: [0], role: 'planner' }, today),
+      // "Planificar la semana" ya no es un hábito desde la 2.1.0: planificar
+      // tiene su propia pestaña, se hace cualquier día y no da EXP.
       // Con franjas: se cumple por la mañana y por la noche, y cada una es
       // un fallo posible, así que el tope crítico sale de ellas (2).
       mkHabit({ name: 'Evitar pantallas', icon: '📵', color: '#94a3b8',
@@ -223,6 +221,7 @@ HT.store = (function () {
       frozen: {},
       weights: {},
       freeNotes: [],
+      plannedWeeks: {},
       routines: seed.routines,
       exercises: seed.exercises,
       sessions: {},
@@ -333,9 +332,7 @@ HT.store = (function () {
       pauses: cleanPauses(raw.pauses),
       // Días distintos para semanas concretas. null si no hay ninguna: es lo
       // que permite a activeDaysFor() saltarse la cuenta en el caso normal.
-      weekPlan: cleanWeekPlan(raw.weekPlan),
-      // 'planner': el hábito que abre la planificación de la semana.
-      role: raw.role === 'planner' ? 'planner' : null
+      weekPlan: cleanWeekPlan(raw.weekPlan)
     };
   }
 
@@ -395,18 +392,23 @@ HT.store = (function () {
 
       const reason = U.pauseReasonById(p.reason) ? p.reason : 'otro';
 
-      out.push({
+      const entry = {
         from: p.from,
         to: to,
         reason: reason,
         note: cleanName(p.note, '').slice(0, 80)
-      });
+      };
+      // Los tramos de una ausencia programada llevan su id, que es lo que
+      // los agrupa entre hábitos para listarla o cancelarla de una vez.
+      if (typeof p.trip === 'string' && /^a_[\w-]{1,24}$/.test(p.trip) && to !== null) entry.trip = p.trip;
+      out.push(entry);
     });
 
     out.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : 0; });
 
-    // Como mucho un tramo abierto, y tiene que ser el último: dos pausas a
-    // la vez no significan nada y harían imposible saber cuál reanudar.
+    // Como mucho un tramo abierto: dos pausas a la vez no significan nada y
+    // harían imposible saber cuál reanudar. (Ya no tiene por qué ser el
+    // último: una ausencia programada puede empezar después.)
     const abiertos = out.filter(function (p) { return p.to === null; });
     if (abiertos.length > 1) {
       abiertos.slice(0, -1).forEach(function (p) { p.to = abiertos[abiertos.length - 1].from; });
@@ -414,6 +416,21 @@ HT.store = (function () {
 
     return out.filter(function (p) { return p.to === null || p.to > p.from; })
               .slice(-MAX_PAUSES);
+  }
+
+  /**
+   * Semanas ya planificadas: { lunes → día en que se confirmó }. Una semana
+   * confirmada queda bloqueada hasta que termina.
+   */
+  function cleanPlannedWeeks(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out = {};
+    Object.keys(raw)
+      .filter(function (k) { return U.isValidKey(k) && U.fromKey(k).getDay() === 1 && U.isValidKey(raw[k]); })
+      .sort()
+      .slice(-MAX_WEEK_PLANS)
+      .forEach(function (k) { out[k] = raw[k]; });
+    return out;
   }
 
   /** Normaliza el valor de un log según el tipo de hábito. */
@@ -697,6 +714,7 @@ HT.store = (function () {
       // Peso por día, en kg. Ausente antes de la v11: empieza vacío.
       weights: cleanByDate(raw.weights, cleanWeight),
       freeNotes: cleanFreeNotes(raw.freeNotes),
+      plannedWeeks: cleanPlannedWeeks(raw.plannedWeeks),
       routines: routines,
       exercises: exercises,
       sessions: cleanByDate(raw.sessions, function (v) { return cleanSession(v, exerciseIds); }),
@@ -869,16 +887,15 @@ HT.store = (function () {
   }
 
   /**
-   * Migración a la v12: "Planificar la semana" pasa a abrir la planificación.
-   * Se reconoce por el nombre, sin tildes ni mayúsculas, porque es el único
-   * dato que tienen los hábitos de antes. Solo uno, aunque haya varios.
+   * Migración a la v13: "Planificar la semana" deja de ser un hábito, porque
+   * planificar ya tiene su pestaña. Se ARCHIVA, no se borra: su histórico se
+   * conserva y se puede restaurar o eliminar desde Ajustes. Se reconoce por
+   * el nombre, sin tildes ni mayúsculas.
    */
-  function migratePlannerRole() {
-    if (state.habits.some(function (h) { return h.role === 'planner'; })) return;
-    const h = state.habits.filter(function (x) {
-      return plainName(x.name) === 'planificar la semana';
-    })[0];
-    if (h) h.role = 'planner';
+  function migrateDropPlanner() {
+    state.habits.forEach(function (h) {
+      if (!h.archived && plainName(h.name) === 'planificar la semana') h.archived = true;
+    });
   }
 
   /* ── Carga y guardado ─────────────────────────────────────── */
@@ -916,7 +933,7 @@ HT.store = (function () {
       if (incoming < 6) migrateSeedTweaks();
       if (incoming < 8) migrateNewDefaults();
       if (incoming < 11) migrateAddRedes();
-      if (incoming < 12) migratePlannerRole();
+      if (incoming < 13) migrateDropPlanner();
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);
@@ -940,6 +957,34 @@ HT.store = (function () {
       emit('error');
       return false;
     }
+  }
+
+  /* Tope de localStorage por origen en Chrome, Firefox y Safari: 5 MiB,
+     contados en caracteres (claves incluidas). Ojo: el origen es
+     alexlobar.github.io entero, así que se reparte con las demás apps
+     publicadas ahí. */
+  const STORAGE_MAX = 5 * 1024 * 1024;
+
+  /**
+   * Cuánto ocupa el almacenamiento, en caracteres (≈ bytes: el JSON es casi
+   * todo ASCII). `mine` es el estado tal como se guarda más la copia de
+   * rescate; se mide el estado en memoria y no lo escrito, para que una
+   * escritura pendiente no falsee la cifra. `others` es lo que ocupan otras
+   * apps del mismo origen, que restan del mismo tope.
+   */
+  function storageUse() {
+    let mine = KEY.length + JSON.stringify(state).length;
+    let others = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k === KEY) continue;
+        const size = k.length + (localStorage.getItem(k) || '').length;
+        if (k === BACKUP_KEY) mine += size;
+        else others += size;
+      }
+    } catch (e) { /* sin acceso al almacenamiento: solo cuenta el estado */ }
+    return { mine: mine, others: others, max: STORAGE_MAX };
   }
 
   // Marcar hábitos genera ráfagas de escrituras (el stepper y las notas,
@@ -1020,45 +1065,88 @@ HT.store = (function () {
     return plan || habit.activeDays;
   }
 
-  function sameDays(a, b) {
-    return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
+  /** Las semanas que se pueden planificar: la que está en curso y la siguiente. */
+  function planWeeks() {
+    const actual = weekKeyOf(U.todayKey());
+    return [actual, U.addDaysKey(actual, 7)];
+  }
+
+  function isWeekLocked(weekKey) {
+    return !!state.plannedWeeks[weekKey];
+  }
+
+  function weekPlannedOn(weekKey) {
+    return state.plannedWeeks[weekKey] || null;
   }
 
   /**
-   * Guarda los días de un hábito para una semana. `days` null vuelve a los
-   * días de siempre.
-   *
-   * Los días ANTERIORES a hoy no cambian, se pida lo que se pida: ya pasaron,
-   * y quitar uno borraría un fallo de tus rachas a posteriori. Hoy sí se
-   * puede cambiar, porque planificas los lunes y el lunes es hoy.
+   * Los días que pide `days`, salvo en lo que ya pasó: ahí se queda lo que
+   * tocaba. Quitar un día pasado borraría un fallo de tus rachas a
+   * posteriori. Hoy sí se puede cambiar, porque se empieza cuando se quiera
+   * y "cuando se quiera" puede ser hoy.
    */
-  function setWeekPlan(habitId, weekKey, days) {
-    const habit = getHabit(habitId);
-    if (!habit || !U.isValidKey(weekKey) || U.fromKey(weekKey).getDay() !== 1) return null;
-
+  function lockPastDays(habit, weekKey, days) {
     const hoy = U.todayKey();
     const antes = activeDaysFor(habit, weekKey);
-    let nuevo = days === null ? habit.activeDays.slice() : (cleanDays(days) || []);
+    let nuevo = cleanDays(days) || [];
 
     for (let i = 0; i < 7; i++) {
       const key = U.addDaysKey(weekKey, i);
       if (key >= hoy) continue;
       const dow = U.fromKey(key).getDay();
       const estaba = antes.indexOf(dow) >= 0;
-      const esta = nuevo.indexOf(dow) >= 0;
-      if (estaba && !esta) nuevo.push(dow);
-      if (!estaba && esta) nuevo = nuevo.filter(function (d) { return d !== dow; });
+      if (estaba && nuevo.indexOf(dow) < 0) nuevo.push(dow);
+      if (!estaba) nuevo = nuevo.filter(function (d) { return d !== dow; });
     }
-    nuevo = cleanDays(nuevo);
+    return cleanDays(nuevo);
+  }
 
-    const plan = habit.weekPlan ? Object.assign({}, habit.weekPlan) : {};
-    // Si coincide con los días de siempre no hace falta guardarlo.
-    if (sameDays(nuevo, habit.activeDays)) delete plan[weekKey];
-    else plan[weekKey] = nuevo;
+  /**
+   * Confirma el plan de una semana y la BLOQUEA hasta que termina. `draft`
+   * es { hábito → días }; los que no vengan se quedan con lo que tocaba.
+   *
+   * Se guarda cada hábito explícitamente, aunque coincida con sus días de
+   * siempre: si luego editas esos días, una semana ya bloqueada no debe
+   * cambiar por detrás. Devuelve lo necesario para deshacerlo.
+   */
+  function confirmWeekPlan(weekKey, draft) {
+    if (planWeeks().indexOf(weekKey) < 0 || isWeekLocked(weekKey)) return null;
 
-    habit.weekPlan = Object.keys(plan).length ? plan : null;
-    commit('habit:plan', { habitId: habitId, weekKey: weekKey });
-    return activeDaysFor(habit, weekKey);
+    const plan = draft || {};
+    const prev = {};
+
+    getHabits().forEach(function (h) {
+      if (h.type === 'avoid') return;
+      prev[h.id] = h.weekPlan && h.weekPlan[weekKey] ? h.weekPlan[weekKey].slice() : null;
+
+      const pedido = Array.isArray(plan[h.id]) ? plan[h.id] : activeDaysFor(h, weekKey);
+      const wp = h.weekPlan ? Object.assign({}, h.weekPlan) : {};
+      wp[weekKey] = lockPastDays(h, weekKey, pedido);
+      h.weekPlan = wp;
+    });
+
+    state.plannedWeeks[weekKey] = U.todayKey();
+    commit('habit:plan', { weekKey: weekKey });
+    return { weekKey: weekKey, prev: prev };
+  }
+
+  /** Deshace una confirmación: vuelve el plan anterior y la semana se desbloquea. */
+  function undoWeekPlan(snapshot) {
+    if (!snapshot || !isWeekLocked(snapshot.weekKey)) return false;
+    const wk = snapshot.weekKey;
+
+    Object.keys(snapshot.prev).forEach(function (id) {
+      const h = getHabit(id);
+      if (!h || !h.weekPlan) return;
+      const wp = Object.assign({}, h.weekPlan);
+      if (snapshot.prev[id]) wp[wk] = snapshot.prev[id];
+      else delete wp[wk];
+      h.weekPlan = Object.keys(wp).length ? wp : null;
+    });
+
+    delete state.plannedWeeks[wk];
+    commit('habit:plan', { weekKey: wk });
+    return true;
   }
 
   /** ¿Estaba en pausa ese día? Se consulta por fecha, nunca "ahora mismo". */
@@ -1071,11 +1159,14 @@ HT.store = (function () {
     });
   }
 
-  /** El tramo abierto, si lo hay: es lo que se enseña y lo que se reanuda. */
+  /**
+   * El tramo abierto, si lo hay: es lo que se enseña y lo que se reanuda.
+   * Se busca en toda la lista y no solo al final: una ausencia programada
+   * para más adelante puede ir detrás.
+   */
   function pauseInfo(habit) {
     if (!habit || !habit.pauses || !habit.pauses.length) return null;
-    const last = habit.pauses[habit.pauses.length - 1];
-    return last.to === null ? last : null;
+    return habit.pauses.filter(function (p) { return p.to === null; })[0] || null;
   }
 
   /**
@@ -1114,13 +1205,110 @@ HT.store = (function () {
     const hoy = U.todayKey();
     if (hoy <= abierto.from) {
       // Pausado y reanudado el mismo día: no llegó a pasar nada.
-      habit.pauses.pop();
+      habit.pauses.splice(habit.pauses.indexOf(abierto), 1);
     } else {
       abierto.to = hoy;
     }
 
     commit('habit:pause', { habitId: id, pause: null });
     return habit;
+  }
+
+  /* ── Ausencias programadas ────────────────────────────────
+     Un viaje, una temporada fuera: varios hábitos en pausa entre dos
+     fechas, programado con antelación. Por debajo son tramos de pausa
+     normales —los mismos que ya entienden rachas, porcentajes y EXP—
+     con un id común (`trip`) que permite listarlos y cancelarlos juntos.
+     ──────────────────────────────────────────────────────── */
+
+  const MAX_ABSENCE_DAYS = 180;
+
+  /**
+   * `to` es el último día de la ausencia, incluido. No puede empezar antes
+   * de hoy: pausar días pasados borraría fallos ya contados.
+   * Devuelve { id, count } o { error }.
+   */
+  function addAbsence(data) {
+    const hoy = U.todayKey();
+    const d = data || {};
+    if (!U.isValidKey(d.from) || !U.isValidKey(d.to)) return { error: 'fechas' };
+    if (d.from < hoy) return { error: 'pasado' };
+    if (d.to < d.from) return { error: 'orden' };
+    if (U.daysBetween(d.from, d.to) >= MAX_ABSENCE_DAYS) return { error: 'larga' };
+
+    const id = U.uid('a');
+    const reason = U.pauseReasonById(d.reason) ? d.reason : 'otro';
+    const note = cleanName(d.note, '').slice(0, 80);
+    const fin = U.addDaysKey(d.to, 1);              // los tramos excluyen el final
+    let count = 0;
+
+    (Array.isArray(d.habitIds) ? d.habitIds : []).forEach(function (hid) {
+      const h = getHabit(hid);
+      if (!h || h.archived) return;
+      // Si ya está en pausa indefinida desde antes, esto no añade nada.
+      const abierto = pauseInfo(h);
+      if (abierto && abierto.from <= d.from) return;
+
+      h.pauses.push({ from: d.from, to: fin, reason: reason, note: note, trip: id });
+      h.pauses.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : 0; });
+      while (h.pauses.length > MAX_PAUSES) h.pauses.shift();
+      count++;
+    });
+
+    if (!count) return { error: 'vacia' };
+    commit('habit:pause', { trip: id });
+    return { id: id, count: count };
+  }
+
+  /** Ausencias en curso o por venir, agrupadas. `to` es el último día, incluido. */
+  function getAbsences() {
+    const hoy = U.todayKey();
+    const byId = {};
+
+    getHabits().forEach(function (h) {
+      h.pauses.forEach(function (p) {
+        if (!p.trip || p.to <= hoy) return;
+        const a = byId[p.trip] || (byId[p.trip] = {
+          id: p.trip, from: p.from, to: U.addDaysKey(p.to, -1),
+          reason: p.reason, note: p.note, habitIds: []
+        });
+        a.habitIds.push(h.id);
+      });
+    });
+
+    return Object.keys(byId).map(function (k) { return byId[k]; })
+      .sort(function (a, b) { return a.from < b.from ? -1 : 1; });
+  }
+
+  /**
+   * Cancela una ausencia. Lo que aún no ha empezado desaparece; si ya está
+   * en curso, termina hoy —hoy vuelve a contar, como al reanudar una pausa—
+   * y los días que ya pasaron siguen sin contar.
+   */
+  function cancelAbsence(id) {
+    const hoy = U.todayKey();
+    let n = 0;
+
+    getHabits(true).forEach(function (h) {
+      h.pauses = h.pauses.filter(function (p) {
+        if (p.trip !== id || p.to <= hoy) return true;
+        n++;
+        if (p.from >= hoy) return false;
+        p.to = hoy;
+        return true;
+      });
+    });
+
+    if (!n) return false;
+    commit('habit:pause', { trip: id });
+    return true;
+  }
+
+  /** La ausencia que afecta a un hábito hoy o más adelante, si la hay. */
+  function absenceOf(habit) {
+    const hoy = U.todayKey();
+    if (!habit || !habit.pauses) return null;
+    return habit.pauses.filter(function (p) { return p.trip && p.to > hoy; })[0] || null;
   }
 
   function getLog(habitId, dateKey) {
@@ -1724,10 +1912,9 @@ HT.store = (function () {
 
   function replaceState(raw) {
     state = cleanState(raw);
-    // Importar no pasa por las migraciones, pero una copia anterior a la 2.0.0
-    // dejaría "Planificar la semana" como un check sin más. Esta es inocua:
-    // solo actúa si ningún hábito tiene ya el papel.
-    if (!(raw && raw.version >= 12)) migratePlannerRole();
+    // Importar no pasa por las migraciones, pero una copia anterior a la 2.1.0
+    // traería de vuelta "Planificar la semana" como hábito activo.
+    if (!(raw && raw.version >= 13)) migrateDropPlanner();
     save(true);
     emit('state:replace');
     return state;
@@ -1742,7 +1929,7 @@ HT.store = (function () {
 
   return {
     MAX_FREEZES: MAX_FREEZES,
-    load: load, save: save, subscribe: subscribe,
+    load: load, save: save, subscribe: subscribe, storageUse: storageUse,
     getState: getState, getSettings: getSettings, getGame: getGame, getLastError: getLastError,
     getHabits: getHabits, getArchivedHabits: getArchivedHabits, getHabit: getHabit,
     getHabitsForDate: getHabitsForDate, getLog: getLog, getHabitLogs: getHabitLogs,
@@ -1755,7 +1942,11 @@ HT.store = (function () {
     setNote: setNote,
     getDayMark: getDayMark, setDayMark: setDayMark, clearDayMark: clearDayMark,
     getWeight: getWeight, getWeights: getWeights, setWeight: setWeight,
-    activeDaysFor: activeDaysFor, setWeekPlan: setWeekPlan, weekKeyOf: weekKeyOf,
+    activeDaysFor: activeDaysFor, weekKeyOf: weekKeyOf, planWeeks: planWeeks,
+    isWeekLocked: isWeekLocked, weekPlannedOn: weekPlannedOn,
+    confirmWeekPlan: confirmWeekPlan, undoWeekPlan: undoWeekPlan,
+    addAbsence: addAbsence, getAbsences: getAbsences, cancelAbsence: cancelAbsence,
+    absenceOf: absenceOf,
     getFreeNotes: getFreeNotes, getFreeNote: getFreeNote, addFreeNote: addFreeNote,
     updateFreeNote: updateFreeNote, deleteFreeNote: deleteFreeNote, restoreFreeNote: restoreFreeNote,
     dismissWeekSummary: dismissWeekSummary,
