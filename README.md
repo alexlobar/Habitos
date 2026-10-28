@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.2.1** · esquema de datos **v14**.
+Versión documentada: **2.2.2** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -199,6 +199,14 @@ desajuste se note en vez de pasar en silencio:
   amplía los 5 MB.
 - Cuando el service worker nuevo releva al viejo con la página abierta, la app
   se recarga sola una vez para no quedarse con archivos de dos versiones.
+- Al instalarse, el service worker descarga los archivos con
+  `cache: 'reload'`, saltándose la caché HTTP del navegador (GitHub Pages da
+  10 minutos): así una versión subida poco después de otra no se guarda con
+  archivos de la anterior (2.2.2).
+- El almacén de cachés es del origen entero (`alexlobar.github.io`), igual que
+  `localStorage`: al actualizar, `sw.js` borra solo las cachés que empiezan por
+  `habitos-v`, nunca las de las otras apps publicadas ahí. Hasta la 2.2.1
+  borraba todas las que no fueran la suya.
 
 Formato `MAYOR.MENOR.PARCHE`: parche para correcciones y retoques, menor para
 funcionalidad nueva compatible, mayor para rediseños o datos incompatibles.

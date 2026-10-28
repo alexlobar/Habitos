@@ -5,7 +5,7 @@
    ============================================================ */
 /* Este número tiene que coincidir con VERSION en js/utils.js. Si se
    desincronizan, la pantalla de Ajustes lo avisa en lugar de callarse. */
-const CACHE = 'habitos-v2.2.1';
+const CACHE = 'habitos-v2.2.2';
 /* Todas las apps de alexlobar.github.io comparten el almacén de cachés:
    al actualizar, sólo se borran las de esta app (las que empiezan así). */
 const PREFIX = 'habitos-v';
@@ -30,7 +30,14 @@ const ASSETS = [
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE)
-      .then(function (cache) { return cache.addAll(ASSETS); })
+      // 'reload' salta la caché HTTP del navegador (GitHub Pages da 10 min):
+      // sin esto, una versión subida poco después de la anterior podía
+      // guardar en la caché nueva archivos de la vieja.
+      .then(function (cache) {
+        return cache.addAll(ASSETS.map(function (url) {
+          return new Request(url, { cache: 'reload' });
+        }));
+      })
       .then(function () { return self.skipWaiting(); })
   );
 });
