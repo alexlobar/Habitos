@@ -761,6 +761,21 @@ HT.store = (function () {
 
   /* ── Carga y guardado ─────────────────────────────────────── */
 
+  /** Deja en `state` unos datos leídos del almacén, saneados y migrados. */
+  function adopt(parsed) {
+    const incoming = Math.floor(Number(parsed && parsed.version)) || 1;
+
+    state = cleanState(parsed);
+    refillFreezes();
+    if (incoming < 3) migrateToWorkout();
+    if (incoming < 4) migrateToCategories();
+    if (incoming < 5) migrateToScreenSlots();
+    if (incoming < 6) migrateSeedTweaks();
+    if (incoming < 8) migrateNewDefaults();
+    if (incoming < 11) migrateAddRedes();
+    if (incoming < 13) migrateDropPlanner();
+  }
+
   function load() {
     lastError = null;
     let raw = null;
@@ -784,17 +799,16 @@ HT.store = (function () {
 
     try {
       const parsed = JSON.parse(raw);
-      const incoming = Math.floor(Number(parsed && parsed.version)) || 1;
+      adopt(parsed);
+      disk = raw;
 
-      state = cleanState(parsed);
-      refillFreezes();
-      if (incoming < 3) migrateToWorkout();
-      if (incoming < 4) migrateToCategories();
-      if (incoming < 5) migrateToScreenSlots();
-      if (incoming < 6) migrateSeedTweaks();
-      if (incoming < 8) migrateNewDefaults();
-      if (incoming < 11) migrateAddRedes();
-      if (incoming < 13) migrateDropPlanner();
+      // Guardado por una versión más nueva de la app (otra ventana ya
+      // actualizada): esta se ve, pero no escribe, o borraría lo que no conoce.
+      if ((Math.floor(Number(parsed && parsed.version)) || 1) > VERSION) {
+        writable = false;
+        lastError = { type: 'outdated' };
+        return state;
+      }
       save();
     } catch (err) {
       console.error('Datos corruptos en localStorage:', err);
@@ -807,10 +821,105 @@ HT.store = (function () {
     return state;
   }
 
-  function writeNow() {
+  /* ── Varias ventanas a la vez ─────────────────────────────
+     La app instalada y una pestaña del navegador comparten el almacén.
+     Hasta la 2.3.3 cada ventana guardaba su copia entera sin mirar, y la
+     que llevaba rato abierta pisaba, al recargarse o cerrarse, lo apuntado
+     en la otra: el fallo desaparecía "solo".
+
+     Ahora cada ventana recuerda qué había en el almacén la última vez que
+     leyó o escribió (`disk`). Si al guardar sigue igual, escribe sin más.
+     Si otra ventana lo ha cambiado, se queda con lo de la otra y pone encima
+     solo lo que ha cambiado aquí. Y no espera a guardar: en cuanto otra
+     ventana escribe, o al volver a esta, se trae lo nuevo. ───────────── */
+
+  let disk = null;           // el texto del almacén tal como lo vio esta ventana
+  let pending = false;       // hay cambios de aquí sin escribir
+
+  function isObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+
+  function same(a, b) {
+    if (a === b) return true;
+    if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    const ka = Object.keys(a);
+    if (ka.length !== Object.keys(b).length) return false;
+    return ka.every(function (k) { return same(a[k], b[k]); });
+  }
+
+  /**
+   * Mezcla a tres bandas. `base` es lo que había, `mine` lo de esta ventana y
+   * `theirs` lo que ha guardado otra. Lo que solo ha cambiado un lado gana; si
+   * han cambiado los dos el mismo dato, gana esta ventana, que es la que
+   * guarda ahora. Los objetos se mezclan clave a clave —así un registro de
+   * Gula aquí y uno de Lectura allí sobreviven los dos—; las listas, enteras.
+   * `undefined` es "no existe", y así borrar también cuenta como cambio.
+   */
+  function merge3(base, mine, theirs) {
+    if (same(mine, base)) return theirs;
+    if (same(theirs, base)) return mine;
+    if (!isObj(mine) || !isObj(theirs)) return mine;
+
+    const b = isObj(base) ? base : {};
+    const out = {};
+    Object.keys(Object.assign({}, b, mine, theirs)).forEach(function (k) {
+      const v = merge3(b[k], mine[k], theirs[k]);
+      if (v !== undefined) out[k] = v;
+    });
+    return out;
+  }
+
+  /**
+   * Si otra ventana ha guardado desde la última vez, trae lo suyo mezclado
+   * con lo pendiente de aquí. Devuelve true si ha cambiado algo.
+   */
+  function syncFromDisk() {
+    if (!writable || disk === null) return false;
+
+    let current;
+    try { current = localStorage.getItem(KEY); } catch (e) { return false; }
+    if (current === null || current === disk) return false;
+
+    let parsed;
+    try { parsed = JSON.parse(current); } catch (e) { return false; }   // dañado: manda lo de aquí
+    if (!isObj(parsed)) return false;
+
+    // Otra ventana ya va con una versión más nueva: esta no sabría guardar sus
+    // datos sin perder lo que no conoce. Deja de escribir y pide recargar.
+    if ((Math.floor(Number(parsed.version)) || 1) > VERSION) {
+      writable = false;
+      scheduleWrite.cancel();
+      emit('outdated');
+      return false;
+    }
+
+    const base = JSON.parse(disk);
+    const mine = JSON.parse(JSON.stringify(state));
+    adopt(parsed);
+    const theirs = state;
+    const merged = merge3(base, mine, theirs);
+
+    // La EXP se suma, no se elige: si aquí ganaste 10 y allí 20, son 30.
+    if (isObj(merged.game) && base.game && mine.game) {
+      merged.game.points = Math.max(0, theirs.game.points + mine.game.points - base.game.points);
+    }
+
+    state = cleanState(merged);
+    disk = current;
+    emit('state:replace');
+    return true;
+  }
+
+  function writeNow(force) {
     if (!writable) return false;
     try {
-      localStorage.setItem(KEY, JSON.stringify(state));
+      // Reemplazar todo (importar, restablecer) no mezcla: es lo que se pide.
+      if (!force) syncFromDisk();
+      if (!writable) return false;
+      const json = JSON.stringify(state);
+      localStorage.setItem(KEY, json);
+      disk = json;
+      pending = false;
       return true;
     } catch (err) {
       console.error('No se pudo guardar:', err);
@@ -852,14 +961,39 @@ HT.store = (function () {
   // sobre todo): se agrupan para no serializar el estado en cada pulsación.
   const scheduleWrite = U.debounce(writeNow, 180);
 
-  function save(immediate) {
-    if (immediate) { scheduleWrite.cancel(); return writeNow(); }
+  function save(immediate, force) {
+    pending = true;
+    if (immediate) { scheduleWrite.cancel(); return writeNow(force); }
     scheduleWrite();
     return true;
   }
 
+  /** Escribe ya lo pendiente. Sin nada pendiente no toca el almacén. */
+  function flush() {
+    if (pending) save(true);
+  }
+
   // Cerrar la pestaña con una escritura pendiente perdería el último check.
-  window.addEventListener('pagehide', function () { save(true); });
+  // Esconderla también cuenta: Android puede cerrar una app de fondo sin
+  // avisar con `pagehide`.
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
+
+  // Otra ventana acaba de guardar: se trae lo suyo al momento. Si aquí había
+  // algo a medio escribir, la mezcla lo conserva y se guarda enseguida.
+  window.addEventListener('storage', function (e) {
+    if (e.key !== KEY || e.newValue === null) return;
+    if (syncFromDisk() && pending) save();
+  });
+
+  // El móvil congela las ventanas de fondo y pueden perderse ese aviso: al
+  // volver a esta se comprueba igualmente.
+  function syncOnReturn() {
+    if (document.hidden) return;
+    if (syncFromDisk() && pending) save();
+  }
+  document.addEventListener('visibilitychange', syncOnReturn);
+  window.addEventListener('pageshow', syncOnReturn);
 
   /* ── Suscripción ──────────────────────────────────────────── */
 
@@ -1600,21 +1734,21 @@ HT.store = (function () {
     // Importar no pasa por las migraciones, pero una copia anterior a la 2.1.0
     // traería de vuelta "Planificar la semana" como hábito activo.
     if (!(raw && raw.version >= 13)) migrateDropPlanner();
-    save(true);
+    save(true, true);
     emit('state:replace');
     return state;
   }
 
   function reset() {
     state = defaultState();
-    save(true);
+    save(true, true);
     emit('state:replace');
     return state;
   }
 
   return {
     MAX_FREEZES: MAX_FREEZES,
-    load: load, save: save, subscribe: subscribe, storageUse: storageUse,
+    load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
     getState: getState, getSettings: getSettings, getGame: getGame, getLastError: getLastError,
     getHabits: getHabits, getArchivedHabits: getArchivedHabits, getHabit: getHabit,
     getHabitsForDate: getHabitsForDate, getLog: getLog, getHabitLogs: getHabitLogs,

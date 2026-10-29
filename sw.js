@@ -5,7 +5,7 @@
    ============================================================ */
 /* Este número tiene que coincidir con VERSION en js/utils.js. Si se
    desincronizan, la pantalla de Ajustes lo avisa en lugar de callarse. */
-const CACHE = 'habitos-v2.3.3';
+const CACHE = 'habitos-v2.3.4';
 /* Todas las apps de alexlobar.github.io comparten el almacén de cachés:
    al actualizar, sólo se borran las de esta app (las que empiezan así). */
 const PREFIX = 'habitos-v';

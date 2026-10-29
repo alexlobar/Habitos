@@ -22,7 +22,7 @@ HT.utils = (function () {
      otro sitio donde aparece es CACHE en sw.js, porque un service worker
      no puede leer este archivo; si se desincronizan, Ajustes lo avisa en
      vez de callarse. ─────────────────────────────────────── */
-  const VERSION = '2.3.3';
+  const VERSION = '2.3.4';
   const BUILD_DATE = '2026-10-29';
 
   /* ── Colores predeterminados ──────────────────────────────
@@ -272,13 +272,22 @@ HT.utils = (function () {
 
   function debounce(fn, wait) {
     let t = null;
-    function wrapped() {
-      const args = arguments;
-      const self = this;
-      clearTimeout(t);
-      t = setTimeout(function () { fn.apply(self, args); }, wait);
+    let call = null;           // [this, argumentos] de la llamada que espera
+    function run() {
+      const c = call;
+      t = null;
+      call = null;
+      if (c) fn.apply(c[0], c[1]);
     }
-    wrapped.cancel = function () { clearTimeout(t); t = null; };
+    function wrapped() {
+      call = [this, arguments];
+      clearTimeout(t);
+      t = setTimeout(run, wait);
+    }
+    wrapped.cancel = function () { clearTimeout(t); t = null; call = null; };
+    // Ejecuta ya lo que estaba esperando, si había algo. Es lo que se usa al
+    // cerrar o esconder la app: un temporizador pendiente no sobrevive a eso.
+    wrapped.flush = function () { if (t !== null) { clearTimeout(t); run(); } };
     return wrapped;
   }
 

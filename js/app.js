@@ -136,6 +136,12 @@
         UI.toast('No se pudieron guardar los cambios. ¿Sin espacio en el navegador?',
                  { type: 'error', icon: '⚠️' });
         break;
+      case 'outdated':
+        // Otra ventana ya tiene una versión más nueva: esta ha dejado de
+        // guardar para no pisarla, así que se recarga para ponerse al día.
+        UI.toast('Hay una versión más nueva abierta. Actualizando…', { icon: '🔄' });
+        setTimeout(function () { window.location.reload(); }, 1500);
+        return;
       default:
         // habit:*, settings, freeze y reemplazos tocan demasiadas cosas.
         dirty.all = true;
@@ -1312,6 +1318,19 @@
       S.updateFreeNote(campo.dataset.free, patch);
     }, 400);
 
+    // Los campos guardan un instante después de dejar de escribir. Recargar o
+    // salir de la app justo entonces perdía lo último tecleado: al esconderse
+    // o cerrarse, se guarda ya lo que estuviera esperando y se escribe.
+    const fieldSaves = [commitAmount, saveNote, saveWeightSoon, saveToday, saveOldNote, saveFreeSoon];
+    function flushFields() {
+      fieldSaves.forEach(function (f) { f.flush(); });
+      S.flush();
+    }
+    window.addEventListener('pagehide', flushFields);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) flushFields();
+    });
+
     els.freeNotesList.addEventListener('click', function (e) {
       const editar = e.target.closest('[data-free-edit]');
       if (editar) {
@@ -1791,6 +1810,10 @@
     } else if (err && err.type === 'unavailable') {
       UI.toast('El navegador bloquea el almacenamiento: los cambios no se guardarán.',
                { type: 'error', icon: '⚠️' });
+    } else if (err && err.type === 'outdated') {
+      UI.toast('Tus datos son de una versión más nueva de la app. Esta no guardará ' +
+               'nada hasta que la cierres del todo y la vuelvas a abrir.',
+               { type: 'error', icon: '⚠️', duration: 12000 });
     } else {
       // Solo si no hay ya un aviso más urgente en pantalla.
       checkBackupReminder();

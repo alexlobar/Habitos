@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.3.3** · esquema de datos **v14**.
+Versión documentada: **2.3.4** · esquema de datos **v14**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -445,6 +445,11 @@ De ahí salen tres garantías:
 3. Volver a abrir una pantalla no cambia ningún estado, así que no paga nada.
 
 Sin esto, marcar y desmarcar en bucle sería una máquina de fabricar niveles.
+
+Con la app abierta en dos ventanas (la instalada y una pestaña), cada una gana
+su EXP por su lado. Desde la 2.3.4, al mezclar lo que guardan, la EXP se suma
+(lo que tenían en común más lo ganado en cada una) en lugar de quedarse con la
+cifra de una sola.
 
 **Lo que no da EXP, a propósito:** anotar el motivo de un día malo. Pagaría por
 declarar días malos y acabarías inventándolos. Su recompensa es que la racha de

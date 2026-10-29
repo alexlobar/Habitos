@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.3.3** · esquema de datos **v14**.
+Versión documentada: **2.3.4** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -433,6 +433,23 @@ En la v14 el saneado copia `workout.linkedHabitId` a `trainingHabitId` y deja
 fuera rutinas, ejercicios, sesiones y el ajuste `restSeconds`; eso vale igual
 al cargar que al importar una copia antigua. La EXP que dieron los entrenos se
 queda.
+
+### Varias ventanas a la vez (2.3.4)
+
+La app instalada y una pestaña del navegador comparten el mismo almacén. Hasta
+la 2.3.3 cada ventana escribía su copia entera, y la que llevaba rato abierta
+pisaba al recargarse o cerrarse lo apuntado en la otra. Ahora:
+
+- Cada ventana recuerda el texto del almacén que leyó o escribió por última vez.
+  Al guardar, si sigue igual escribe; si otra ventana lo ha cambiado, hace una
+  mezcla a tres bandas (`merge3()`): lo que solo cambió un lado gana, y si
+  cambiaron los dos el mismo dato, gana la que guarda. La EXP se suma.
+- Con el evento `storage`, al volver a la ventana (`visibilitychange`) y al
+  restaurarla (`pageshow`), trae lo nuevo sin esperar a guardar.
+- Al cerrarse (`pagehide`) solo escribe si tiene cambios pendientes.
+- Importar y restablecer no mezclan: reemplazan.
+- Si otra ventana ya ha guardado con un esquema más nuevo, esta deja de
+  escribir y se recarga.
 
 **Importar no ejecuta las migraciones**, solo el saneado, con una excepción:
 una copia anterior a la v13 pasa también por `migrateDropPlanner()`, para que
