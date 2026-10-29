@@ -61,9 +61,11 @@ HT.ui = (function () {
   // Progreso ya no tiene botón en la barra: se entra por la chapa del rango.
   // Como ningún `data-view` vale 'progress', no se marca nada, igual que
   // pasa con la ficha de un hábito.
+  // Plan tampoco desde la 2.3.0: se entra por "Planificar" de Histórico, y
+  // mientras se mira sigue marcada esa sección.
   const NAV_OF_VIEW = {
     today: 'today', week: 'week', notes: 'notes',
-    progress: 'progress', habit: 'today', plan: 'plan', settings: 'settings'
+    progress: 'progress', habit: 'today', plan: 'week', settings: 'settings'
   };
 
   // Iconos sugeridos. Se guardan como array y no como una cadena para
@@ -122,6 +124,7 @@ HT.ui = (function () {
       'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup',
       'backupStatus', 'backupIcon', 'backupTitle', 'backupHint', 'btnBackupNow',
       'setHideDone', 'setDayBar', 'setShowFreeze', 'setShowNotes',
+      'setHideWeight', 'setHideAvoid', 'setHideNotes',
       'btnResetProgress', 'noteCard', 'btnBackFromProgress',
       'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
       'emptyNotes', 'emptyNotesTitle', 'emptyNotesText',
@@ -131,7 +134,7 @@ HT.ui = (function () {
       'fCategory', 'limitField', 'fLimit', 'avoidModeFields', 'capHint', 'fTargetLabel',
       'fName', 'fNameError',
       'weekRecap', 'recapRange', 'btnRecapClose', 'recapStats', 'recapLines', 'btnRecapPlan',
-      'btnPlanWeek', 'planRange', 'planStatus', 'planLock', 'planHint',
+      'btnPlanWeek', 'btnBackFromPlan', 'planRange', 'planStatus', 'planLock', 'planHint',
       'planList', 'planEmpty', 'planActions', 'btnPlanConfirm', 'btnPlanReset',
       'planNote', 'planNoteText', 'pausedNoteIcon',
       'btnAddAbsence', 'absenceList', 'absenceModal', 'absenceForm', 'absenceFrom', 'absenceTo',
@@ -846,7 +849,7 @@ HT.ui = (function () {
       return;
     }
 
-    const pausados = S.getHabits().filter(function (h) { return !!S.pauseInfo(h); });
+    const pausados = visibleHabits(S.getHabits()).filter(function (h) { return !!S.pauseInfo(h); });
 
     els.pausedNote.hidden = !pausados.length;
     if (!pausados.length) return;
@@ -1179,7 +1182,9 @@ HT.ui = (function () {
     // y es más rápido desmarcar los dos que sigues haciendo.
     const lista = document.createDocumentFragment();
     S.getHabits().slice().sort(byName).forEach(function (h) {
-      const li = el('li');
+      // Uno oculto por privacidad no se enseña, pero sigue marcado: la
+      // ausencia lo pausa igual que si estuviera a la vista.
+      const li = el('li', { hidden: isHiddenHabit(h) ? '' : null });
       const label = el('label', { class: 'absence-habit' });
       const box = el('input', { type: 'checkbox', value: h.id, class: 'absence-habit__box' });
       box.checked = true;
@@ -1260,7 +1265,7 @@ HT.ui = (function () {
 
   /** Reconstruye la lista entera. Solo al añadir, editar, borrar o cambiar de día. */
   function renderHabitList(dateKey) {
-    const habits = S.getHabitsForDate(dateKey);
+    const habits = visibleHabits(S.getHabitsForDate(dateKey));
     const frag = document.createDocumentFragment();
 
     Object.keys(cardIndex).forEach(function (k) { delete cardIndex[k]; });
@@ -1440,6 +1445,7 @@ HT.ui = (function () {
                   ', ' + r.weakest.done + ' de ' + r.weakest.total + '.');
     }
     r.capped.forEach(function (c) {
+      if (isHiddenHabit(c.habit)) return;
       const u = c.habit.target.unit;
       const d = Math.round((c.sum - c.prev) * 10) / 10;
       let txt = c.habit.icon + ' ' + c.habit.name + ': ' + (Math.round(c.sum * 10) / 10) + ' ' + u;
@@ -1447,7 +1453,7 @@ HT.ui = (function () {
       if (c.over) txt += ' · ' + c.over + (c.over === 1 ? ' día pasado' : ' días pasados') + ' del máximo';
       lineas.push(txt + '.');
     });
-    if (r.weight) {
+    if (r.weight && !S.getSettings().hideWeight) {
       lineas.push('Peso: media de ' + kg(r.weight.avg) +
                   (r.weight.change === null ? '' : ' (' + kgDelta(r.weight.change) + ')') + '.');
     }
@@ -1723,7 +1729,8 @@ HT.ui = (function () {
     if (!mark) return '';
     const motivo = mark.reason ? U.dayReasonById(mark.reason) : null;
     const nombre = motivo ? motivo.name : 'Día salvado';
-    return mark.note ? nombre + ' · ' + mark.note : nombre;
+    // Lo escrito a mano es una nota más: con las notas ocultas no sale.
+    return mark.note && !S.getSettings().hideNotes ? nombre + ' · ' + mark.note : nombre;
   }
 
   function dayMarkSummary(mark) {
@@ -2721,7 +2728,7 @@ HT.ui = (function () {
    * porcentajes y fuera de la lista de rachas normal.
    */
   function renderAvoidList(dateKey) {
-    const habits = S.getHabits().filter(St.isAvoid);
+    const habits = visibleHabits(S.getHabits().filter(St.isAvoid));
 
     els.avoidCard.hidden = habits.length === 0;
     if (!habits.length) return;
@@ -3195,6 +3202,9 @@ HT.ui = (function () {
     els.setShowFreeze.setAttribute('aria-checked', s.showFreeze ? 'true' : 'false');
     els.setShowNotes.setAttribute('aria-checked', s.showNotes ? 'true' : 'false');
     els.setShowWeight.setAttribute('aria-checked', s.showWeight ? 'true' : 'false');
+    els.setHideWeight.setAttribute('aria-checked', s.hideWeight ? 'true' : 'false');
+    els.setHideAvoid.setAttribute('aria-checked', s.hideAvoid ? 'true' : 'false');
+    els.setHideNotes.setAttribute('aria-checked', s.hideNotes ? 'true' : 'false');
 
     applyControls(s.controls);
     applyTheme(s.theme);
@@ -3372,7 +3382,7 @@ HT.ui = (function () {
    * llega a un hábito archivado sin restaurarlo antes.
    */
   function renderArchived() {
-    const todos = S.getHabits(true);
+    const todos = visibleHabits(S.getHabits(true));
     const activos = todos.filter(function (h) { return !h.archived; }).length;
 
     const guardados = todos.length - activos;
@@ -3443,7 +3453,7 @@ HT.ui = (function () {
      Tres atributos en <html> y el CSS hace el resto. Nada de clases
      repartidas por los componentes. ─────────────────────────── */
 
-  const CONTROLS = ['compact', 'comfy', 'roomy'];
+  const CONTROLS = ['mini', 'compact', 'comfy', 'roomy'];
   const FONT_SIZES = ['small', 'normal', 'large', 'xlarge'];
 
   function applyControls(mode) {
@@ -3465,11 +3475,35 @@ HT.ui = (function () {
       FONT_SIZES.indexOf(size) >= 0 ? size : 'normal';
   }
 
+  /* ── Privacidad ───────────────────────────────────────────
+     Tres interruptores de Ajustes que esconden lo sensible en toda la app:
+     el peso, los hábitos a evitar y las notas. Solo tocan lo que se pinta;
+     rachas, porcentajes y EXP siguen contándolo todo, así que encenderlos
+     y apagarlos nunca cambia un número. ───────────────────────────── */
+
+  /** ¿Este hábito no debe verse ahora? Solo los de evitar se pueden ocultar. */
+  function isHiddenHabit(habit) {
+    return S.getSettings().hideAvoid && St.isAvoid(habit);
+  }
+
+  function visibleHabits(habits) {
+    return habits.filter(function (h) { return !isHiddenHabit(h); });
+  }
+
   /** Qué partes de Hoy se muestran. */
   function applyDayLayout(s) {
     els.dayProgress.hidden = !s.showDayBar;
-    els.noteCard.hidden = !s.showNotes;
-    els.weightEntryCard.hidden = !s.showWeight;
+    els.noteCard.hidden = !s.showNotes || s.hideNotes;
+    els.weightEntryCard.hidden = !s.showWeight || s.hideWeight;
+
+    // Las tarjetas de Histórico, Progreso y la barra se esconden por CSS
+    // desde estos atributos: no hace falta repasarlas una a una al pintar.
+    const root = document.documentElement.dataset;
+    root.hideWeight = s.hideWeight ? 'on' : 'off';
+    root.hideAvoid = s.hideAvoid ? 'on' : 'off';
+    root.hideNotes = s.hideNotes ? 'on' : 'off';
+    // Si se ocultan las notas con Notas abierta, se vuelve a Hoy.
+    if (s.hideNotes && !els.views.notes.hidden) setView('today');
     // El de congelar además depende de si ese día hay algo que salvar, así
     // que aquí solo se marca la preferencia y renderDayExtras decide.
     document.documentElement.dataset.freeze = s.showFreeze ? 'on' : 'off';
@@ -3809,6 +3843,7 @@ HT.ui = (function () {
   return {
     els: els, init: init, setView: setView,
     getMissingIds: function () { return missingIds.slice(); },
+    isHiddenHabit: isHiddenHabit,
     renderHeader: renderHeader, renderHabitList: renderHabitList, updateCard: updateCard,
     renderDayExtras: renderDayExtras, pulse: pulse,
     renderWeek: renderWeek,

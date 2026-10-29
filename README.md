@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.2.2** · esquema de datos **v14**.
+Versión documentada: **2.3.0** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -37,10 +37,11 @@ Los `<script>` deben cargarse en ese orden.
 
 ## Las pantallas
 
-La barra de navegación tiene cinco secciones: **Hoy · Histórico · Notas · Plan ·
+La barra de navegación tiene cuatro secciones: **Hoy · Histórico · Notas ·
 Ajustes**. (Ejercicios salió en la 2.2.0: el entreno se apunta en otra app y
-aquí queda el hábito "Entrenar".) Progreso no está en ella: se abre desde la chapa de nivel y
-rango de arriba a la derecha.
+aquí queda el hábito "Entrenar". Plan salió de la barra en la 2.3.0: se entra
+por *Planificar* de Histórico.) Progreso tampoco está en ella: se abre desde la
+chapa de nivel y rango de arriba a la derecha.
 
 **Cabecera.** El día que estás mirando en grande, con flechas para ir hacia
 atrás y un calendario para saltar a cualquier fecha. A la izquierda, el
@@ -70,7 +71,9 @@ está la que viene). Durante una ausencia, otra línea dice hasta cuándo dura.
   no se piden, no cuentan como fallados y las rachas se quedan donde estén.
   Una ausencia por venir se cancela; una en curso se termina hoy.
 
-También se llega desde *Planificar* en Histórico y desde el resumen semanal.
+Se entra desde **Planificar** (en negrita, con el icono del calendario) en
+Histórico, desde el resumen semanal y desde el aviso de semana sin planificar
+de Hoy. *Volver* lleva a la pantalla desde la que se entró.
 
 **Histórico.** La semana en rejilla (hábito × día), los totales de los hábitos
 por cantidad, el cumplimiento de la semana y del mes, el calendario en vista
@@ -86,9 +89,25 @@ el lápiz la edita ahí mismo; vaciarla la borra. Una nota libre que se cierra
 vacía se descarta, y al eliminarla hay 7 segundos para deshacerlo. El buscador
 filtra las dos listas.
 
-**Ajustes.** Apariencia, qué se ve en Hoy, entrenamiento, la lista de todos tus
+**Ajustes.** Apariencia, qué se ve en Hoy, privacidad, la lista de todos tus
 hábitos (con archivados y pausados), copia de seguridad y la información de la
 instalación.
+
+**Privacidad** (2.3.0), para enseñar la app sin enseñar lo más personal. Tres
+interruptores, todos apagados de entrada:
+
+- *Ocultar el peso*: el peso del día en Hoy, la tarjeta de peso de Histórico
+  y su línea del resumen semanal.
+- *Ocultar los hábitos a evitar*: sus tarjetas en Hoy, "Días sin" de
+  Progreso, sus líneas del resumen semanal, la lista de Ajustes y el aviso de
+  pausa. Mientras estén ocultos no se pueden apuntar fallos; la EXP de sus
+  hitos se cobra igual, pero el aviso no dice el nombre.
+- *Ocultar las notas*: la sección Notas (sale de la barra), la nota del día en
+  Hoy y lo escrito a mano al anotar un día.
+
+Solo cambia lo que se ve: todo sigue guardado y contando para rachas,
+porcentajes y EXP, y las exportaciones lo llevan todo. La barra del día no
+delata nada, porque ya solo contaba los hábitos normales.
 
 **Progreso** (desde la chapa). Nivel y rango, los cinco atributos, las dos
 rachas, el historial de ascensos, las rachas por hábito, los días sin caer en
@@ -239,8 +258,10 @@ ajusta al tema: lo aclara sobre oscuro y lo oscurece sobre claro.
 
 **Tema claro** (sección 1b): solo redefine tokens; ningún componente sabe en qué
 tema está. **Tamaño de letra** (sección 1c): cuatro escalones que reescriben los
-seis `--fs-*` a la vez. **Tamaño de los controles**: compacto, cómodo o amplio,
-vía `data-controls` en `<html>`.
+seis `--fs-*` a la vez. **Tamaño de los controles**: muy compacto, compacto,
+cómodo o amplio, vía `data-controls` en `<html>`. *Muy compacto* (2.3.0) está
+pensado para el móvil: tarjetas más bajas, controles de 32px y, cuando cabe, el
+control al lado del nombre en vez de en su propia línea.
 
 ### El tema de Progreso
 
@@ -297,9 +318,11 @@ Una sola clave, `habitTracker.v1`:
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
     "fontSize": "normal",             // "small" | "normal" | "large" | "xlarge"
-    "controls": "compact",            // "compact" | "comfy" | "roomy"
+    "controls": "compact",            // "mini" | "compact" | "comfy" | "roomy"
     "hideDone": true,
     "showDayBar": true, "showNotes": true, "showFreeze": true, "showWeight": true,
+    // privacidad: ocultan en toda la app, no solo en Hoy (2.3.0)
+    "hideWeight": false, "hideAvoid": false, "hideNotes": false,
     "backupDays": 14,                 // aviso de copia: 0, 7, 14 o 30 días
     "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"
     "weekStart": 1,                   // fijo en lunes desde la 1.6.5

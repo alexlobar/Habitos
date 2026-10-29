@@ -100,6 +100,7 @@
 
     const habit = S.getHabit(habitId);
     if (!habit) { closeHabit(); return; }        // lo han borrado desde el modal
+    if (UI.isHiddenHabit(habit)) { closeHabit(); return; }   // se acaba de ocultar
     UI.renderHabitView(habit, habitMonth, today);
   }
 
@@ -238,7 +239,10 @@
     S.setAvoidXpPaid(debido);
     grantXp(debido - pagado);
 
+    // La EXP se cobra igual, pero con los de evitar ocultos el aviso no
+    // dice el nombre: sería justo lo que se quiere esconder.
     S.getHabits().filter(St.isAvoid).forEach(function (h) {
+      if (UI.isHiddenHabit(h)) return;
       const hito = St.avoidMilestoneAt(St.currentStreak(h, today));
       if (hito) UI.toast(hito.name + ': ' + h.name, { type: 'achievement', icon: '💧' });
     });
@@ -531,8 +535,16 @@
      viene. Al confirmar, la semana se bloquea hasta el domingo. Planificar
      no da EXP: es una herramienta, no un hábito. ───────────────────── */
 
+  // Vista a la que vuelve "Volver" de Plan: la que estaba abierta al entrar.
+  let planBack = 'week';
+
   /** Abre Plan. Sin semana indicada, el domingo ofrece ya la que viene. */
   function showPlan(offset) {
+    const abierta = Object.keys(UI.els.views).filter(function (k) {
+      return !UI.els.views[k].hidden;
+    })[0];
+    if (abierta && abierta !== 'plan') planBack = abierta;
+
     const o = offset === undefined ? (U.fromKey(today).getDay() === 0 ? 1 : 0) : offset;
     UI.setPlanOffset(o);
     UI.resetPlanDraft();
@@ -1085,7 +1097,6 @@
         if (btn.dataset.view === 'progress') showProgress();
         else if (btn.dataset.view === 'week') showWeek();
         else if (btn.dataset.view === 'notes') showNotes();
-        else if (btn.dataset.view === 'plan') showPlan();
         else UI.setView(btn.dataset.view);
       });
     });
@@ -1350,6 +1361,12 @@
 
     // Plan de la semana
     els.btnPlanWeek.addEventListener('click', function () { showPlan(); });
+    els.btnBackFromPlan.addEventListener('click', function () {
+      if (planBack === 'week') showWeek();
+      else if (planBack === 'notes') showNotes();
+      else UI.setView(planBack === 'habit' ? 'today' : planBack);
+      window.scrollTo(0, 0);
+    });
     els.btnRecapPlan.addEventListener('click', function () { showPlan(0); });
     els.planNote.addEventListener('click', function () { showPlan(Number(els.planNote.dataset.week) || 0); });
     els.btnRecapClose.addEventListener('click', function () {
@@ -1557,6 +1574,9 @@
     toggle(els.setShowFreeze, 'showFreeze');
     toggle(els.setShowNotes, 'showNotes');
     toggle(els.setShowWeight, 'showWeight');
+    toggle(els.setHideWeight, 'hideWeight');
+    toggle(els.setHideAvoid, 'hideAvoid');
+    toggle(els.setHideNotes, 'hideNotes');
 
     els.btnResetProgress.addEventListener('click', resetProgressOnly);
 

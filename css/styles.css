@@ -495,6 +495,30 @@ svg { display: block; }
   font-weight: 700;
   letter-spacing: -.02em;
 }
+/* Cabecera con "Volver" + título a un lado y controles al otro (Plan). Si
+   no caben en el móvil, los controles bajan a su propia línea. */
+.view__head--wrap { flex-wrap: wrap; }
+.view__lead { display: flex; align-items: center; gap: var(--sp-1); }
+
+/* Privacidad (Ajustes): lo que se esconde entero desde los atributos de
+   <html>. Las listas de hábitos y los textos los filtra ui.js al pintar. */
+[data-hide-weight="on"] #weightCard,
+[data-hide-avoid="on"] #avoidCard,
+[data-hide-notes="on"] .nav__item[data-view="notes"] { display: none !important; }
+
+/* "Planificar" de Histórico: es la única entrada a Plan desde la 2.3.0,
+   así que va en negrita y con el icono que tenía en la barra. */
+.btn--plan { font-weight: 750; }
+.btn__icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .card {
   padding: var(--sp-4);
@@ -992,7 +1016,7 @@ button.habit-card__icon:active { transform: scale(.94); }
 }
 
 /* ── Tamaño de los controles (Ajustes) ───────────────────────
-   Un solo atributo en <html> manda sobre las tres variantes. */
+   Un solo atributo en <html> manda sobre las cuatro variantes. */
 [data-controls="comfy"] .check-btn { width: 52px; height: 52px; }
 [data-controls="comfy"] .check-btn svg { width: 26px; height: 26px; }
 [data-controls="comfy"] .round-btn { width: 54px; height: 54px; font-size: var(--fs-2xl); }
@@ -1006,6 +1030,38 @@ button.habit-card__icon:active { transform: scale(.94); }
 [data-controls="compact"] .check-btn { width: 38px; height: 38px; }
 [data-controls="compact"] .round-btn { width: 42px; height: 42px; }
 [data-controls="compact"] .habit-card .habit-card__amount { width: 4.75rem; min-height: 36px; }
+
+/* Muy compacto (2.3.0): pensado para el móvil, para ver más hábitos sin
+   desplazarse. Tarjetas más bajas, controles de 32px y, en el móvil, el
+   control al lado del nombre cuando cabe en vez de en su propia línea. */
+[data-controls="mini"] .habit-list { gap: 6px; }
+[data-controls="mini"] .habit-card { gap: 4px; padding: 6px var(--sp-2) 6px var(--sp-3); }
+[data-controls="mini"] .habit-card__icon { width: 26px; height: 26px; font-size: var(--fs-sm); }
+[data-controls="mini"] .habit-card__name { font-size: var(--fs-sm); }
+[data-controls="mini"] .habit-card__pct { display: none; }
+[data-controls="mini"] .check-btn { width: 32px; height: 32px; }
+[data-controls="mini"] .check-btn svg { width: 16px; height: 16px; }
+[data-controls="mini"] .round-btn { width: 32px; height: 32px; font-size: var(--fs-md); }
+[data-controls="mini"] .stepper { gap: 4px; }
+[data-controls="mini"] .habit-card__value strong { font-size: var(--fs-sm); }
+[data-controls="mini"] .amount-field { padding: 1px 8px 1px 1px; }
+[data-controls="mini"] .habit-card .habit-card__amount { width: 3.75rem; min-height: 28px; }
+[data-controls="mini"] .slots { gap: 4px; }
+[data-controls="mini"] .slot { padding: 3px var(--sp-2); font-size: 11px; }
+@media (max-width: 767.98px) {
+  [data-controls="mini"] .habit-card__head { gap: 4px 6px; }
+  [data-controls="mini"] .habit-card__head > .habit-card__name { flex-basis: 4rem; }
+  /* Con el control al lado, una palabra larga ("Estiramientos") no cabe:
+     mejor partida (con guion si el navegador sabe español) que cortada
+     en "Estirami…". */
+  [data-controls="mini"] .habit-card__name,
+  [data-controls="mini"] .habit-card__link {
+    hyphens: auto;
+    -webkit-hyphens: auto;
+    overflow-wrap: anywhere;
+  }
+  [data-controls="mini"] .habit-card__head > .habit-card__controls { flex-basis: auto; }
+}
 
 /* Tercer escalón, por encima de Cómodo: para manejar la app con una mano,
    con guantes o sin mirar. Nada baja de 44px, que es el mínimo táctil. */

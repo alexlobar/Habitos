@@ -29,7 +29,8 @@ HT.store = (function () {
 
   /* Catálogos de las opciones con más de dos valores. Están aquí y no en el
      HTML para que el saneado y el desplegable no puedan discrepar. */
-  const CONTROLS = ['compact', 'comfy', 'roomy'];
+  // 'mini' (Muy compacto) llega en la 2.3.0 para el móvil.
+  const CONTROLS = ['mini', 'compact', 'comfy', 'roomy'];
   const FONT_SIZES = ['small', 'normal', 'large', 'xlarge'];
   /* Cuántos hábitos hay que cumplir para que el día sostenga la racha.
      'half' y 'quarter' se calculan sobre los que tocaban ESE día: dos de
@@ -150,6 +151,7 @@ HT.store = (function () {
         hideDone: true, backupDays: 14,
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true,
+        hideWeight: false, hideAvoid: false, hideNotes: false,
         weightGoal: null
       },
       habits: habits,
@@ -563,6 +565,11 @@ HT.store = (function () {
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false,
         showWeight: s.showWeight !== false,
+        // Privacidad (2.3.0): ocultan lo sensible en toda la app, no solo en
+        // Hoy. Solo cambian lo que se ve; los datos se siguen guardando.
+        hideWeight: s.hideWeight === true,
+        hideAvoid: s.hideAvoid === true,
+        hideNotes: s.hideNotes === true,
         // Peso objetivo en kg, o null si no hay.
         weightGoal: s.weightGoal === null || s.weightGoal === undefined ? null : cleanWeight(s.weightGoal)
       },
@@ -1474,6 +1481,9 @@ HT.store = (function () {
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false,
       showWeight: next.showWeight !== false,
+      hideWeight: next.hideWeight === true,
+      hideAvoid: next.hideAvoid === true,
+      hideNotes: next.hideNotes === true,
       weightGoal: next.weightGoal === null || next.weightGoal === undefined || next.weightGoal === ''
         ? null : cleanWeight(next.weightGoal)
     };
