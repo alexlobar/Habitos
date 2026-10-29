@@ -22,7 +22,7 @@ HT.utils = (function () {
      otro sitio donde aparece es CACHE en sw.js, porque un service worker
      no puede leer este archivo; si se desincronizan, Ajustes lo avisa en
      vez de callarse. ─────────────────────────────────────── */
-  const VERSION = '2.3.4';
+  const VERSION = '2.5.1';
   const BUILD_DATE = '2026-10-29';
 
   /* ── Colores predeterminados ──────────────────────────────

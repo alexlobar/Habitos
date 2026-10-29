@@ -445,7 +445,7 @@
 
     // Un hábito a evitar con máximo no pasa por withScoring: no paga EXP por
     // día, sino por hitos de racha. Si pasara, pasarse del límite le
-    // restaría 20 de EXP que nunca se le dieron.
+    // restaría 25 de EXP que nunca se le dieron.
     if (St.isCapped(habit)) {
       const antes = St.isComplete(habit, S.getLog(habit.id, currentDate));
       const racha = St.currentStreak(habit, today);
@@ -1790,7 +1790,14 @@
     // El registro de ascensos nace aquí, no en el almacén: quien ya tenía
     // nivel antes de la 1.6.3 empieza a contar desde él, y así la primera
     // subida no rellena de golpe fechas que nunca se guardaron.
-    S.initLevelLogFrom(St.levelInfo(S.getGame().points).level);
+    const nivel = St.levelInfo(S.getGame().points).level;
+    S.initLevelLogFrom(nivel);
+
+    // Si el nivel que da la EXP va por delante del registro —la curva se
+    // abarató en la 2.5.0 y la misma EXP vale más niveles—, los que faltan
+    // se apuntan con fecha de hoy, una sola vez y sin una celebración por
+    // cada uno. En un arranque normal no hay nada que apuntar.
+    const saltados = S.recordLevelUp(nivel, today);
 
     UI.applyAccent(S.getSettings().accent);
     renderAll();
@@ -1817,6 +1824,12 @@
     } else {
       // Solo si no hay ya un aviso más urgente en pantalla.
       checkBackupReminder();
+    }
+
+    if (saltados.length) {
+      UI.toast('Curva de niveles nueva: tu EXP vale más y subes al nivel ' + nivel +
+               ' (+' + saltados.length + '). Quedan apuntados en tus ascensos.',
+               { type: 'achievement', icon: '⬆️', duration: 9000 });
     }
 
     checkYesterdayMark();

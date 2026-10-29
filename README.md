@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.3.4** · esquema de datos **v14**.
+Versión documentada: **2.5.1** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -550,7 +550,16 @@ Sustituir `writeNow()` y `load()` por llamadas de red deja intacto el resto.
 - **El entreno es solo un hábito.** La sección Ejercicios (rutinas, series,
   descanso) salió en la 2.2.0 porque el entreno se apunta en otra app más
   completa. Aquí queda "Entrenar" como cualquier otro hábito, y el atributo
-  Fuerza es su cumplimiento a 30 días (respeta el plan semanal y las pausas).
+  Fuerza sale de él (respeta el plan semanal y las pausas).
+- **Los atributos suben con el tiempo (2.4.0).** Cada uno es constancia (30
+  días) × experiencia (veces cumplido, con el máximo a las 12 semanas de los
+  días de cada hábito). Antes era solo la constancia, y dos entrenos de dos
+  daban 100. Detalle en PROGRESION.md, sección 6.
+- **La curva de niveles cuesta la mitad desde la 2.5.0** (`XP_STEP` 25), y
+  **cada hábito da 25 EXP desde la 2.5.1** (antes 20). Con 6-7 hábitos al día,
+  el rango S llega en unos 4,5 meses y el X en 1 año y medio. La misma EXP vale
+  más niveles; al arrancar se apuntan los que faltan en el registro de
+  ascensos. Tablas en PROGRESION.md, secciones 3 y 4.
 - **Se puede registrar hacia atrás, nunca hacia delante.** Marcar mañana no
   significaría nada.
 - **Las rachas perdonan el día en curso.** Se rompen cuando el día termina sin

@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.3.4** · esquema de datos **v14**.
+Versión documentada: **2.5.1** · esquema de datos **v14**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -86,7 +86,7 @@ los bonos se redondean con `round5()`.
 
 | Acción | EXP |
 |---|---:|
-| Completar un hábito | **20** |
+| Completar un hábito | **25** (20 hasta la 2.5.0) |
 | Día bueno: cumplir el 80% o más de los hábitos del día | **+25%** de lo ganado en hábitos ese día |
 | Día perfecto: cumplirlos todos | **+50%** de lo ganado en hábitos ese día |
 | Cumplir un objetivo | 100 — *definido, sin acción que lo dispare* |
@@ -95,21 +95,28 @@ Los bonos son un porcentaje y no una cantidad fija para que escalen con lo que
 haces: un día perfecto con nueve hábitos vale más que uno con tres. Y tienen dos
 escalones para que fallar un hábito no tire por tierra la jornada entera.
 
+Con 25 por hábito un bono puede salir con medio punto (7 perfectos: 175 × 50% =
+87,5); `round5()` lo deja en 90. La EXP ya ganada con 20 se queda como está, y
+el nivel no salta: solo se sube más rápido desde la 2.5.1. Desmarcar un hábito
+de un día anterior al cambio retira 25 aunque en su día diera 20 (y el bono en
+proporción): unos pocos puntos, y solo si se editan días pasados.
+
 Hasta la 2.1.x la sección Ejercicios pagaba aparte: 10 por ejercicio completo,
 +50% por completarlos todos y 50 por cerrar el entreno. Salió en la 2.2.0 (el
-entreno se apunta en otra app); "Entrenar" sigue siendo un hábito y paga sus 20
+entreno se apunta en otra app); "Entrenar" sigue siendo un hábito y paga sus 25
 como cualquier otro. La EXP que ya dieron los entrenos se queda.
 
 ### Un día de ejemplo
 
-Con los hábitos de partida tocan **9 al día** de lunes a sábado y 10 el domingo
-(los cuatro hábitos a evitar no cuentan).
+Con los hábitos de partida tocan **9 al día**, todos los días (los cuatro hábitos
+a evitar no cuentan; "Planificar la semana", que sumaba uno el domingo, dejó de
+ser hábito en la 2.1.0).
 
 | Día | Cuenta | EXP |
 |---|---|---:|
-| 7 de 9 | 7 × 20 — por debajo del 80%, sin bono | 140 |
-| 8 de 9 | 160 + 25% (40) | 200 |
-| 9 de 9 | 180 + 50% (90) | 270 |
+| 7 de 9 | 7 × 25 — por debajo del 80%, sin bono | 175 |
+| 8 de 9 | 200 + 25% (50) | 250 |
+| 9 de 9 | 225 + 50% (112,5 → 115) | 340 |
 
 ### Hábitos a evitar
 
@@ -143,35 +150,45 @@ Se empieza en el **nivel 0**: es la casilla de salida, aún no has ganado nada.
 
 - `XP_TABLE` — EXP total con la que empieza cada nivel del 0 al 9, escrita a
   mano. El índice del array es el nivel.
-- `XP_STEP` (50) — el paso de la progresión.
+- `XP_STEP` (25) — el paso de la progresión.
 
-Subir al nivel *n* cuesta `50·(n+1)`: 100, 150, 200, 250… La fórmula cerrada
+Subir al nivel *n* cuesta `25·(n+1)`: 50, 75, 100, 125… La fórmula cerrada
 
 ```
-xpForLevel(n) = 25 · n · (n + 3)
+xpForLevel(n) = 12,5 · n · (n + 3)
 ```
 
 reproduce la tabla al dígito, así que la tabla y la continuación empalman sin
-escalón. La tabla se conserva porque es la que se lee de un vistazo; la fórmula
-es la que escala.
+escalón. `n·(n+3)` siempre es par, así que el resultado es múltiplo de 25. La
+tabla se conserva porque es la que se lee de un vistazo; la fórmula es la que
+escala.
 
-| Nivel | EXP total | Cuesta | Rango |
-|---:|---:|---:|---|
-| 0 | 0 | — | E · Novato |
-| 1 | 100 | 100 | E |
-| 2 | 250 | 150 | E |
-| 5 | 1.000 | 300 | E |
-| 9 | 2.700 | 500 | E |
-| 10 | 3.250 | 550 | D · Aprendiz |
-| 20 | 11.500 | 1.050 | C · Combatiente |
-| 30 | 24.750 | 1.550 | B · Élite |
-| 40 | 43.000 | 2.050 | A · Maestro |
-| 50 | 66.250 | 2.550 | S · Soberano |
-| 60 | 94.500 | 3.050 | SS · Monarca |
-| 70 | 127.750 | 3.550 | SS+ · Monarca supremo |
-| 80 | 166.000 | 4.050 | SSS · Leyenda |
-| 90 | 209.250 | 4.550 | SSS+ · Leyenda eterna |
-| 100 | 257.500 | 5.050 | X · Fuera de escala |
+**Desde la 2.5.0 la curva cuesta la mitad.** Hasta la 2.4.x el paso era 50 y,
+con 6-7 hábitos al día, el rango X quedaba a casi cuatro años; ahora queda a
+unos dos.
+
+| Nivel | EXP total | Cuesta | Rango | Hasta la 2.4.x |
+|---:|---:|---:|---|---:|
+| 0 | 0 | — | E · Novato | 0 |
+| 1 | 50 | 50 | E | 100 |
+| 2 | 125 | 75 | E | 250 |
+| 5 | 500 | 150 | E | 1.000 |
+| 9 | 1.350 | 250 | E | 2.700 |
+| 10 | 1.625 | 275 | D · Aprendiz | 3.250 |
+| 20 | 5.750 | 525 | C · Combatiente | 11.500 |
+| 30 | 12.375 | 775 | B · Élite | 24.750 |
+| 40 | 21.500 | 1.025 | A · Maestro | 43.000 |
+| 50 | 33.125 | 1.275 | S · Soberano | 66.250 |
+| 60 | 47.250 | 1.525 | SS · Monarca | 94.500 |
+| 70 | 63.875 | 1.775 | SS+ · Monarca supremo | 127.750 |
+| 80 | 83.000 | 2.025 | SSS · Leyenda | 166.000 |
+| 90 | 104.625 | 2.275 | SSS+ · Leyenda eterna | 209.250 |
+| 100 | 128.750 | 2.525 | X · Fuera de escala | 257.500 |
+
+El nivel y el rango no se guardan, así que el cambio no migra nada: la misma EXP
+pasa a valer más niveles. Al arrancar, `recordLevelUp()` apunta con fecha de hoy
+los niveles que el registro de ascensos aún no tenía (sección 7), una sola vez y
+con un único aviso. Los ascensos anteriores conservan su fecha.
 
 `levelFromXp()` hace el camino inverso: parte de la solución de la ecuación y
 ajusta con un bucle corto, para que un redondeo de coma flotante nunca devuelva
@@ -182,15 +199,53 @@ el nivel 200.
 
 ### Ritmo orientativo
 
-Con los hábitos de partida y sin contar los hitos de "evitar":
+Lo que da un día según cuántos hábitos tocan (los de evitar no cuentan):
 
-| Ritmo diario | Rango S (nivel 50) | Rango X (nivel 100) |
-|---|---:|---:|
-| 200 EXP — días buenos | ~330 días | ~3 años y medio |
-| 270 EXP — días perfectos | ~245 días | ~2 años y medio |
+| Hábitos ese día | Perfecto (+50%) | Bueno: todos menos uno (+25%) |
+|---:|---:|---:|
+| 8 | 300 | 220 |
+| 7 | 265 | 190 |
+| 6 | 225 | 155 |
+| 5 | 190 | 125 |
 
-Son cuentas a ritmo constante: cualquier cambio en el número de hábitos las
-mueve.
+Con 5 a 8 hábitos al día, a ritmo **realista** —5 días perfectos y 2 buenos por
+semana— y contando los hitos de los cuatro hábitos a evitar (2.400 EXP si los
+cuatro llegan a 100 días limpios). Días desde el primero:
+
+| Rango (nivel · EXP) | 8 al día (~277/día) | 6-7 al día (~224/día) | 5 al día (~171/día) |
+|---|---:|---:|---:|
+| D (10 · 1.625) | 6 | 7 | 9 |
+| C (20 · 5.750) | 21 | 25 | 30 |
+| B (30 · 12.375) | 42 | 52 | 68 |
+| A (40 · 21.500) | 75 | 93 | 112 |
+| S (50 · 33.125) | 111 (~3,5 meses) | 137 (~4,5 meses) | 180 (~6 meses) |
+| SS (60 · 47.250) | 162 | 200 | 262 |
+| SS+ (70 · 63.875) | 222 | 275 | 359 |
+| SSS (80 · 83.000) | 291 | 360 | 471 |
+| SSS+ (90 · 104.625) | 369 | 456 | 597 |
+| **X (100 · 128.750)** | **456 (~1 año y 3 meses)** | **564 (~1 año y 6,5 meses)** | **738 (~2 años)** |
+
+Con todos los días perfectos, el X llega en 422 días con 8 hábitos, 516 con 6-7
+y 665 con 5.
+
+Cómo ha ido cambiando, a 6-7 hábitos y ritmo realista:
+
+| Rango | Hasta la 2.4.x (curva 50, 20/hábito) | 2.5.0 (curva 25, 20/hábito) | Desde la 2.5.1 (curva 25, 25/hábito) |
+|---|---:|---:|---:|
+| D | 18 días | 8 días | 7 días |
+| C | 2 meses | 1 mes | 25 días |
+| B | 4 meses | 2 meses | 1,7 meses |
+| A | 7,5 meses | 3,5 meses | 3 meses |
+| S | 12 meses | 6 meses | 4,5 meses |
+| SS | 1 año y 5 meses | 8 meses | 6,5 meses |
+| SS+ | 1 año y 11 meses | 11 meses | 9 meses |
+| SSS | 2 años y 6 meses | 1 año y 3 meses | 1 año |
+| SSS+ | 3 años y 2 meses | 1 año y 7 meses | 1 año y 3 meses |
+| **X** | **casi 4 años** | **1 año y 11 meses** | **1 año y 6,5 meses** |
+
+Los hitos de "evitar" adelantan entre 8 y 14 días. Son cuentas a ritmo
+constante: cualquier cambio en el número de hábitos las mueve. Pasado el nivel
+100 se sigue subiendo, pero ya no hay rango nuevo.
 
 ---
 
@@ -228,14 +283,34 @@ reales**: si una rama no tiene hábitos, su atributo vale 0 y lo dice.
 
 | Código | Atributo | De dónde sale |
 |---|---|---|
-| STR | Fuerza | Cumplimiento a 30 días del hábito "Entrenar" (`trainingHabitId`), con su plan y sus pausas. Hasta la 2.2.0: entrenos cerrados en Ejercicios |
-| VIT | Vitalidad | Cumplimiento medio a 30 días de *Salud y bienestar físico* |
+| STR | Fuerza | El hábito "Entrenar" (`trainingHabitId`), con su plan y sus pausas. Hasta la 2.2.0: entrenos cerrados en Ejercicios |
+| VIT | Vitalidad | Media de los hábitos de *Salud y bienestar físico* |
 | AGI | Agilidad | Ídem de *Hábitos a evitar* |
 | INT | Inteligencia | Ídem de *Aprendizaje y conocimiento* |
 | SEN | Concentración | Ídem de *Desarrollo personal y mental* |
 
-Debajo de cada barra se enseña de dónde sale el número, para que ninguno parezca
-inventado. En `attributes()`.
+Desde la 2.4.0 cada hábito aporta **constancia × experiencia** (`habitAttr()`):
+
+- **Constancia** — cumplimiento a 30 días. Baja si lo dejas.
+- **Experiencia** — veces cumplido en toda su historia, sobre un máximo de
+  `ATTR_WEEKS` (12) semanas de sus días: 3 días por semana → 36; diario → 84. En
+  los de evitar cuentan los días limpios.
+
+Hasta la 2.3.x era solo la constancia, y con un hábito recién creado dos entrenos
+de dos ya daban 100. Ahora sube como el nivel:
+
+| Fuerza, entrenando 3 días por semana | Antes | Ahora |
+|---|---:|---:|
+| 2 entrenos, todos cumplidos | 100 | 6 |
+| 3 semanas cumpliendo (9) | 100 | 25 |
+| 6 semanas (18) | 100 | 50 |
+| 12 semanas (36) | 100 | 100 |
+| Después, 2 semanas sin entrenar | ~50 | ~50 |
+
+Los atributos no se guardan: se calculan al abrir el Sistema, así que cambiar la
+fórmula no toca datos. Debajo de cada barra se enseña de dónde sale el número
+("Constancia 100% · Experiencia 2 de 36"), para que ninguno parezca inventado.
+En `attributes()`.
 
 ---
 

@@ -1924,6 +1924,11 @@ button.week-cell:disabled:hover { transform: none; }
     linear-gradient(90deg, rgb(70 220 255 / .045) 1px, transparent 1px) 0 0 / 34px 100%;
   mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
 }
+/* El margen lateral del móvil y la tableta es de 16 px: con 24 la rejilla se
+   salía 8 px por la derecha y la pantalla del Sistema bailaba de lado. */
+@media (max-width: 1023.98px) {
+  #view-progress::before { inset: -40px -16px; }
+}
 
 /* Etiqueta de esquina: el sello de "esto es una ventana del sistema". */
 .sys-win__tag {

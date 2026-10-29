@@ -23,7 +23,7 @@ HT.stats = (function () {
      `habit` y `perfectDay` ya existían con estos valores desde la v1: no
      se tocan para que la XP acumulada siga significando lo mismo. ──── */
   const XP = {
-    habit: 20,          // completar un hábito del día
+    habit: 25,          // completar un hábito del día (20 hasta la 2.5.0)
     // `exercise` y `workout` desaparecieron con la sección Ejercicios (2.2.0).
     // La EXP que ya dieron se queda: la XP guarda cuánta llevas, no de dónde.
     goal: 100,          // cumplir un objetivo — todavía sin acción que lo dispare
@@ -39,9 +39,9 @@ HT.stats = (function () {
   // Nombre anterior, conservado porque app.js lo usa.
   const POINTS_PER_HABIT = XP.habit;
 
-  /* Toda la EXP acaba en 0 o en 5. Con los valores de arriba sale solo
-     (20·0,5 = 10 y 20·0,25 = 5), pero el redondeo queda como red por si
-     algún día se toca la tabla. */
+  /* Toda la EXP acaba en 0 o en 5. Con 20 por hábito salía sola (20·0,5 =
+     10 y 20·0,25 = 5); con 25 ya no (25·0,5 = 12,5), y es este redondeo el
+     que la mantiene: el bono de 7 hábitos perfectos es 87,5 → 90. */
   function round5(n) {
     return Math.round(n / 5) * 5;
   }
@@ -1048,13 +1048,16 @@ HT.stats = (function () {
 
   /* XP total con la que empieza cada nivel, del 0 al 9. El índice del array
      ES el nivel: se empieza en el 0, no en el 1. */
-  const XP_TABLE = [0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700];
+  const XP_TABLE = [0, 50, 125, 225, 350, 500, 675, 875, 1100, 1350];
 
   /* Del 9 en adelante sigue la misma progresión: subir al nivel n cuesta
-     50·(n+1) de XP (100, 150, 200, 250…). La fórmula cerrada 25·n·(n+3)
+     25·(n+1) de XP (50, 75, 100, 125…). La fórmula cerrada 12,5·n·(n+3)
      reproduce la tabla exactamente, así que la tabla y la continuación
-     nunca pueden discrepar en el punto de empalme. */
-  const XP_STEP = 50;
+     nunca pueden discrepar en el punto de empalme. n·(n+3) siempre es par,
+     así que el resultado sigue siendo un múltiplo de 25.
+     Hasta la 2.4.x el paso era 50: cada nivel costaba el doble y, con 6-7
+     hábitos al día, el rango X quedaba a casi cuatro años. */
+  const XP_STEP = 25;
 
   const MAX_LEVEL_SCAN = 9999;   // tope para no iterar sin fin con XP absurda
 
@@ -1167,39 +1170,67 @@ HT.stats = (function () {
      se enseña de dónde sale, para que ningún número parezca inventado.
      ──────────────────────────────────────────────────────── */
 
-  /** Cumplimiento medio a 30 días de los hábitos de una categoría. */
+  /* Hasta la 2.3.x un atributo era solo el cumplimiento a 30 días, y con un
+     hábito recién creado dos entrenos de dos ya daban 100. Desde la 2.4.0
+     es constancia × experiencia:
+       · constancia — el cumplimiento a 30 días de siempre: baja si lo dejas;
+       · experiencia — cuánto historial lo respalda: llega al máximo tras
+         ATTR_WEEKS semanas cumpliendo, contadas con los días que toca cada
+         hábito (3 a la semana → 36 veces; diario → 84). En los de evitar
+         cuentan los días limpios.
+     Así sube poco a poco, como el nivel, y no se queda inflado si paras. */
+  const ATTR_WEEKS = 12;
+
+  /** Constancia, experiencia y valor del atributo para un solo hábito. */
+  function habitAttr(habit, todayKey) {
+    const r = habitRate(habit, todayKey, 30);
+    const goal = ATTR_WEEKS * habit.activeDays.length;
+    const exp = Math.min(goal, habitTotal(habit));
+    const constancia = r.total ? r.pct : 0;
+    return {
+      counted: r.total > 0,
+      constancia: constancia,
+      exp: exp,
+      goal: goal,
+      value: Math.round(constancia * exp / goal)
+    };
+  }
+
+  /** Media de los hábitos de una categoría. */
   function categoryScore(categoryId, todayKey) {
     const habits = S.getHabits().filter(function (h) { return h.category === categoryId; });
     if (!habits.length) return { value: 0, detail: 'Sin hábitos en esta rama' };
 
-    let sum = 0;
-    let counted = 0;
-    habits.forEach(function (h) {
-      const r = habitRate(h, todayKey, 30);
-      if (!r.total) return;
-      sum += r.pct;
-      counted++;
-    });
+    const vivos = habits.map(function (h) { return habitAttr(h, todayKey); })
+                        .filter(function (a) { return a.counted; });
+    if (!vivos.length) return { value: 0, detail: 'Todavía sin días que contar' };
+
+    function media(fn) {
+      return Math.round(vivos.reduce(function (s, a) { return s + fn(a); }, 0) / vivos.length);
+    }
 
     return {
-      value: counted ? Math.round(sum / counted) : 0,
-      detail: habits.length + (habits.length === 1 ? ' hábito' : ' hábitos') + ' · 30 días'
+      value: media(function (a) { return a.value; }),
+      detail: habits.length + (habits.length === 1 ? ' hábito' : ' hábitos') +
+              ' · Constancia ' + media(function (a) { return a.constancia; }) + '%' +
+              ' · Experiencia ' + media(function (a) { return a.exp / a.goal * 100; }) + '%'
     };
   }
 
   /**
-   * Cumplimiento a 30 días del hábito de entreno. Hasta la 2.2.0 contaba
-   * entrenos cerrados en la sección Ejercicios; ahora el entreno se apunta
-   * en otra app y aquí solo queda el hábito, que respeta su plan semanal.
+   * El hábito de entreno. Hasta la 2.2.0 contaba entrenos cerrados en la
+   * sección Ejercicios; ahora el entreno se apunta en otra app y aquí solo
+   * queda el hábito, que respeta su plan semanal.
    */
   function trainingScore(todayKey) {
     const habit = S.getTrainingHabit();
     if (!habit) return { value: 0, detail: 'Sin hábito de entreno' };
 
-    const r = habitRate(habit, todayKey, 30);
+    const a = habitAttr(habit, todayKey);
     return {
-      value: r.total ? r.pct : 0,
-      detail: habit.name + ' · ' + r.done + ' de ' + r.total + ' días'
+      value: a.value,
+      detail: habit.name + ' · Constancia ' + a.constancia + '%' +
+              ' · Experiencia ' + a.exp + ' de ' + a.goal
     };
   }
 
