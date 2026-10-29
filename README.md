@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.3.0** · esquema de datos **v14**.
+Versión documentada: **2.3.3** · esquema de datos **v14**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -40,12 +40,15 @@ Los `<script>` deben cargarse en ese orden.
 La barra de navegación tiene cuatro secciones: **Hoy · Histórico · Notas ·
 Ajustes**. (Ejercicios salió en la 2.2.0: el entreno se apunta en otra app y
 aquí queda el hábito "Entrenar". Plan salió de la barra en la 2.3.0: se entra
-por *Planificar* de Histórico.) Progreso tampoco está en ella: se abre desde la
+por *Planificar* de Histórico.) Sistema (hasta la 2.3.0 se llamaba Progreso) tampoco está en ella: se abre desde la
 chapa de nivel y rango de arriba a la derecha.
 
 **Cabecera.** El día que estás mirando en grande, con flechas para ir hacia
-atrás y un calendario para saltar a cualquier fecha. A la izquierda, el
-contador `◆` de la racha de cumplimiento; a la derecha, la chapa con nivel,
+atrás y un calendario para saltar a cualquier fecha. A la izquierda, el rombo
+`◈` de la racha de cumplimiento: en el color de la app a cero, cian y con el
+número en racha, rojo y latiendo si hoy está en juego (2.3.3). Junto al
+calendario, el lápiz violeta (icono de línea) de la racha de registro, siempre
+a la vista. Al tocarlos se explican. A la derecha, la chapa con nivel,
 rango y EXP. Debajo, la barra del día con su cuenta (`5/9`).
 
 **Hoy.** Los hábitos del día agrupados por categoría. Los ya cumplidos se
@@ -98,8 +101,8 @@ interruptores, todos apagados de entrada:
 
 - *Ocultar el peso*: el peso del día en Hoy, la tarjeta de peso de Histórico
   y su línea del resumen semanal.
-- *Ocultar los hábitos a evitar*: sus tarjetas en Hoy, "Días sin" de
-  Progreso, sus líneas del resumen semanal, la lista de Ajustes y el aviso de
+- *Ocultar los hábitos a evitar*: sus tarjetas en Hoy, "Días sin" del
+  Sistema, sus líneas del resumen semanal, la lista de Ajustes y el aviso de
   pausa. Mientras estén ocultos no se pueden apuntar fallos; la EXP de sus
   hitos se cobra igual, pero el aviso no dice el nombre.
 - *Ocultar las notas*: la sección Notas (sale de la barra), la nota del día en
@@ -109,9 +112,11 @@ Solo cambia lo que se ve: todo sigue guardado y contando para rachas,
 porcentajes y EXP, y las exportaciones lo llevan todo. La barra del día no
 delata nada, porque ya solo contaba los hábitos normales.
 
-**Progreso** (desde la chapa). Nivel y rango, los cinco atributos, las dos
-rachas, el historial de ascensos, las rachas por hábito, los días sin caer en
-los hábitos a evitar y los logros.
+**Sistema** (desde la chapa). Nivel y rango, los cinco atributos, las dos
+rachas (◈ cumpliendo y el lápiz registrando, sin caja propia desde la 2.3.1), el historial de ascensos, las rachas por hábito, los días sin caer en
+los hábitos a evitar y los logros. En *Días sin*, además de la racha, cada
+hábito a evitar lleva su acumulado de toda la historia (2.3.2): `Σ 4 h 50 min`
+en los de máximo al día como Redes, `Σ 3 fallos` en los de fallos o franjas.
 
 **Ficha de un hábito** (tocando su icono o su nombre). Estadísticas, totales,
 calendario del mes, cumplimiento por día de la semana y los botones de editar,
@@ -263,17 +268,17 @@ cómodo o amplio, vía `data-controls` en `<html>`. *Muy compacto* (2.3.0) está
 pensado para el móvil: tarjetas más bajas, controles de 32px y, cuando cabe, el
 control al lado del nombre en vez de en su propia línea.
 
-### El tema de Progreso
+### El tema del Sistema
 
-Progreso tiene su propia piel de ventana del System, **confinada a
+Sistema tiene su propia piel de ventana del System, **confinada a
 `#view-progress`** en la sección 8d. Redefine sus `--sys-*`, su rampa
 `--heat-*` y también los tokens de texto y superficie, para que se vea igual en
 tema oscuro y en tema claro. Ninguna otra pantalla hereda nada de ahí; para
 quitar el tema basta con borrar ese bloque.
 
-Fuera de Progreso hay dos piezas que usan el mismo lenguaje a propósito: la
+Fuera del Sistema hay dos piezas que usan el mismo lenguaje a propósito: la
 chapa de rango de la cabecera (colores por tramo con `[data-rank]`) y el
-contador `◆` de la racha.
+los contadores de las rachas (el `◈` y el lápiz).
 
 ### Puntos de corte
 
@@ -456,7 +461,7 @@ ninguno. Fue justo ese descuido lo que dejó la app sin arrancar en una
 instalación nueva entre la 1.6.6 y la 1.6.8.
 
 **Una vista nueva** — una `<section class="view">` en el HTML, un botón en `.nav`
-con su `data-view` (o ninguno, como Progreso), una entrada en `els.views` y otra
+con su `data-view` (o ninguno, como Sistema), una entrada en `els.views` y otra
 en `NAV_OF_VIEW` dentro de `ui.js`.
 
 **Un elemento nuevo en el HTML** — su `id` en la lista de `UI.init()`. Si falta

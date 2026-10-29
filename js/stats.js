@@ -920,6 +920,34 @@ HT.stats = (function () {
   }
 
   /** Suma de un hábito por cantidad en un rango de días concreto. */
+  /**
+   * Lo acumulado de un hábito a evitar en toda su historia (2.3.2). "Días
+   * sin" solo contaba rachas; esto suma lo que se ha ido apuntando:
+   *   · con máximo al día (Redes) → la cantidad: minutos, euros…
+   *   · por fallos o por franjas  → los fallos, uno por franja marcada.
+   * `days` son los días con algo apuntado. Hasta hoy, sin días futuros.
+   */
+  function avoidTotal(habit, todayKey) {
+    const today = todayKey || U.todayKey();
+    const logs = S.getHabitLogs(habit.id);
+    const capped = isCapped(habit);
+    let total = 0, days = 0;
+
+    Object.keys(logs).forEach(function (key) {
+      if (key > today) return;
+      const n = capped ? Number(logs[key]) : failsOf(logs[key]);
+      if (!isFinite(n) || n <= 0) return;
+      total += n;
+      days++;
+    });
+
+    return {
+      total: Math.round(total * 10) / 10,
+      days: days,
+      unit: capped ? habit.target.unit : null
+    };
+  }
+
   function habitSumOver(habit, dateKeys) {
     let total = 0;
     dateKeys.forEach(function (key) {
@@ -1333,7 +1361,7 @@ HT.stats = (function () {
     weekMatrix: weekMatrix,
     monthSeries: monthSeries, yearSeries: yearSeries, seriesRate: seriesRate,
     habitRate: habitRate, habitTotal: habitTotal, habitSums: habitSums,
-    habitSumOver: habitSumOver, logStreak: logStreak, habitValueSeries: habitValueSeries,
+    habitSumOver: habitSumOver, avoidTotal: avoidTotal, logStreak: logStreak, habitValueSeries: habitValueSeries,
     habitWeekdayRates: habitWeekdayRates, weakestWeekday: weakestWeekday,
     earnedAchievements: earnedAchievements, achievementById: achievementById
   };

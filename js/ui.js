@@ -83,7 +83,7 @@ HT.ui = (function () {
 
   function init() {
     [
-      'brandMark', 'streakChip', 'streakNum',
+      'streakChip', 'streakNum', 'activityChip', 'activityNum',
       'levelBadge', 'levelRing', 'levelNum', 'levelRankLetter', 'pointsValue',
       'todayTime', 'todayMeta', 'todayLabel',
       'doneCount', 'totalCount', 'dayProgress', 'dayProgressFill',
@@ -244,7 +244,7 @@ HT.ui = (function () {
       'aria-label',
       'Nivel ' + info.level + ', rango ' + info.rank.name + ', ' + info.xp +
       ' de XP. Faltan ' + info.remaining + ' para el nivel ' + (info.level + 1) +
-      '. Ver progreso'
+      '. Abrir el Sistema'
     );
   }
 
@@ -257,16 +257,24 @@ HT.ui = (function () {
     const dias = St.dayStreak(todayKey);
     const riesgo = dias > 0 && St.streakAtRisk(todayKey);
 
-    // Con la racha a cero no se enseña un "0" apagado: se devuelve el rombo.
-    els.streakChip.hidden = dias === 0;
-    els.brandMark.hidden = dias > 0;
-    if (!dias) return;
+    // La de registro va aparte, junto al calendario, y siempre a la vista:
+    // a cero se apaga (data-zero) en vez de desaparecer.
+    const registro = St.activityStreak(todayKey);
+    els.activityNum.textContent = registro;
+    els.activityChip.dataset.zero = registro ? 'false' : 'true';
+    els.activityChip.setAttribute('aria-label',
+      registro + (registro === 1 ? ' día seguido' : ' días seguidos') + ' registrando');
+    els.activityChip.title = streakMessage(todayKey);
 
+    // El rombo está siempre; lo que cambia es su color. A cero no lleva
+    // número: un "0" junto al rombo no dice nada que el color no diga ya.
+    els.streakNum.hidden = dias === 0;
     els.streakNum.textContent = dias;
-    els.streakChip.dataset.state = riesgo ? 'risk' : 'on';
-    els.streakChip.setAttribute('aria-label',
-      dias + (dias === 1 ? ' día seguido' : ' días seguidos') + ' cumpliendo' +
-      (riesgo ? '. Hoy todavía no' : ''));
+    els.streakChip.dataset.state = riesgo ? 'risk' : dias ? 'on' : 'off';
+    els.streakChip.setAttribute('aria-label', dias
+      ? dias + (dias === 1 ? ' día seguido' : ' días seguidos') + ' cumpliendo' +
+        (riesgo ? '. Hoy todavía no' : '')
+      : 'Sin racha de cumplimiento');
     els.streakChip.title = streakMessage(todayKey);
   }
 
@@ -298,6 +306,16 @@ HT.ui = (function () {
      conoce la curva de experiencia. ─────────────────────────── */
 
   const fmtNum = new Intl.NumberFormat('es-ES');
+
+  /** "1.240 min" se lee mal: en minutos, a partir de una hora, "20 h 40 min". */
+  function amountLabel(n, unit) {
+    if (/^min(utos)?$/i.test(unit) && n >= 60) {
+      const h = Math.floor(n / 60);
+      const m = Math.round(n - h * 60);
+      return fmtNum.format(h) + ' h' + (m ? ' ' + m + ' min' : '');
+    }
+    return fmtNum.format(n) + ' ' + unit;
+  }
 
   function renderLevelPanel() {
     const info = St.levelInfo(S.getGame().points);
@@ -1426,7 +1444,7 @@ HT.ui = (function () {
           : dif === 0 ? 'Igual que la anterior'
           : (dif > 0 ? '+' : '−') + Math.abs(dif) + ' pts sobre la anterior' },
       { valor: r.perfect + ' / ' + r.scheduled, etiqueta: 'Días perfectos' },
-      { valor: '◆ ' + St.dayStreak(hoy), etiqueta: 'Racha de hábitos' }
+      { valor: '◈ ' + St.dayStreak(hoy), etiqueta: 'Racha de hábitos' }
     ];
 
     const stats = document.createDocumentFragment();
@@ -2708,6 +2726,18 @@ HT.ui = (function () {
         class: 'streak-item__best streak-item__best--bad', text: '❌ ' + row.fails
       }));
     }
+    // Lo acumulado en toda su historia: los minutos de Redes, los fallos de
+    // Gula… Las rachas dicen cuánto llevas sin caer; esto, cuánto ha sido.
+    if (clean && row.total && row.total.total) {
+      const t = row.total;
+      const texto = t.unit ? amountLabel(t.total, t.unit)
+                           : fmtNum.format(t.total) + (t.total === 1 ? ' fallo' : ' fallos');
+      under.appendChild(el('span', {
+        class: 'streak-item__best streak-item__best--total', text: 'Σ ' + texto,
+        title: 'Acumulado desde que empezaste: ' + texto + ' en ' + t.days +
+               (t.days === 1 ? ' día' : ' días')
+      }));
+    }
     body.appendChild(under);
     btn.appendChild(body);
 
@@ -2744,7 +2774,8 @@ HT.ui = (function () {
           current: St.currentStreak(h, dateKey),
           best: St.bestStreak(h, dateKey),
           rate: St.habitRate(h, dateKey, 30),
-          fails: St.failsThisWeek(h, dateKey, weekStart)
+          fails: St.failsThisWeek(h, dateKey, weekStart),
+          total: St.avoidTotal(h, dateKey)
         };
       })
       .sort(function (a, b) { return b.current - a.current || b.best - a.best; })

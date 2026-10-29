@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.3.0">
+<html lang="es" data-theme="dark" data-build="2.3.3">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -32,14 +32,12 @@
            en el icono con el que se abre. -->
       <div class="app-header__top">
         <div class="day-nav">
-          <!-- Contador de constancia. Ocupa el hueco del rombo porque el
-               rombo era decoración y esto es información; cuando no hay
-               racha que enseñar, vuelve el rombo. -->
-          <span class="brand__mark" id="brandMark" aria-hidden="true">◈</span>
-
-          <button type="button" class="streak-chip" id="streakChip" hidden>
-            <span class="streak-chip__icon" aria-hidden="true">◆</span>
-            <span class="streak-chip__num" id="streakNum">0</span>
+          <!-- Racha de cumplimiento (2.3.3): siempre el mismo rombo ◈. A cero
+               es el de siempre, en el color de la app; en racha se enciende
+               en cian y lleva el número al lado; en peligro, en rojo. -->
+          <button type="button" class="streak-mark" id="streakChip" data-state="off">
+            <span class="streak-mark__icon" aria-hidden="true">◈</span>
+            <span class="streak-mark__num" id="streakNum" hidden>0</span>
           </button>
 
           <button type="button" class="icon-btn" id="prevDay" aria-label="Día anterior">‹</button>
@@ -60,6 +58,16 @@
             </svg>
           </button>
 
+          <!-- Racha de registro, junto al calendario y siempre a la vista.
+               Desde la 2.3.3 el lápiz es un icono de línea, del mismo trazo
+               que los de la barra, en vez del carácter ✎. -->
+          <button type="button" class="streak-mark streak-mark--activity" id="activityChip">
+            <svg class="streak-mark__svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20h8"/><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>
+            </svg>
+            <span class="streak-mark__num" id="activityNum">0</span>
+          </button>
+
           <div class="daypicker" id="dayPicker" role="dialog"
                aria-label="Elegir un día" hidden>
             <div class="daypicker__nav">
@@ -73,7 +81,7 @@
         </div>
 
         <button type="button" class="level-badge" id="levelBadge" data-rank="e"
-                aria-label="Nivel 0, 0 de XP. Ver progreso">
+                aria-label="Nivel 0, 0 de XP. Abrir el Sistema">
           <span class="level-badge__ring" id="levelRing" style="--ring-pct:0">
             <span class="level-badge__num" id="levelNum">0</span>
           </span>
@@ -470,13 +478,13 @@
         </article>
       </section>
 
-      <!-- ─── Vista: Progreso ─── -->
+      <!-- ─── Vista: Sistema (antes Progreso; el id se queda como estaba) ─── -->
       <section class="view" id="view-progress" aria-labelledby="titleProgress" hidden>
         <div class="view__head">
           <button type="button" class="btn btn--ghost" id="btnBackFromProgress">
             <span aria-hidden="true">‹</span> Volver
           </button>
-          <h1 class="view__title" id="titleProgress">Progreso</h1>
+          <h1 class="view__title" id="titleProgress">Sistema</h1>
         </div>
 
         <div class="progress-grid">
@@ -515,14 +523,24 @@
             <header class="card__head">
               <h2 class="card__title" id="streaksPairTitle">Tus dos rachas</h2>
             </header>
+            <!-- Sin caja gris desde la 2.3.1: cada racha lleva su símbolo, el
+                 mismo que en la cabecera (◈ cumpliendo, el lápiz registrando). -->
             <ul class="streak-pair">
-              <li class="streak-pair__item">
-                <p class="streak-pair__value" id="streakHabits">—</p>
+              <li class="streak-pair__item streak-pair__item--habits">
+                <p class="streak-pair__value">
+                  <span class="streak-pair__icon" aria-hidden="true">◈</span>
+                  <span id="streakHabits">—</span>
+                </p>
                 <p class="streak-pair__label">Cumpliendo</p>
                 <p class="streak-pair__hint" id="streakHabitsHint">—</p>
               </li>
-              <li class="streak-pair__item">
-                <p class="streak-pair__value" id="streakActivity">—</p>
+              <li class="streak-pair__item streak-pair__item--activity">
+                <p class="streak-pair__value">
+                  <svg class="streak-pair__svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20h8"/><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>
+                  </svg>
+                  <span id="streakActivity">—</span>
+                </p>
                 <p class="streak-pair__label">Registrando</p>
                 <p class="streak-pair__hint">Días seguidos apuntando algo, aunque fuera un mal día.</p>
               </li>
@@ -700,7 +718,7 @@
           <div class="field-row">
             <span class="field-row__text">
               <label for="setTheme">Tema</label>
-              <span class="field-row__hint">Progreso mantiene su ventana oscura en los dos.</span>
+              <span class="field-row__hint">Sistema mantiene su ventana oscura en los dos.</span>
             </span>
             <select id="setTheme" class="input input--select field-row__controls">
               <option value="dark">Oscuro</option>
@@ -806,7 +824,7 @@
           <div class="field-row">
             <span class="field-row__text">
               <span id="hideAvoidLabel">Ocultar los hábitos a evitar</span>
-              <span class="field-row__hint">Sus tarjetas, "Días sin" de Progreso, el resumen semanal y las listas. Mientras estén ocultos no se pueden apuntar fallos.</span>
+              <span class="field-row__hint">Sus tarjetas, "Días sin" del Sistema, el resumen semanal y las listas. Mientras estén ocultos no se pueden apuntar fallos.</span>
             </span>
             <button type="button" class="switch" id="setHideAvoid"
                     role="switch" aria-checked="false" aria-labelledby="hideAvoidLabel">

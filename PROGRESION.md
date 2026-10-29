@@ -5,14 +5,14 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.3.0** · esquema de datos **v14**.
+Versión documentada: **2.3.3** · esquema de datos **v14**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
 
 ---
 
-## 1. La pantalla Progreso
+## 1. La pantalla Sistema (antes Progreso)
 
 Se abre tocando la chapa de nivel y rango de la cabecera (ya no está en la
 barra de navegación). De arriba abajo:
@@ -345,7 +345,7 @@ Cada hábito tiene la suya, que se ve en su ficha y en *Rachas por hábito*. Mis
 reglas de perdón: los días que no le tocan y los días salvados no la cortan, y
 hoy tampoco.
 
-Las fichas *Mejor hábito ahora* y *Récord de un hábito* de Progreso, y los
+Las fichas *Mejor hábito ahora* y *Récord de un hábito* del Sistema, y los
 logros *Racha de 7 / 30 días* y *Centurión*, miran **la mejor racha de un solo
 hábito**, no las rachas generales de arriba. Hasta la 1.7.3 esas fichas se
 llamaban *Racha actual* y *Mejor racha*, y se confundían con las generales.
@@ -478,7 +478,7 @@ ni las ausencias — es la diferencia con *Borrar todo*.
 | Ausencias | `js/store.js` — `addAbsence()`, `getAbsences()`, `cancelAbsence()` · `js/app.js` — `onAbsenceSubmit()`, `cancelAbsence()` |
 | Resumen semanal y peso objetivo | `js/stats.js` — `weekSummary()`, `weightGoal()` |
 | Registro de ascensos | `js/store.js` — `recordLevelUp()` · `js/ui.js` — `renderAscents()` |
-| Pintado de Progreso | `js/ui.js` — `renderProgress()`, `renderLevelPanel()`, `renderStreakPair()` |
+| Pintado del Sistema | `js/ui.js` — `renderProgress()`, `renderLevelPanel()`, `renderStreakPair()` |
 | Contador de la cabecera | `js/ui.js` — `renderStreakChip()`, `streakMessage()` |
 | Motivos de un día | `js/utils.js` — `DAY_REASONS` |
 | Estilos del panel de sistema | `css/styles.css`, sección 8d |

@@ -1105,7 +1105,10 @@
     // La racha se explica sola al tocarla: un número suelto en la cabecera
     // invita a preguntar qué cuenta, y ahí no cabe la respuesta.
     els.streakChip.addEventListener('click', function () {
-      UI.toast(UI.streakMessage(today), { icon: '◆' });
+      UI.toast(UI.streakMessage(today), { icon: '◈' });
+    });
+    els.activityChip.addEventListener('click', function () {
+      UI.toast(UI.streakMessage(today), { icon: '◈' });
     });
 
     // El aviso de nivel se quita al tocarlo o con Escape; no hay que esperar.
