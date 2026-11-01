@@ -26,7 +26,11 @@ HT.stats = (function () {
     habit: 25,          // completar un hábito del día (20 hasta la 2.5.0)
     // `exercise` y `workout` desaparecieron con la sección Ejercicios (2.2.0).
     // La EXP que ya dieron se queda: la XP guarda cuánta llevas, no de dónde.
-    goal: 100,          // cumplir un objetivo — todavía sin acción que lo dispare
+    // Misiones semanales (2.6.0). Ocupan el sitio del antiguo `goal: 100`
+    // ("cumplir un objetivo"), que nunca tuvo acción que lo disparara.
+    mission: 50,        // cada misión cumplida
+    missionsAll: 50,    // extra por cumplir las tres de la semana
+    blankDay: 25,       // lo que resta un día que acaba sin ningún registro
 
     /* Los bonus ya no son cantidades fijas: son un porcentaje de lo que has
        ganado ese día. Con dos escalones, para que fallar un hábito no tire
@@ -1255,6 +1259,198 @@ HT.stats = (function () {
     });
   }
 
+  /* ── Misiones semanales (2.6.0) ───────────────────────────
+     Hasta tres por semana, elegidas al planificar. Cada una paga
+     XP.mission y las tres juntas XP.missionsAll más. Como todo lo demás,
+     el estado se calcula a partir de los registros —no se guarda "cumplida"—
+     y app.js paga la diferencia con lo ya cobrado.
+
+     Dos familias:
+       · "hacer" (cumplir un hábito N veces, N días perfectos): se cumplen
+         en cuanto se llega, y se pierden si al acabar la semana no;
+       · "no hacer" (semana limpia, media de un límite, registrar todos los
+         días): fallan en cuanto ya no hay vuelta atrás, y solo se dan por
+         cumplidas cuando la semana termina. ──────────────────────────── */
+
+  const MISSIONS_MAX = 3;
+
+  /** Los días que cuenta una misión: desde que se aceptó hasta el domingo. */
+  function missionDays(m, weekKey) {
+    return daysFromTo(m.from, U.addDaysKey(weekKey, 6));
+  }
+
+  /**
+   * Cómo va una misión: { current, goal, pct, status, text }.
+   * status: 'active' (en juego), 'done' o 'failed'.
+   */
+  function missionProgress(m, weekKey, todayKey) {
+    const today = todayKey || U.todayKey();
+    const days = missionDays(m, weekKey);
+    const vistos = days.filter(function (k) { return k <= today; });
+    const cerrada = today > days[days.length - 1];
+    const habit = m.habitId ? S.getHabit(m.habitId) : null;
+    const out = { current: 0, goal: m.target, pct: 0, status: 'active', text: '' };
+
+    if (m.habitId && !habit) { out.status = 'failed'; out.text = 'Hábito borrado'; return out; }
+
+    function sumLogs(fn) {
+      return vistos.reduce(function (s, k) { return s + fn(S.getLog(habit.id, k)); }, 0);
+    }
+
+    if (m.type === 'habit_count' || m.type === 'perfect_days') {
+      out.current = vistos.filter(function (k) {
+        return m.type === 'habit_count'
+          ? isComplete(habit, S.getLog(habit.id, k))
+          : dayStats(k).perfect;
+      }).length;
+      out.status = out.current >= out.goal ? 'done' : cerrada ? 'failed' : 'active';
+      out.pct = Math.min(100, Math.round(out.current / out.goal * 100));
+      out.text = Math.min(out.current, out.goal) + ' / ' + out.goal;
+    } else if (m.type === 'avoid_clean') {
+      out.current = sumLogs(failsOf);
+      out.status = out.current > out.goal ? 'failed' : cerrada ? 'done' : 'active';
+      // La barra avanza con los días aguantados, no con los fallos.
+      out.pct = out.status === 'active' ? Math.round(vistos.length / days.length * 100) : 100;
+      out.text = out.current + (out.current === 1 ? ' fallo' : ' fallos') +
+                 (out.goal ? ' · máx. ' + out.goal : '');
+    } else if (m.type === 'cap_avg') {
+      const sum = sumLogs(function (v) { return Number(v) || 0; });
+      // Se mide sobre la semana entera: pasarse del total ya no tiene arreglo.
+      out.current = vistos.length ? Math.round(sum / vistos.length * 10) / 10 : 0;
+      out.status = sum > out.goal * days.length ? 'failed' : cerrada ? 'done' : 'active';
+      out.pct = Math.min(100, Math.round(sum / (out.goal * days.length) * 100));
+      out.text = 'media ' + out.current + ' / ' + out.goal + ' ' + habit.target.unit;
+    } else if (m.type === 'log_all') {
+      out.goal = days.length;
+      out.current = vistos.filter(function (k) { return activityValue(k) !== 'miss'; }).length;
+      // Hoy todavía no cuenta en contra: hasta medianoche hay tiempo.
+      const hueco = vistos.some(function (k) { return k < today && activityValue(k) === 'miss'; });
+      out.status = hueco ? 'failed' : out.current === out.goal ? 'done' : 'active';
+      out.pct = Math.round(out.current / out.goal * 100);
+      out.text = out.current + ' / ' + out.goal + ' días';
+    }
+    return out;
+  }
+
+  /** EXP que merecen ahora las misiones de una semana. */
+  function missionXp(weekKey, todayKey) {
+    const list = S.getMissions(weekKey);
+    const done = list.filter(function (m) {
+      return missionProgress(m, weekKey, todayKey).status === 'done';
+    }).length;
+    const all = list.length === MISSIONS_MAX && done === MISSIONS_MAX;
+    return { done: done, total: list.length, all: all,
+             xp: done * XP.mission + (all ? XP.missionsAll : 0) };
+  }
+
+  /** Cómo se lee una misión. */
+  function missionLabel(m) {
+    const h = m.habitId ? S.getHabit(m.habitId) : null;
+    const quien = h ? h.icon + ' ' + h.name : '';
+    switch (m.type) {
+      case 'habit_count':  return quien + ': ' + m.target + (m.target === 1 ? ' vez' : ' veces');
+      case 'avoid_clean':  return quien + (m.target ? ': como mucho ' + m.target +
+                                  (m.target === 1 ? ' fallo' : ' fallos') : ': semana limpia');
+      case 'cap_avg':      return quien + ': media por debajo de ' + m.target + ' ' + (h ? h.target.unit : '');
+      case 'perfect_days': return '⭐ ' + m.target + (m.target === 1 ? ' día perfecto' : ' días perfectos');
+      case 'log_all':      return '✎ Registrar todos los días';
+    }
+    return '';
+  }
+
+  /**
+   * Lo que se puede elegir como misión, sacado de tus hábitos activos.
+   * `unit` es lo que se escribe junto al número; null si no lleva número.
+   */
+  function missionOptions() {
+    const out = [];
+    doHabitsList().slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'es'); })
+      .forEach(function (h) {
+        out.push({ type: 'habit_count', habitId: h.id, label: h.icon + ' ' + h.name + ' · cumplir', unit: 'veces' });
+      });
+    S.getHabits().filter(isAvoid).forEach(function (h) {
+      out.push(h.target
+        ? { type: 'cap_avg', habitId: h.id, label: h.icon + ' ' + h.name + ' · media máxima', unit: h.target.unit + ' de media' }
+        : { type: 'avoid_clean', habitId: h.id, label: h.icon + ' ' + h.name + ' · semana limpia', unit: 'fallos máx.' });
+    });
+    out.push({ type: 'perfect_days', habitId: null, label: '⭐ Días perfectos', unit: 'días' });
+    out.push({ type: 'log_all', habitId: null, label: '✎ Registrar todos los días', unit: null });
+    return out;
+  }
+
+  /** Días que contaría una misión aceptada hoy para esa semana. */
+  function missionSpan(weekKey, todayKey) {
+    const today = todayKey || U.todayKey();
+    return daysFromTo(today > weekKey ? today : weekKey, U.addDaysKey(weekKey, 6));
+  }
+
+  /** El número que se propone al elegir un tipo de misión. */
+  function missionDefault(type, habitId, weekKey, todayKey) {
+    const days = missionSpan(weekKey, todayKey);
+    const h = habitId ? S.getHabit(habitId) : null;
+    if (type === 'habit_count') {
+      return Math.max(1, days.filter(function (k) { return isActiveOn(h, k); }).length);
+    }
+    if (type === 'cap_avg') return h.target.amount;
+    if (type === 'perfect_days') return Math.min(4, days.length);
+    return 0;
+  }
+
+  /** El tope razonable del número: no se puede cumplir algo 6 veces en 4 días. */
+  function missionMax(type, weekKey, todayKey) {
+    if (type === 'habit_count' || type === 'perfect_days') return missionSpan(weekKey, todayKey).length;
+    if (type === 'avoid_clean') return 20;
+    return 100000;
+  }
+
+  /**
+   * Tres misiones propuestas a partir de la semana anterior: el hábito que
+   * más se escapó, el hábito a evitar que peor fue y un día perfecto más que
+   * entonces. Con los de evitar ocultos, no se proponen.
+   */
+  function suggestMissions(weekKey, todayKey, sinEvitar) {
+    const prev = weekSummary(U.addDaysKey(weekKey, -7));
+    const prevDays = daysFromTo(prev.weekKey, U.addDaysKey(prev.weekKey, 6));
+    const out = [];
+
+    let h1 = prev.weakest ? prev.weakest.habit : S.getTrainingHabit();
+    if (!h1 || isAvoid(h1) || h1.archived) h1 = doHabitsList()[0];
+    if (h1) out.push({ type: 'habit_count', habitId: h1.id });
+
+    if (!sinEvitar) {
+      let peor = null;
+      let peso = -1;
+      S.getHabits().filter(isAvoid).forEach(function (h) {
+        // Fallos de la semana, o en los de límite cuánto se comió del máximo.
+        const p = prevDays.reduce(function (s, k) {
+          const v = S.getLog(h.id, k);
+          return s + (h.target ? (Number(v) || 0) / h.target.amount : failsOf(v));
+        }, 0);
+        if (p > peso) { peso = p; peor = h; }
+      });
+      if (peor) out.push({ type: peor.target ? 'cap_avg' : 'avoid_clean', habitId: peor.id });
+    }
+
+    const quedan = missionSpan(weekKey, todayKey).length;
+    if (prev.perfect >= quedan || out.length < 2) out.push({ type: 'log_all', habitId: null });
+    if (out.length < MISSIONS_MAX) {
+      out.push({ type: 'perfect_days', habitId: null, target: Math.min(quedan, Math.max(1, prev.perfect + 1)) });
+    }
+
+    return out.slice(0, MISSIONS_MAX).map(function (m) {
+      if (m.target === undefined) m.target = missionDefault(m.type, m.habitId, weekKey, todayKey);
+      return m;
+    });
+  }
+
+  /* ── Días en blanco (2.6.0) ───────────────────────────────
+     Un día que tocaba algo y acabó sin ningún registro: ni hábitos, ni
+     nota, ni peso, ni marca de día. Es la misma regla que corta la racha
+     de registro, así que un comodín, una pausa o una ausencia lo salvan. */
+  function isBlankDay(dateKey) {
+    return activityValue(dateKey) === 'miss';
+  }
+
   /* ── Logros ───────────────────────────────────────────────── */
 
   /* Los `id` son los que están guardados en el almacén: no se tocan nunca.
@@ -1370,6 +1566,10 @@ HT.stats = (function () {
     xpForLevel: xpForLevel, levelFromXp: levelFromXp,
     rankForLevel: rankForLevel, leveledUp: leveledUp,
     attributes: attributes, totalCompletions: totalCompletions,
+    MISSIONS_MAX: MISSIONS_MAX, missionProgress: missionProgress, missionXp: missionXp,
+    missionLabel: missionLabel, missionOptions: missionOptions, missionDefault: missionDefault,
+    missionMax: missionMax, missionSpan: missionSpan, suggestMissions: suggestMissions,
+    isBlankDay: isBlankDay,
 
     AVOID_MILESTONES: AVOID_MILESTONES,
     isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,

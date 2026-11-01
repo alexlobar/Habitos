@@ -5,7 +5,7 @@
    ============================================================ */
 /* Este número tiene que coincidir con VERSION en js/utils.js. Si se
    desincronizan, la pantalla de Ajustes lo avisa en lugar de callarse. */
-const CACHE = 'habitos-v2.5.1';
+const CACHE = 'habitos-v2.6.0';
 /* Todas las apps de alexlobar.github.io comparten el almacén de cachés:
    al actualizar, sólo se borran las de esta app (las que empiezan así). */
 const PREFIX = 'habitos-v';
@@ -61,8 +61,12 @@ self.addEventListener('fetch', function (event) {
   if (request.method !== 'GET') return;
   if (new URL(request.url).origin !== self.location.origin) return;
 
+  // Los atajos del icono abren index.html?go=…: para abrir la página se
+  // ignora la búsqueda, o sin conexión no encontraría el index.html guardado.
+  const navegacion = request.mode === 'navigate';
+
   event.respondWith(
-    caches.match(request).then(function (cached) {
+    caches.match(request, { ignoreSearch: navegacion }).then(function (cached) {
       if (cached) return cached;
 
       return fetch(request)

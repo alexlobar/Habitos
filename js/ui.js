@@ -140,7 +140,10 @@ HT.ui = (function () {
       'btnAddAbsence', 'absenceList', 'absenceModal', 'absenceForm', 'absenceFrom', 'absenceTo',
       'absenceLength', 'absenceReasons', 'absenceNote', 'absenceHabits',
       'weightLegendGoal', 'weightGoalInput', 'weightGoalText',
-      'btnAddFreeNote', 'freeNotesList', 'freeNotesHint'
+      'btnAddFreeNote', 'freeNotesList', 'freeNotesHint',
+      'missionCard', 'missionCount', 'missionList', 'missionFoot', 'missionNote',
+      'missionPlanCard', 'missionLock', 'missionPlanHint', 'missionPlanList', 'missionEditor',
+      'missionSlots', 'btnMissionAccept', 'btnMissionSuggest', 'setBlankPenalty'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -956,7 +959,9 @@ HT.ui = (function () {
      quien escribe en el almacén sigue siendo app.js. ───────────────── */
 
   const PLAN_ORDER = [1, 2, 3, 4, 5, 6, 0];   // de lunes a domingo, como el resto de la app
-  const plan = { offset: 0, draft: {} };      // offset: 0 = esta semana, 1 = la que viene
+  // offset: 0 = esta semana, 1 = la que viene. missions: borrador de las
+  // misiones por semana, tres huecos que pueden ir vacíos (null).
+  const plan = { offset: 0, draft: {}, missions: {} };
 
   function sameDayList(a, b) {
     return a.length === b.length && a.every(function (d, i) { return d === b[i]; });
@@ -980,6 +985,7 @@ HT.ui = (function () {
 
   function resetPlanDraft() {
     plan.draft = {};
+    plan.missions = {};
   }
 
   /** La fecha de un día de la semana del plan. */
@@ -1001,6 +1007,7 @@ HT.ui = (function () {
 
   function renderPlanView() {
     renderPlan();
+    renderMissionPlan();
     renderAbsences();
   }
 
@@ -1123,6 +1130,143 @@ HT.ui = (function () {
   function readPlan() {
     const wk = planWeekKey();
     return { weekKey: wk, draft: JSON.parse(JSON.stringify(plan.draft[wk] || {})) };
+  }
+
+  /* ── Misiones en Plan ─────────────────────────────────────
+     Tres huecos con un desplegable y un número. Se eligen para la semana
+     que se ve y, una vez aceptadas, quedan fijas hasta el domingo. Igual
+     que el plan, el borrador vive aquí y quien escribe es app.js. ───── */
+
+  /** Lo que se puede elegir, sin los hábitos a evitar si están ocultos. */
+  function missionChoices() {
+    const sinEvitar = S.getSettings().hideAvoid;
+    return St.missionOptions().filter(function (o) {
+      return !(sinEvitar && (o.type === 'avoid_clean' || o.type === 'cap_avg'));
+    });
+  }
+
+  function missionDraft() {
+    const wk = planWeekKey();
+    if (!plan.missions[wk]) plan.missions[wk] = [null, null, null];
+    return plan.missions[wk];
+  }
+
+  function renderMissionPlan() {
+    const wk = planWeekKey();
+    const aceptadas = S.getMissions(wk);
+    const hoy = U.todayKey();
+
+    els.missionLock.hidden = !aceptadas.length;
+    els.missionPlanList.hidden = !aceptadas.length;
+    els.missionEditor.hidden = !!aceptadas.length;
+
+    if (aceptadas.length) {
+      const desde = aceptadas[0].from;
+      els.missionPlanHint.textContent = 'Aceptadas. Cuentan ' +
+        (desde > wk ? 'desde el ' + U.formatShort(U.fromKey(desde)) : 'toda la semana') +
+        ' hasta el domingo: +' + St.XP.mission + ' EXP cada una y +' + St.XP.missionsAll + ' por las tres.';
+      const frag = document.createDocumentFragment();
+      aceptadas.forEach(function (m) { frag.appendChild(missionRow(m, wk)); });
+      els.missionPlanList.textContent = '';
+      els.missionPlanList.appendChild(frag);
+      return;
+    }
+
+    const quedan = St.missionSpan(wk, hoy).length;
+    els.missionPlanHint.textContent = 'Elige hasta tres retos para ' +
+      (quedan < 7 ? 'lo que queda de semana (' + quedan + (quedan === 1 ? ' día' : ' días') + ')' : 'la semana') +
+      '. +' + St.XP.mission + ' EXP cada una y +' + St.XP.missionsAll +
+      ' si cumples las tres. Una vez aceptadas no se cambian hasta el domingo.';
+
+    const opciones = missionChoices();
+    const draft = missionDraft();
+    const frag = document.createDocumentFragment();
+
+    draft.forEach(function (m, i) {
+      const li = el('li', { class: 'mission-slot', 'data-slot': String(i) });
+
+      const select = el('select', {
+        class: 'input input--select mission-slot__type',
+        'data-mission-type': String(i),
+        'aria-label': 'Misión ' + (i + 1)
+      });
+      select.appendChild(el('option', { value: '', text: '— Sin misión —' }));
+      opciones.forEach(function (o) {
+        const value = o.type + ':' + (o.habitId || '');
+        const opt = el('option', { value: value, text: o.label });
+        if (m && m.type === o.type && (m.habitId || '') === (o.habitId || '')) opt.selected = true;
+        select.appendChild(opt);
+      });
+      li.appendChild(select);
+
+      const opcion = m && opciones.filter(function (o) {
+        return o.type === m.type && (o.habitId || '') === (m.habitId || '');
+      })[0];
+
+      if (opcion && opcion.unit) {
+        const row = el('label', { class: 'mission-slot__target' });
+        const input = el('input', {
+          class: 'input mission-slot__num', type: 'number', inputmode: 'decimal',
+          min: m.type === 'avoid_clean' ? '0' : '1',
+          max: String(St.missionMax(m.type, wk, hoy)),
+          step: m.type === 'cap_avg' ? 'any' : '1',
+          'data-mission-target': String(i),
+          'aria-label': 'Objetivo de la misión ' + (i + 1)
+        });
+        input.value = String(m.target);
+        row.appendChild(input);
+        row.appendChild(el('span', { class: 'mission-slot__unit', text: opcion.unit }));
+        li.appendChild(row);
+      }
+
+      frag.appendChild(li);
+    });
+
+    els.missionSlots.textContent = '';
+    els.missionSlots.appendChild(frag);
+  }
+
+  /** Elige el tipo de un hueco ('' lo vacía) y le pone el número de partida. */
+  function setMissionSlot(i, value) {
+    const draft = missionDraft();
+    if (!value) { draft[i] = null; renderMissionPlan(); return; }
+
+    const partes = value.split(':');
+    const type = partes[0];
+    const habitId = partes[1] || null;
+    draft[i] = {
+      type: type, habitId: habitId,
+      target: St.missionDefault(type, habitId, planWeekKey(), U.todayKey())
+    };
+    renderMissionPlan();
+  }
+
+  /** Cambia el número de un hueco, dentro de lo que se puede cumplir. */
+  function setMissionTarget(i, raw) {
+    const m = missionDraft()[i];
+    if (!m) return;
+    const n = Number(String(raw).replace(',', '.'));
+    if (!isFinite(n)) return;
+    const min = m.type === 'avoid_clean' ? 0 : m.type === 'cap_avg' ? 0.1 : 1;
+    let v = Math.min(Math.max(n, min), St.missionMax(m.type, planWeekKey(), U.todayKey()));
+    v = m.type === 'cap_avg' ? Math.round(v * 10) / 10 : Math.round(v);
+    m.target = v;
+    const input = $('[data-mission-target="' + i + '"]', els.missionSlots);
+    if (input && Number(input.value) !== v) input.value = String(v);
+  }
+
+  /** Rellena los tres huecos con lo que propone la semana anterior. */
+  function suggestMissionDraft() {
+    const wk = planWeekKey();
+    const propuestas = St.suggestMissions(wk, U.todayKey(), S.getSettings().hideAvoid);
+    plan.missions[wk] = [0, 1, 2].map(function (i) { return propuestas[i] || null; });
+    renderMissionPlan();
+  }
+
+  /** Las misiones del borrador listas para aceptar: { weekKey, list }. */
+  function readMissions() {
+    const wk = planWeekKey();
+    return { weekKey: wk, list: missionDraft().filter(Boolean).map(function (m) { return Object.assign({}, m); }) };
   }
 
   /* ── Ausencias ────────────────────────────────────────────── */
@@ -1414,6 +1558,72 @@ HT.ui = (function () {
     renderWeightEntry(dateKey);
     renderWeekRecap(dateKey);
     renderPlanNote(dateKey);
+    renderMissions(dateKey);
+  }
+
+  /* ── Misiones de la semana ────────────────────────────────── */
+
+  /**
+   * Una misión como fila: qué pide, cómo va y su barra. Con los hábitos a
+   * evitar ocultos, la de uno de ellos sale sin nombre: cuenta igual, pero
+   * no dice de qué es.
+   */
+  function missionRow(m, weekKey) {
+    const p = St.missionProgress(m, weekKey, U.todayKey());
+    const h = m.habitId ? S.getHabit(m.habitId) : null;
+    const oculta = h && isHiddenHabit(h);
+
+    const li = el('li', { class: 'mission', 'data-status': p.status });
+    const head = el('div', { class: 'mission__head' });
+    head.appendChild(el('span', { class: 'mission__label', text: oculta ? '🔒 Misión privada' : St.missionLabel(m) }));
+    head.appendChild(el('span', {
+      class: 'mission__state',
+      text: p.status === 'done' ? '✓ +' + St.XP.mission
+          : p.status === 'failed' ? '✗' : oculta ? '' : p.text
+    }));
+    li.appendChild(head);
+
+    const track = el('div', { class: 'mission__track', 'aria-hidden': 'true' });
+    const fill = el('span', { class: 'mission__fill' });
+    fill.style.setProperty('--pct', p.status === 'done' ? 100 : p.pct);
+    track.appendChild(fill);
+    li.appendChild(track);
+
+    if (!oculta && p.status !== 'active') {
+      li.appendChild(el('p', { class: 'mission__detail', text: p.text }));
+    }
+    li.setAttribute('aria-label', (oculta ? 'Misión privada' : St.missionLabel(m)) + '. ' +
+      (p.status === 'done' ? 'Cumplida' : p.status === 'failed' ? 'Fallida' : 'En juego, ' + p.text));
+    return li;
+  }
+
+  /** La tarjeta de Hoy, con las misiones de la semana del día que se mira. */
+  function renderMissions(dateKey) {
+    const wk = S.weekKeyOf(dateKey);
+    const list = S.getMissions(wk);
+    els.missionCard.hidden = !list.length;
+
+    // El aviso para elegirlas: solo hoy, sin resumen ni aviso de plan a la
+    // vista (los dos ya llevan a Plan) y si queda semana por delante.
+    const hoy = U.todayKey();
+    els.missionNote.hidden = !(dateKey === hoy && !list.length && els.weekRecap.hidden &&
+      els.planNote.hidden && planHabits().length && U.fromKey(hoy).getDay() !== 0);
+
+    if (!list.length) return;
+
+    const r = St.missionXp(wk, hoy);
+    els.missionCount.textContent = r.done + ' / ' + r.total;
+
+    const frag = document.createDocumentFragment();
+    list.forEach(function (m) { frag.appendChild(missionRow(m, wk)); });
+    els.missionList.textContent = '';
+    els.missionList.appendChild(frag);
+
+    els.missionFoot.textContent = r.total === St.MISSIONS_MAX
+      ? '+' + St.XP.mission + ' EXP cada una y +' + St.XP.missionsAll + ' por las tres' +
+        (r.xp ? ' · llevas +' + r.xp : '') + '.'
+      : '+' + St.XP.mission + ' EXP cada una. El extra de +' + St.XP.missionsAll +
+        ' es para quien acepta las tres.';
   }
 
   /* ── Resumen de la semana pasada ──────────────────────────
@@ -1474,6 +1684,11 @@ HT.ui = (function () {
     if (r.weight && !S.getSettings().hideWeight) {
       lineas.push('Peso: media de ' + kg(r.weight.avg) +
                   (r.weight.change === null ? '' : ' (' + kgDelta(r.weight.change) + ')') + '.');
+    }
+    const mis = St.missionXp(r.weekKey, hoy);
+    if (mis.total) {
+      lineas.push('🎯 Misiones: ' + mis.done + ' de ' + mis.total + ' cumplidas' +
+                  (mis.xp ? ' (+' + mis.xp + ' EXP)' : '') + (mis.all ? '. ¡Las tres!' : '.'));
     }
 
     const lines = document.createDocumentFragment();
@@ -3244,6 +3459,7 @@ HT.ui = (function () {
 
     renderBackupStatus(s);
     els.setEffects.setAttribute('aria-checked', s.effects ? 'true' : 'false');
+    els.setBlankPenalty.setAttribute('aria-checked', s.blankPenalty ? 'true' : 'false');
     renderArchived();
     renderBuildInfo();
   }
@@ -3882,6 +4098,8 @@ HT.ui = (function () {
     renderPlanView: renderPlanView, setPlanOffset: setPlanOffset, getPlanOffset: getPlanOffset,
     resetPlanDraft: resetPlanDraft,
     togglePlanDay: togglePlanDay, resetPlanWeek: resetPlanWeek, readPlan: readPlan,
+    setMissionSlot: setMissionSlot, setMissionTarget: setMissionTarget,
+    suggestMissionDraft: suggestMissionDraft, readMissions: readMissions,
     openAbsenceModal: openAbsenceModal, closeAbsenceModal: closeAbsenceModal,
     setAbsenceAll: setAbsenceAll, syncAbsenceLength: syncAbsenceLength,
     readAbsenceForm: readAbsenceForm,

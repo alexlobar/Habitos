@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.5.1** · esquema de datos **v14**.
+Versión documentada: **2.6.0** · esquema de datos **v15**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -59,8 +59,11 @@ días perfectos, racha, lo que más se escapó, Redes y peso) con el botón para
 planificar la semana en curso; se quita con ✕ hasta la semana siguiente. Si la
 semana está sin planificar, una línea discreta lo recuerda (el domingo, si lo
 está la que viene). Durante una ausencia, otra línea dice hasta cuándo dura.
+Con **misiones** aceptadas (2.6.0), una tarjeta arriba con su progreso; tocarla
+lleva a Plan. Con la semana planificada y sin misiones, una línea invita a
+elegirlas.
 
-**Plan.** Dos partes:
+**Plan.** Tres partes:
 
 - *El plan de la semana*: qué días toca cada hábito en **esta semana** o en
   **la que viene**, sin cambiar sus días de siempre. Se empieza cuando se
@@ -69,6 +72,11 @@ está la que viene). Durante una ausencia, otra línea dice hasta cuándo dura.
   hasta el domingo** (hay 7 segundos para deshacerlo). El domingo, Plan se abre
   directamente en la semana que viene. Sin plan, todo sigue sus días de
   siempre. Planificar no da EXP.
+- *Misiones* (2.6.0): hasta tres retos para la semana —cumplir un hábito N
+  veces, semana limpia de un hábito a evitar, media por debajo de un máximo,
+  N días perfectos o registrar todos los días—. *Sugerir* las propone según la
+  semana anterior. Una vez aceptadas no se cambian hasta el domingo y cuentan
+  desde ese día. 50 EXP cada una y 50 más por las tres (PROGRESION.md, 11).
 - *Ausencias*: un viaje o una temporada fuera. Fechas de inicio y fin, motivo,
   una nota y los hábitos que se pausan (todos marcados de entrada). Esos días
   no se piden, no cuentan como fallados y las rachas se quedan donde estén.
@@ -94,7 +102,16 @@ filtra las dos listas.
 
 **Ajustes.** Apariencia, qué se ve en Hoy, privacidad, la lista de todos tus
 hábitos (con archivados y pausados), copia de seguridad y la información de la
-instalación.
+instalación. En *Preferencias*, el interruptor **Restar EXP por días en blanco**
+(2.6.0, encendido de entrada): −25 EXP por cada día que acabe sin registrar
+nada, sin bajar nunca de nivel y devueltos si rellenas el día.
+
+**Guardar copia** (2.6.0), en *Tus datos* y en el aviso de copia: abre el menú
+de compartir del móvil para mandarla a Drive, WhatsApp, el correo… Chrome no
+deja compartir archivos `.json`, así que va como `habitos-AAAA-MM-DD.txt` con el
+mismo contenido; *Importar* acepta `.json` y `.txt`. Donde no se puede compartir
+(casi todo el escritorio), se descarga. Cancelar el menú no cuenta como copia.
+*Exportar JSON* sigue descargando el archivo como siempre.
 
 **Privacidad** (2.3.0), para enseñar la app sin enseñar lo más personal. Tres
 interruptores, todos apagados de entrada:
@@ -173,6 +190,13 @@ de Chrome para Android (hasta la 157) cuando hay otra app tuya instalada en el
 mismo `usuario.github.io`. Usa el botón *Instalar la app* de **Ajustes → Esta
 instalación**, que solo aparece cuando el navegador permite instalarla. Detalle
 en `PWA-Android-ya-instalada.md`.
+
+**Atajos del icono** (2.6.0). Con la app instalada, mantener pulsado su icono
+ofrece *Apuntar fallo*, *Escribir nota*, *Peso de hoy* y *Planificar la semana*
+(`shortcuts` en `manifest.json`; cada uno abre `index.html?go=…` y
+`openShortcut()` lleva a su sitio). En una app ya instalada, Android tarda en
+mostrarlos: Chrome actualiza el manifest por su cuenta, a veces en un día. Con
+lo que apuntan oculto en Privacidad, abren Hoy sin más.
 
 **PC y móvil son instalaciones independientes y no se sincronizan.** Para pasar
 datos de uno a otro: *Ajustes → Exportar JSON* en el origen y *Ajustes →
@@ -318,7 +342,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 14,
+  "version": 15,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -328,6 +352,7 @@ Una sola clave, `habitTracker.v1`:
     "showDayBar": true, "showNotes": true, "showFreeze": true, "showWeight": true,
     // privacidad: ocultan en toda la app, no solo en Hoy (2.3.0)
     "hideWeight": false, "hideAvoid": false, "hideNotes": false,
+    "blankPenalty": true,             // −25 EXP por día en blanco (2.6.0)
     "backupDays": 14,                 // aviso de copia: 0, 7, 14 o 30 días
     "streakGoal": "2",                // "1" | "2" | "3" | "quarter" | "half"
     "weekStart": 1,                   // fijo en lunes desde la 1.6.5
@@ -368,6 +393,10 @@ Una sola clave, `habitTracker.v1`:
   "freeNotes": [{ "id": "n_x1", "title": "Objetivos", "text": "…", "updated": 1793009134893 }],
   // semanas confirmadas (bloqueadas): lunes → día en que se confirmó
   "plannedWeeks": { "2026-10-26": "2026-10-27" },
+  // misiones aceptadas (v15): lunes → hasta tres. "from" es el día desde el
+  // que cuentan; "target", las veces, los fallos máximos o la media máxima.
+  // type: "habit_count" | "avoid_clean" | "cap_avg" | "perfect_days" | "log_all"
+  "missions": { "2026-10-26": [{ "type": "habit_count", "habitId": "h_xxx", "target": 3, "from": "2026-10-28" }] },
   "frozen": {
     // marcas de día: el motivo es gratis; "skip": true cuesta un comodín
     "2026-09-20": { "reason": "energia", "note": "", "skip": false },
@@ -390,7 +419,10 @@ Una sola clave, `habitTracker.v1`:
     "levelLog": [{ "level": 1, "date": "2026-09-16" }],
     "levelLogFrom": 0,                // nivel desde el que el registro es fiable
     "freezes": 2,                     // comodines disponibles (máx. 4)
-    "freezeWeek": "2026-09-28"        // lunes de la última recarga semanal
+    "freezeWeek": "2026-09-28",       // lunes de la última recarga semanal
+    "missionPaid": { "2026-10-26": 100 },   // EXP de misiones cobrada, por semana (v15)
+    "penalties": { "2026-10-29": 25 },      // EXP restada por día en blanco (v15)
+    "penaltyFrom": "2026-10-30"             // desde cuándo cuentan los días en blanco
   }
 }
 ```
@@ -432,7 +464,10 @@ el caso de la v10, lee el `true` antiguo de `frozen` como "salvado sin motivo".
 En la v14 el saneado copia `workout.linkedHabitId` a `trainingHabitId` y deja
 fuera rutinas, ejercicios, sesiones y el ajuste `restSeconds`; eso vale igual
 al cargar que al importar una copia antigua. La EXP que dieron los entrenos se
-queda.
+queda. La v15 (2.6.0) tampoco necesita migración: `missions`, `missionPaid` y
+`penalties` empiezan vacíos y `penaltyFrom` en el día de la actualización, para
+no cobrar días en blanco anteriores. Una misión cuyo hábito ya no existe, o ya
+no es del tipo que pide, se descarta al sanear.
 
 ### Varias ventanas a la vez (2.3.4)
 

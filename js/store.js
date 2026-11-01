@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 14;
+  const VERSION = 15;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -37,6 +37,13 @@ HT.store = (function () {
      nueve un miércoles y dos de tres un domingo no son el mismo esfuerzo. */
   const STREAK_GOALS = ['1', '2', '3', 'half', 'quarter'];
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
+
+  /* Misiones semanales (2.6.0). Los tipos y lo que mide cada uno están en
+     stats.js; aquí solo se guarda qué eligió el usuario. */
+  const MISSION_TYPES = ['habit_count', 'avoid_clean', 'cap_avg', 'perfect_days', 'log_all'];
+  const MAX_MISSIONS = 3;
+  const MAX_MISSION_WEEKS = 600;
+  const MAX_LEDGER = 1000;   // apuntes por día o semana en los libros de EXP
 
   let state = null;
   let listeners = [];
@@ -152,6 +159,7 @@ HT.store = (function () {
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true,
         hideWeight: false, hideAvoid: false, hideNotes: false,
+        blankPenalty: true,
         weightGoal: null
       },
       habits: habits,
@@ -161,6 +169,7 @@ HT.store = (function () {
       weights: {},
       freeNotes: [],
       plannedWeeks: {},
+      missions: {},
       // El hábito que mide el atributo Fuerza en Progreso.
       trainingHabitId: training.id,
       game: {
@@ -168,7 +177,8 @@ HT.store = (function () {
         // hábitos, y los de partida los regala la app, no los creas tú.
         points: 0, achievements: [], bestStreak: 0, habitsCreated: 0,
         avoidXpPaid: 0, lastExport: null, weekSummarySeen: null, levelLog: [], levelLogFrom: 0,
-        freezes: 1, freezeWeek: U.toKey(U.startOfWeek(U.fromKey(today), 1))
+        freezes: 1, freezeWeek: U.toKey(U.startOfWeek(U.fromKey(today), 1)),
+        missionPaid: {}, penalties: {}, penaltyFrom: today
       }
     };
   }
@@ -367,6 +377,74 @@ HT.store = (function () {
       .sort()
       .slice(-MAX_WEEK_PLANS)
       .forEach(function (k) { out[k] = raw[k]; });
+    return out;
+  }
+
+  /**
+   * Misiones aceptadas: { lunes → [misión] }, como mucho tres por semana.
+   * Una misión es { type, habitId, target, from }: `from` es el día desde el
+   * que cuenta —el de aceptarla, si fue a media semana—, para que elegir el
+   * sábado "entrenar 2 veces" con las dos ya hechas no regale la EXP.
+   * Si el hábito ya no existe o ya no es del tipo que pide la misión, se
+   * descarta: medirla contra otra cosa daría un resultado inventado.
+   */
+  function cleanMissions(raw, byId) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+
+    Object.keys(raw)
+      .filter(function (k) { return U.isValidKey(k) && U.fromKey(k).getDay() === 1 && Array.isArray(raw[k]); })
+      .sort()
+      .slice(-MAX_MISSION_WEEKS)
+      .forEach(function (wk) {
+        const list = raw[wk]
+          .map(function (m) { return cleanMission(m, wk, byId); })
+          .filter(Boolean)
+          .slice(0, MAX_MISSIONS);
+        if (list.length) out[wk] = list;
+      });
+    return out;
+  }
+
+  function cleanMission(m, weekKey, byId) {
+    if (!m || typeof m !== 'object' || MISSION_TYPES.indexOf(m.type) < 0) return null;
+
+    const conHabito = m.type === 'habit_count' || m.type === 'avoid_clean' || m.type === 'cap_avg';
+    const habit = conHabito ? byId[m.habitId] : null;
+    if (conHabito && !habit) return null;
+    if (m.type === 'habit_count' && habit.type === 'avoid') return null;
+    if (m.type === 'avoid_clean' && (habit.type !== 'avoid' || habit.target)) return null;
+    if (m.type === 'cap_avg' && !(habit.type === 'avoid' && habit.target)) return null;
+
+    const fin = U.addDaysKey(weekKey, 6);
+    const from = U.isValidKey(m.from) && m.from >= weekKey && m.from <= fin ? m.from : weekKey;
+
+    const n = Number(m.target);
+    let target = isFinite(n) ? n : 0;
+    if (m.type === 'cap_avg') {
+      target = Math.round(Math.min(Math.max(target, 0), 100000) * 10) / 10;
+      if (!(target > 0)) return null;
+    } else if (m.type === 'log_all') {
+      target = 0;                              // son todos los días que queden: no hay número
+    } else {
+      target = Math.min(Math.max(Math.floor(target), m.type === 'avoid_clean' ? 0 : 1), MAX_FAILS);
+    }
+
+    return { type: m.type, habitId: habit ? habit.id : null, target: target, from: from };
+  }
+
+  /** Libro de EXP por fecha: { día o lunes → cantidad }. */
+  function cleanLedger(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    Object.keys(raw)
+      .filter(function (k) { return U.isValidKey(k); })
+      .sort()
+      .slice(-MAX_LEDGER)
+      .forEach(function (k) {
+        const n = Math.floor(Number(raw[k]));
+        if (isFinite(n) && n >= 0) out[k] = Math.min(n, 100000);
+      });
     return out;
   }
 
@@ -570,6 +648,8 @@ HT.store = (function () {
         hideWeight: s.hideWeight === true,
         hideAvoid: s.hideAvoid === true,
         hideNotes: s.hideNotes === true,
+        // Restar EXP por día en blanco (2.6.0): activado salvo que se apague.
+        blankPenalty: s.blankPenalty !== false,
         // Peso objetivo en kg, o null si no hay.
         weightGoal: s.weightGoal === null || s.weightGoal === undefined ? null : cleanWeight(s.weightGoal)
       },
@@ -586,6 +666,8 @@ HT.store = (function () {
       weights: cleanByDate(raw.weights, cleanWeight),
       freeNotes: cleanFreeNotes(raw.freeNotes),
       plannedWeeks: cleanPlannedWeeks(raw.plannedWeeks),
+      // Ausente antes de la v15: sin misiones.
+      missions: cleanMissions(raw.missions, byId),
       // Hasta la v13 vivía en workout.linkedHabitId, junto a la tabla de
       // ejercicios. La tabla, las rutinas y las series se descartan aquí:
       // la sección salió en la 2.2.0 y el hábito es lo único que sigue.
@@ -619,7 +701,18 @@ HT.store = (function () {
         // Desde la 1.6.1 los comodines son semanales, así que se guarda el
         // lunes de la semana y no el mes. Quien venga del formato viejo
         // empieza a contar desde esta semana, sin regalo ni castigo.
-        freezeWeek: U.isValidKey(g.freezeWeek) ? g.freezeWeek : today
+        freezeWeek: U.isValidKey(g.freezeWeek) ? g.freezeWeek : today,
+        // EXP de misiones ya cobrada, por semana. Igual que avoidXpPaid: se
+        // paga la diferencia entre lo que toca y lo cobrado, en los dos
+        // sentidos, y así nunca se cobra dos veces.
+        missionPaid: cleanLedger(g.missionPaid),
+        // EXP restada por días en blanco, por día: lo que se quitó de verdad
+        // (puede ser menos de 25 si no había de dónde), para devolver eso
+        // mismo si el día se rellena.
+        penalties: cleanLedger(g.penalties),
+        // Desde qué día cuenta la penalización. Quien actualiza empieza hoy:
+        // no se cobran días en blanco anteriores a que existiera.
+        penaltyFrom: U.isValidKey(g.penaltyFrom) ? g.penaltyFrom : today
       }
     };
   }
@@ -1599,6 +1692,12 @@ HT.store = (function () {
 
   function setSettings(patch) {
     const next = Object.assign({}, state.settings, patch);
+
+    // Volver a encender la penalización no cobra los días que estuvo apagada.
+    if (next.blankPenalty !== false && state.settings.blankPenalty === false) {
+      state.game.penaltyFrom = U.todayKey();
+    }
+
     state.settings = {
       weekStart: 1,
       accent: HEX.test(next.accent) ? next.accent : state.settings.accent,
@@ -1618,6 +1717,7 @@ HT.store = (function () {
       hideWeight: next.hideWeight === true,
       hideAvoid: next.hideAvoid === true,
       hideNotes: next.hideNotes === true,
+      blankPenalty: next.blankPenalty !== false,
       weightGoal: next.weightGoal === null || next.weightGoal === undefined || next.weightGoal === ''
         ? null : cleanWeight(next.weightGoal)
     };
@@ -1722,9 +1822,83 @@ HT.store = (function () {
     // contarían una historia que ya no existe.
     state.game.levelLog = [];
     state.game.levelLogFrom = 0;
+    // Los libros de misiones y penalizaciones van con la EXP: las misiones ya
+    // cumplidas se vuelven a cobrar, como los hitos de evitar, y los días en
+    // blanco solo cuentan desde hoy.
+    state.game.missionPaid = {};
+    state.game.penalties = {};
+    state.game.penaltyFrom = U.todayKey();
     save(true);
     emit('state:replace');
     return state.game;
+  }
+
+  /* ── Misiones semanales ───────────────────────────────────── */
+
+  function getMissions(weekKey) {
+    return state.missions[weekKey] || [];
+  }
+
+  /** Las semanas con misiones, de la más antigua a la más reciente. */
+  function getMissionWeeks() {
+    return Object.keys(state.missions).sort();
+  }
+
+  /**
+   * Acepta las misiones de una semana: esta o la que viene, y solo una vez.
+   * Una vez aceptadas no se cambian hasta el domingo —si no, se elegirían
+   * a toro pasado—. Cuentan desde hoy si la semana ya ha empezado.
+   */
+  function acceptMissions(weekKey, list) {
+    if (planWeeks().indexOf(weekKey) < 0 || getMissions(weekKey).length) return null;
+
+    const from = U.todayKey() > weekKey ? U.todayKey() : weekKey;
+    const byId = {};
+    state.habits.forEach(function (h) { byId[h.id] = h; });
+
+    const vistos = {};
+    const limpias = (Array.isArray(list) ? list : [])
+      .map(function (m) { return cleanMission(Object.assign({}, m, { from: from }), weekKey, byId); })
+      .filter(function (m) {
+        if (!m) return false;
+        const clave = m.type + ':' + m.habitId;
+        if (vistos[clave]) return false;           // la misma misión dos veces no vale doble
+        vistos[clave] = true;
+        return true;
+      })
+      .slice(0, MAX_MISSIONS);
+
+    if (!limpias.length) return null;
+    state.missions[weekKey] = limpias;
+    commit('missions:change', { weekKey: weekKey });
+    return limpias;
+  }
+
+  function getMissionPaid(weekKey) {
+    return state.game.missionPaid[weekKey] || 0;
+  }
+
+  function setMissionPaid(weekKey, n) {
+    const v = Math.max(0, Math.floor(Number(n) || 0));
+    if (v) state.game.missionPaid[weekKey] = v;
+    else delete state.game.missionPaid[weekKey];
+    save();
+  }
+
+  /* ── Penalización por día en blanco ───────────────────────── */
+
+  function getPenalties() { return state.game.penalties; }
+
+  function setPenalty(dateKey, n) {
+    if (!U.isValidKey(dateKey)) return;
+    state.game.penalties[dateKey] = Math.max(0, Math.floor(Number(n) || 0));
+    save();
+  }
+
+  function clearPenalty(dateKey) {
+    if (!(dateKey in state.game.penalties)) return;
+    delete state.game.penalties[dateKey];
+    save();
   }
 
   /* ── Mantenimiento ────────────────────────────────────────── */
@@ -1749,6 +1923,10 @@ HT.store = (function () {
   return {
     MAX_FREEZES: MAX_FREEZES,
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
+    MAX_MISSIONS: MAX_MISSIONS,
+    getMissions: getMissions, getMissionWeeks: getMissionWeeks, acceptMissions: acceptMissions,
+    getMissionPaid: getMissionPaid, setMissionPaid: setMissionPaid,
+    getPenalties: getPenalties, setPenalty: setPenalty, clearPenalty: clearPenalty,
     getState: getState, getSettings: getSettings, getGame: getGame, getLastError: getLastError,
     getHabits: getHabits, getArchivedHabits: getArchivedHabits, getHabit: getHabit,
     getHabitsForDate: getHabitsForDate, getLog: getLog, getHabitLogs: getHabitLogs,

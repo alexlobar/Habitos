@@ -3630,6 +3630,67 @@ button.week-cell:disabled:hover { transform: none; }
 /* Lo pasado se ve, pero apagado: está ahí para dar contexto, no para tocarlo. */
 .plan-day:disabled { opacity: .4; cursor: not-allowed; }
 
+/* ── Misiones de la semana (2.6.0) ────────────────────────────
+   En Hoy, una tarjeta que lleva a Plan; en Plan, tres huecos para
+   elegirlas y, una vez aceptadas, la misma lista que en Hoy. ────── */
+#missionCard { margin-bottom: var(--sp-4); cursor: pointer; }
+#missionCard:hover { border-color: var(--border-strong); }
+.mission-list { display: grid; gap: var(--sp-3); }
+.mission { display: grid; gap: 6px; }
+.mission__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.mission__label { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.mission__state {
+  flex: none;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.mission[data-status="done"] .mission__state { color: var(--success); font-weight: 700; }
+.mission[data-status="failed"] .mission__state { color: var(--danger); font-weight: 700; }
+.mission[data-status="failed"] .mission__label { color: var(--text-muted); text-decoration: line-through; }
+.mission__track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.mission__fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 600ms var(--ease);
+}
+.mission[data-status="done"] .mission__fill { background: var(--success); }
+.mission[data-status="failed"] .mission__fill { background: var(--danger); opacity: .6; }
+.mission__detail { margin: 0; font-size: var(--fs-xs); color: var(--text-faint); }
+.missions__foot { margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+
+.mission-slots { display: grid; gap: var(--sp-3); margin: 0 0 var(--sp-4); padding: 0; list-style: none; }
+.mission-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.mission-slot__type { flex: 1 1 14rem; min-width: 0; }
+.mission-slot__target {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.mission-slot__num { width: 5.5rem; }
+#missionPlanList { margin-top: var(--sp-2); }
+
 /* Ausencias programadas */
 .absence-list { display: grid; gap: var(--sp-2); }
 .absence {

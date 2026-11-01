@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.5.1">
+<html lang="es" data-theme="dark" data-build="2.6.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -132,6 +132,16 @@
           </div>
         </article>
 
+        <!-- Misiones de la semana (2.6.0): solo sale si las has aceptado. -->
+        <article class="card missions" id="missionCard" aria-labelledby="missionTitle" hidden>
+          <header class="card__head">
+            <h2 class="card__title" id="missionTitle">Misiones de la semana</h2>
+            <span class="card__count" id="missionCount">—</span>
+          </header>
+          <ul class="mission-list" id="missionList"></ul>
+          <p class="missions__foot" id="missionFoot">—</p>
+        </article>
+
         <div class="habit-groups" id="habitList"></div>
 
         <!-- Recordatorio de lo que has apartado tú mismo: en pausa no sale
@@ -147,6 +157,13 @@
         <button type="button" class="paused-note" id="planNote" hidden>
           <span aria-hidden="true">📅</span>
           <span id="planNoteText">—</span>
+          <span class="paused-note__go" aria-hidden="true">›</span>
+        </button>
+
+        <!-- Con la semana ya planificada pero sin misiones. -->
+        <button type="button" class="paused-note" id="missionNote" hidden>
+          <span aria-hidden="true">🎯</span>
+          <span>Elige las misiones de esta semana</span>
           <span class="paused-note__go" aria-hidden="true">›</span>
         </button>
 
@@ -463,6 +480,22 @@
           </div>
         </article>
 
+        <article class="card missions" id="missionPlanCard" aria-labelledby="missionPlanTitle">
+          <header class="card__head">
+            <h2 class="card__title" id="missionPlanTitle">Misiones</h2>
+            <span class="plan-lock" id="missionLock" aria-hidden="true" hidden>🔒</span>
+          </header>
+          <p class="card__text" id="missionPlanHint">—</p>
+          <ul class="mission-list" id="missionPlanList" hidden></ul>
+          <div id="missionEditor">
+            <ol class="mission-slots" id="missionSlots"></ol>
+            <div class="btn-row">
+              <button type="button" class="btn btn--primary" id="btnMissionAccept">Aceptar misiones</button>
+              <button type="button" class="btn btn--ghost" id="btnMissionSuggest">Sugerir</button>
+            </div>
+          </div>
+        </article>
+
         <article class="card" aria-labelledby="absenceTitle">
           <header class="card__head">
             <h2 class="card__title" id="absenceTitle">Ausencias</h2>
@@ -743,6 +776,16 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="blankPenaltyLabel">Restar EXP por días en blanco</span>
+              <span class="field-row__hint">−25 EXP por cada día que acabe sin registrar nada. Nunca te baja de nivel, y si rellenas el día se devuelven.</span>
+            </span>
+            <button type="button" class="switch" id="setBlankPenalty"
+                    role="switch" aria-checked="true" aria-labelledby="blankPenaltyLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
         </article>
 
         <article class="card">
@@ -857,7 +900,10 @@
 
         <article class="card">
           <header class="card__head"><h2 class="card__title">Tus datos</h2></header>
-          <p class="card__text">Todo se guarda en este navegador. Exporta una copia para no perderla.</p>
+          <p class="card__text">
+            Todo se guarda en este navegador. Guarda una copia fuera —en Drive, en
+            WhatsApp o en el correo— para no perderla.
+          </p>
 
           <!-- El estado de la copia era una línea gris bajo un ajuste. Es el
                dato que dice si todo tu histórico está a un clic de perderse,
@@ -868,7 +914,7 @@
               <strong class="backup__title" id="backupTitle">—</strong>
               <span class="backup__hint" id="backupHint">—</span>
             </span>
-            <button type="button" class="btn backup__action" id="btnBackupNow">Exportar ahora</button>
+            <button type="button" class="btn backup__action" id="btnBackupNow">Guardar copia</button>
           </div>
 
           <div class="field-row">

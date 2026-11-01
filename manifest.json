@@ -15,5 +15,15 @@
     { "src": "icon-192.png",          "sizes": "192x192", "type": "image/png",     "purpose": "any" },
     { "src": "icon-512.png",          "sizes": "512x512", "type": "image/png",     "purpose": "any" },
     { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png",     "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Apuntar fallo", "short_name": "Fallo", "url": "./index.html?go=fallo",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Escribir nota", "short_name": "Nota", "url": "./index.html?go=nota",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Peso de hoy", "short_name": "Peso", "url": "./index.html?go=peso",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Planificar la semana", "short_name": "Planificar", "url": "./index.html?go=plan",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }

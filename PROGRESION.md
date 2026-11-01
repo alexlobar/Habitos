@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.5.1** · esquema de datos **v14**.
+Versión documentada: **2.6.0** · esquema de datos **v15**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -89,7 +89,11 @@ los bonos se redondean con `round5()`.
 | Completar un hábito | **25** (20 hasta la 2.5.0) |
 | Día bueno: cumplir el 80% o más de los hábitos del día | **+25%** de lo ganado en hábitos ese día |
 | Día perfecto: cumplirlos todos | **+50%** de lo ganado en hábitos ese día |
-| Cumplir un objetivo | 100 — *definido, sin acción que lo dispare* |
+| Cumplir una misión semanal (2.6.0) | **50** |
+| Cumplir las tres misiones de la semana | **+50** extra |
+| Día que acaba en blanco (2.6.0) | **−25**, nunca por debajo del inicio de tu nivel; se devuelve si lo rellenas |
+
+Las misiones y los días en blanco tienen su propia sección más abajo (11).
 
 Los bonos son un porcentaje y no una cantidad fija para que escalen con lo que
 haces: un día perfecto con nueve hábitos vale más que uno con tres. Y tienen dos
@@ -530,14 +534,62 @@ cifra de una sola.
 declarar días malos y acabarías inventándolos. Su recompensa es que la racha de
 registro sobrevive.
 
+### Misiones semanales (2.6.0)
+
+Se eligen en **Plan**, para esta semana o la que viene: hasta **tres**, con un
+desplegable y un número. *Sugerir* las propone a partir de la semana anterior
+(el hábito que más se escapó, el hábito a evitar que peor fue y un día perfecto
+más). Al aceptarlas quedan fijas hasta el domingo y **cuentan desde ese día**:
+aceptarlas el sábado con el trabajo ya hecho no paga nada.
+
+| Misión | Se cumple | Falla |
+|---|---|---|
+| *Hábito · cumplir N veces* | al llegar a N | si acaba la semana sin llegar |
+| *N días perfectos* | al llegar a N | si acaba la semana sin llegar |
+| *Hábito a evitar · semana limpia* (o como mucho N fallos) | al acabar la semana | en cuanto se pasa de N |
+| *Hábito con máximo · media por debajo de X* | al acabar la semana | en cuanto el total ya no cabe en X × días |
+| *Registrar todos los días* | con el último día registrado | si queda un día pasado en blanco |
+
+Pagan **50 EXP cada una y 50 más por las tres**. Funcionan como los hitos de
+"evitar": `missionXp()` calcula lo que toca a partir de los registros,
+`game.missionPaid` guarda lo cobrado por semana y `syncMissionXp()` paga o
+retira la diferencia. Desmarcar el hábito que cumplía una misión la retira; si
+se vuelve a cumplir, se vuelve a pagar, y nunca dos veces.
+
+En Hoy, una tarjeta con su progreso (lleva a Plan); con la semana planificada y
+sin misiones, una línea invita a elegirlas. El resumen semanal dice cuántas se
+cumplieron. Con los hábitos a evitar ocultos, no se ofrecen y una ya aceptada
+sale como *Misión privada*.
+
+Con las tres cada semana (+200), a 6-7 hábitos al día, el rango X se adelanta
+de 1 año y 6,5 meses a **1 año y 4,5 meses**.
+
+### Días en blanco (2.6.0)
+
+Un día **que tocaba algo y acabó sin ningún registro** —ni hábitos, ni nota, ni
+peso, ni marca de día— resta **25 EXP** (`St.isBlankDay()`, la misma regla que
+corta la racha de registro). Un comodín, una pausa o una ausencia lo salvan.
+
+- Se cobra al día siguiente, al abrir la app, con un aviso y un botón para ir
+  a ese día. Hoy nunca: hasta medianoche estás a tiempo.
+- **Nunca baja de nivel**: si no quedan 25 por encima del inicio de tu nivel,
+  quita lo que haya (o nada).
+- **Se devuelve** si rellenas el día: `game.penalties` guarda lo restado de
+  verdad cada día, y eso mismo vuelve.
+- **No es retroactiva**: cuenta desde `game.penaltyFrom`, que es el día en que
+  se estrenó o en que se volvió a encender.
+- Se apaga en *Ajustes → Preferencias → Restar EXP por días en blanco*. Lo ya
+  restado se sigue devolviendo si rellenas el día.
+
 ---
 
 ## 12. Reiniciar la progresión
 
 *Ajustes → Reiniciar progresión* (`resetProgress()`) pone a cero la EXP, los
-logros, el récord de racha, la EXP cobrada por hitos de "evitar" y el registro
-de ascensos. **No toca** los hábitos, su histórico, las notas, las marcas de día
-ni las ausencias — es la diferencia con *Borrar todo*.
+logros, el récord de racha, la EXP cobrada por hitos de "evitar" y por misiones,
+lo restado por días en blanco (que vuelven a contar desde ese día) y el registro
+de ascensos. **No toca** los hábitos, su histórico, las notas, las marcas de día,
+las misiones aceptadas ni las ausencias — es la diferencia con *Borrar todo*.
 
 ---
 
@@ -551,6 +603,8 @@ ni las ausencias — es la diferencia con *Borrar todo*.
 | Rachas generales | `js/stats.js` — `dayStreak()`, `activityStreak()`, `streakGoalFor()`, `streakAtRisk()` |
 | Rachas por hábito | `js/stats.js` — `currentStreak()`, `bestStreak()`, `topStreak()` |
 | Hitos de "evitar" | `js/stats.js` — `AVOID_MILESTONES` |
+| Misiones semanales | `js/stats.js` — `missionProgress()`, `missionXp()`, `suggestMissions()` · `js/store.js` — `acceptMissions()` · `js/app.js` — `syncMissionXp()` · `js/ui.js` — `renderMissions()`, `renderMissionPlan()` |
+| Días en blanco | `js/stats.js` — `isBlankDay()` · `js/app.js` — `syncBlankDays()` |
 | Logros | `js/stats.js` — `ACHIEVEMENTS`, `earnedAchievements()` |
 | Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withTodayBonus()`, `onLevelUp()` |
 | Marcas de día y comodines | `js/store.js` — `setDayMark()`, `clearDayMark()`, `isFrozen()`, `refillFreezes()` |

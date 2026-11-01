@@ -29,7 +29,8 @@
 
   const dirty = {
     all: false, header: false, progress: false, week: false,
-    extras: false, habit: false, notes: false, cards: {}
+    extras: false, habit: false, notes: false, cards: {},
+    economy: false     // misiones y días en blanco por recalcular
   };
   let frame = null;
 
@@ -40,6 +41,13 @@
 
   function flush() {
     frame = null;
+
+    // Antes de pintar: cobrar o devolver puede cambiar la EXP, y así la
+    // cabecera sale ya con la cifra buena.
+    if (dirty.economy) {
+      dirty.economy = false;
+      syncEconomy();
+    }
 
     if (dirty.all) {
       renderAll();
@@ -105,6 +113,13 @@
   }
 
   function onStoreEvent(event, payload) {
+    // Cualquier cambio en los registros puede cumplir (o descumplir) una
+    // misión o rellenar un día en blanco. Los de la EXP no: los provoca el
+    // propio recálculo, y escucharlos lo haría girar en círculo.
+    if (event.indexOf('game:') !== 0 && event !== 'error' && event !== 'outdated') {
+      dirty.economy = true;
+    }
+
     switch (event) {
       case 'log:change':
         dirty.cards[payload.habitId] = true;
@@ -176,8 +191,7 @@
   /* La presentación va aparte de la detección: cambiar la celebración no
      toca la regla de cuándo se ha subido de nivel.
      Para conectar una recompensa nueva basta con llamar a grantXp() con el
-     valor de la tabla — por ejemplo grantXp(St.XP.goal) al cumplir un
-     objetivo, cuando esa acción exista. */
+     valor de la tabla, como hacen las misiones con St.XP.mission. */
   function onLevelUp(info) {
     // Primero se apunta y luego se celebra: la celebración es efímera y el
     // registro no, así que una excepción pintando la ventana no puede
@@ -271,6 +285,93 @@
         UI.toast('Logro desbloqueado: ' + ach.name, { type: 'achievement', icon: ach.icon });
       }
     });
+  }
+
+  /* ── Misiones y días en blanco ────────────────────────────
+     Los dos funcionan como los hitos de evitar: lo que toca se calcula a
+     partir de los registros y se apunta en un libro lo ya cobrado o
+     restado. Se paga solo la diferencia, en los dos sentidos, así que nada
+     se cobra dos veces y deshacer devuelve lo justo. Se recalcula al
+     arrancar, al cambiar de día y tras cualquier cambio en los datos. ── */
+
+  function syncEconomy() {
+    syncMissionXp();
+    syncBlankDays();
+  }
+
+  function syncMissionXp() {
+    S.getMissionWeeks().forEach(function (wk) {
+      const r = St.missionXp(wk, today);
+      const pagado = S.getMissionPaid(wk);
+      if (r.xp === pagado) return;
+
+      S.setMissionPaid(wk, r.xp);
+      grantXp(r.xp - pagado);
+
+      if (r.xp > pagado) {
+        UI.toast(r.all ? '¡Las tres misiones cumplidas! +' + (r.xp - pagado) + ' EXP'
+                       : 'Misión cumplida: +' + (r.xp - pagado) + ' EXP',
+                 { type: 'achievement', icon: '🎯' });
+      } else {
+        UI.toast('Una misión ha dejado de cumplirse: −' + (pagado - r.xp) + ' EXP', { icon: '🎯' });
+      }
+    });
+  }
+
+  // Cuántos días hacia atrás se revisan como mucho: si la app pasa meses
+  // sin abrirse, no hace falta recorrer años enteros.
+  const BLANK_SCAN_DAYS = 400;
+
+  function syncBlankDays() {
+    let devuelto = 0;
+    let restado = 0;
+    const nuevos = [];
+
+    // Primero las devoluciones: un día penalizado que ya tiene algo apuntado.
+    // Se devuelven aunque la penalización esté apagada: es EXP tuya.
+    const libro = S.getPenalties();
+    Object.keys(libro).forEach(function (k) {
+      if (St.isBlankDay(k)) return;
+      const n = libro[k];
+      S.clearPenalty(k);
+      if (n) { grantXp(n); devuelto += n; }
+    });
+
+    if (S.getSettings().blankPenalty) {
+      const limite = U.addDaysKey(today, -BLANK_SCAN_DAYS);
+      const desde = S.getGame().penaltyFrom > limite ? S.getGame().penaltyFrom : limite;
+
+      // Hoy no: hasta medianoche todavía estás a tiempo.
+      for (let k = desde; k < today; k = U.addDaysKey(k, 1)) {
+        if (k in S.getPenalties() || !St.isBlankDay(k)) continue;
+
+        // Nunca por debajo del inicio del nivel en que estás.
+        const pts = S.getGame().points;
+        const suelo = St.xpForLevel(St.levelFromXp(pts));
+        const n = Math.max(0, Math.min(St.XP.blankDay, pts - suelo));
+
+        S.setPenalty(k, n);
+        if (n) grantXp(-n);
+        restado += n;
+        nuevos.push(k);
+      }
+    }
+
+    if (nuevos.length) {
+      const ayer = U.addDaysKey(today, -1);
+      const cuando = nuevos.length === 1
+        ? (nuevos[0] === ayer ? 'Ayer quedó' : 'El ' + U.formatShort(U.fromKey(nuevos[0])) + ' quedó') + ' en blanco'
+        : nuevos.length + ' días en blanco';
+      UI.toast(cuando + (restado ? ': −' + restado + ' EXP.' : ' (sin EXP que quitar en este nivel).') +
+               (nuevos.length === 1 ? ' Si lo rellenas' : ' Si los rellenas') + ', se devuelven.', {
+        icon: '⬜',
+        duration: 9000,
+        action: { label: 'Ir al día', onClick: function () { goToDate(nuevos[nuevos.length - 1]); UI.setView('today'); } }
+      });
+    }
+    if (devuelto) {
+      UI.toast('Día rellenado: +' + devuelto + ' EXP devueltos.', { type: 'success', icon: '↩' });
+    }
   }
 
   /* ── Navegación entre días ────────────────────────────────── */
@@ -579,6 +680,24 @@
     return result;
   }
 
+  function acceptMissions() {
+    const data = UI.readMissions();
+    if (!data.list.length) {
+      UI.toast('Elige al menos una misión, o pulsa "Sugerir".', { type: 'error', icon: '🎯' });
+      return;
+    }
+    if (!window.confirm('Una vez aceptadas, las misiones no se cambian hasta el domingo. ¿Aceptarlas?')) return;
+
+    const ok = S.acceptMissions(data.weekKey, data.list);
+    if (!ok) {
+      UI.toast('Esa semana ya tiene misiones.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+    UI.renderPlanView();
+    UI.toast(ok.length === 1 ? 'Misión aceptada.' : ok.length + ' misiones aceptadas. ¡A por ellas!',
+             { type: 'success', icon: '🎯' });
+  }
+
   function confirmPlan() {
     const data = UI.readPlan();
     const snapshot = withTodayBonus(function () {
@@ -710,6 +829,8 @@
   function checkYesterdayMark() {
     const ayer = U.addDaysKey(today, -1);
     if (S.getDayMark(ayer)) return;
+    // Quedó en blanco y ya lo ha dicho el aviso de la penalización.
+    if (ayer in S.getPenalties()) return;
 
     const day = St.dayStats(ayer);
     if (!day.total || day.done >= St.streakGoalFor(ayer, day.total)) return;
@@ -825,7 +946,50 @@
              JSON.stringify(S.getState(), null, 2),
              'application/json');
     S.markExported();
+    UI.renderSettings();
     UI.toast('Copia exportada en JSON.', { type: 'success', icon: '↓' });
+  }
+
+  /**
+   * Guardar copia (2.6.0): abre el menú de compartir del sistema para
+   * mandarla a Drive, WhatsApp, el correo… Donde no se puede compartir
+   * un archivo (casi todo el escritorio), se descarga como siempre.
+   *
+   * Chrome solo deja compartir ciertos tipos de archivo, y .json no está
+   * entre ellos: si no lo acepta, va como .txt con el mismo contenido.
+   * Importar acepta los dos.
+   *
+   * La copia solo cuenta como hecha si llegas a compartirla: cancelar el
+   * menú no apaga el aviso.
+   */
+  function shareBackup() {
+    const json = JSON.stringify(S.getState(), null, 2);
+    const base = 'habitos-' + today;
+
+    let file = null;
+    if (navigator.share && navigator.canShare && typeof File === 'function') {
+      const candidatos = [
+        new File([json], base + '.json', { type: 'application/json' }),
+        new File([json], base + '.txt', { type: 'text/plain' })
+      ];
+      file = candidatos.filter(function (f) {
+        try { return navigator.canShare({ files: [f] }); } catch (e) { return false; }
+      })[0] || null;
+    }
+
+    if (!file) { exportJson(); return; }
+
+    navigator.share({ files: [file], title: 'Copia de Hábitos', text: 'Copia de Hábitos del ' + today })
+      .then(function () {
+        S.markExported();
+        UI.renderSettings();
+        UI.toast('Copia guardada.', { type: 'success', icon: '💾' });
+      })
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') return;     // cerraste el menú: no pasa nada
+        console.warn('No se pudo compartir la copia:', err);
+        exportJson();                                    // plan B: descargarla
+      });
   }
 
   /**
@@ -840,10 +1004,10 @@
     if (last && U.daysBetween(last, today) < dias) return;
 
     UI.toast(last
-      ? 'Llevas ' + U.daysBetween(last, today) + ' días sin exportar una copia.'
-      : 'Aún no has exportado ninguna copia de tus datos.', {
+      ? 'Llevas ' + U.daysBetween(last, today) + ' días sin guardar una copia.'
+      : 'Aún no has guardado ninguna copia de tus datos.', {
       icon: '💾',
-      action: { label: 'Exportar', onClick: exportJson }
+      action: { label: 'Guardar copia', onClick: shareBackup }
     });
   }
 
@@ -920,7 +1084,8 @@
   function importJson() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/json,.json';
+    // .txt también: es como sale la copia compartida desde el móvil.
+    input.accept = 'application/json,.json,text/plain,.txt';
 
     input.addEventListener('change', function () {
       const file = input.files && input.files[0];
@@ -986,6 +1151,7 @@
     weekAnchor = key;
     viewPeriod = U.startOfMonth(U.fromKey(key));
     dirty.all = true;
+    dirty.economy = true;        // ayer acaba de cerrarse, y quizá una semana
     scheduleFlush();
   }
 
@@ -1410,6 +1576,23 @@
     els.btnPlanReset.addEventListener('click', UI.resetPlanWeek);
     els.btnPlanConfirm.addEventListener('click', confirmPlan);
 
+    // Misiones
+    els.missionSlots.addEventListener('change', function (e) {
+      const tipo = e.target.dataset.missionType;
+      if (tipo !== undefined) { UI.setMissionSlot(Number(tipo), e.target.value); return; }
+      const meta = e.target.dataset.missionTarget;
+      if (meta !== undefined) UI.setMissionTarget(Number(meta), e.target.value);
+    });
+    els.missionSlots.addEventListener('input', function (e) {
+      const meta = e.target.dataset.missionTarget;
+      // Mientras escribes solo se guarda si ya es un número: "" camino de "3" no.
+      if (meta !== undefined && e.target.value !== '') UI.setMissionTarget(Number(meta), e.target.value);
+    });
+    els.btnMissionSuggest.addEventListener('click', UI.suggestMissionDraft);
+    els.btnMissionAccept.addEventListener('click', acceptMissions);
+    els.missionNote.addEventListener('click', function () { showPlan(0); });
+    els.missionCard.addEventListener('click', function () { showPlan(0); });
+
     // Ausencias
     els.btnAddAbsence.addEventListener('click', UI.openAbsenceModal);
     els.absenceForm.addEventListener('submit', onAbsenceSubmit);
@@ -1563,6 +1746,13 @@
     els.setEffects.addEventListener('click', function () {
       S.setSettings({ effects: !S.getSettings().effects });
     });
+    els.setBlankPenalty.addEventListener('click', function () {
+      const on = !S.getSettings().blankPenalty;
+      S.setSettings({ blankPenalty: on });
+      UI.toast(on ? 'Los días en blanco restan EXP a partir de hoy.'
+                  : 'Los días en blanco ya no restan EXP. Lo ya restado se devuelve si rellenas el día.',
+               { icon: on ? '⬜' : '✓' });
+    });
 
     // Los ajustes de apariencia se aplican ya, sin esperar al repintado:
     // un cambio de aspecto que tarda en verse parece que no ha funcionado.
@@ -1616,7 +1806,7 @@
       if (habit) UI.toast('"' + habit.name + '" restaurado.', { type: 'success', icon: '↩' });
     });
 
-    els.btnBackupNow.addEventListener('click', exportJson);
+    els.btnBackupNow.addEventListener('click', shareBackup);
     byId('btnExportJson').addEventListener('click', exportJson);
     byId('btnExportCsv').addEventListener('click', exportCsv);
     byId('btnImport').addEventListener('click', importJson);
@@ -1804,6 +1994,7 @@
     bind();
 
     syncProgressState();
+    syncEconomy();
     scheduleMidnight();
     listenInstall();                     // antes del manifest: si no, el aviso puede perderse
     linkManifest();
@@ -1836,6 +2027,51 @@
 
     // El último, porque es el que hay que ver aunque haya salido otro.
     checkBuildMatch();
+
+    openShortcut();
+  }
+
+  /* ── Atajos del icono (2.6.0) ─────────────────────────────
+     Mantener pulsado el icono de la app instalada ofrece los atajos del
+     manifest. Cada uno abre index.html?go=… y aquí se lleva a su sitio.
+     Con lo que apunta oculto en Privacidad, se queda en Hoy sin más. ── */
+  function openShortcut() {
+    let go = null;
+    try { go = new URLSearchParams(location.search).get('go'); } catch (e) { return; }
+    if (!go) return;
+
+    // Que recargar no repita el atajo.
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* da igual */ }
+
+    const s = S.getSettings();
+    if (go === 'plan') { showPlan(); return; }
+
+    if (go === 'nota' && !s.hideNotes) {
+      showNotes();
+      focusSoon(UI.els.notesToday);
+      return;
+    }
+
+    UI.setView('today');
+    if (go === 'peso' && s.showWeight && !s.hideWeight) {
+      focusSoon(UI.els.weightInput);
+    } else if (go === 'fallo' && !s.hideAvoid) {
+      // La primera tarjeta de un hábito a evitar que toque hoy.
+      const card = U.$$('.habit-card', UI.els.habitList).filter(function (c) {
+        const h = S.getHabit(c.dataset.id);
+        return h && St.isAvoid(h);
+      })[0];
+      // Salto directo y no suave: el suave depende de que la pantalla se
+      // esté pintando, y al abrir desde el icono a veces aún no.
+      if (card) setTimeout(function () { card.scrollIntoView({ block: 'center' }); }, 150);
+    }
+  }
+
+  function focusSoon(node) {
+    setTimeout(function () {
+      node.scrollIntoView({ block: 'center' });
+      try { node.focus({ preventScroll: true }); } catch (e) { node.focus(); }
+    }, 150);
   }
 
   function start() {
