@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.6.0** · esquema de datos **v15**.
+Versión documentada: **2.7.1** · esquema de datos **v16**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -86,7 +86,7 @@ los bonos se redondean con `round5()`.
 
 | Acción | EXP |
 |---|---:|
-| Completar un hábito | **25** (20 hasta la 2.5.0) |
+| Completar un hábito | según su dificultad: **10 · 20 · 25 · 40 · 50** (25 de partida; 20 hasta la 2.5.0) |
 | Día bueno: cumplir el 80% o más de los hábitos del día | **+25%** de lo ganado en hábitos ese día |
 | Día perfecto: cumplirlos todos | **+50%** de lo ganado en hábitos ese día |
 | Cumplir una misión semanal (2.6.0) | **50** |
@@ -104,6 +104,29 @@ Con 25 por hábito un bono puede salir con medio punto (7 perfectos: 175 × 50% 
 el nivel no salta: solo se sube más rápido desde la 2.5.1. Desmarcar un hábito
 de un día anterior al cambio retira 25 aunque en su día diera 20 (y el bono en
 proporción): unos pocos puntos, y solo si se editan días pasados.
+
+### La dificultad de cada hábito (2.7.0)
+
+Cada hábito que se hace (no los de evitar) tiene su dificultad, que es la EXP
+que da al cumplirlo:
+
+| Dificultad | EXP |
+|---|---:|
+| Muy fácil | 10 |
+| Fácil | 20 |
+| Normal (la de partida) | 25 |
+| Difícil | 40 |
+| Muy difícil (2.7.1) | 50 |
+
+Se elige en el formulario del hábito (*Dificultad*) o en **Sistema →
+Recompensas**, que lista todos con su valor. Los bonos de día bueno y perfecto
+son un porcentaje de lo ganado ese día, así que se ajustan solos.
+
+**Los cambios valen desde mañana**, nunca desde hoy, y se guardan con su fecha
+(`habit.xp = [{ from, xp }]`, leído por `habitXp(habit, día)`). Si valieran ya,
+se podría marcar un hábito con 40, bajarlo a 10 y desmarcarlo, y quedarían 30
+regalados. Así cada día paga y devuelve con el mismo valor, también al editar
+días pasados. Un hábito **nuevo** sí vale desde hoy: no tiene nada que devolver.
 
 Hasta la 2.1.x la sección Ejercicios pagaba aparte: 10 por ejercicio completo,
 +50% por completarlos todos y 50 por cerrar el entreno. Salió en la 2.2.0 (el
@@ -139,8 +162,14 @@ fallo. Cobran por aguantar, por hábito:
 | Hito | EXP |
 |---|---:|
 | 7 días seguidos sin caer | +50 |
-| 30 días seguidos sin caer | +150 |
-| 100 días seguidos sin caer | +400 |
+| 30 días seguidos sin caer | +100 (150 hasta la 2.6.x) |
+| 100 días seguidos sin caer | +200 (400 hasta la 2.6.x) |
+
+Al cambiar la tabla (2.7.0) no se quita EXP a nadie. Lo que sí se rehace, una
+vez, es la cuenta de lo cobrado (`avoidXpPaid`): baja a lo que daría la tabla
+nueva por las mismas rachas. Si no, los hitos siguientes no se pagarían hasta
+superar lo cobrado con la vieja. Lo hace `syncAvoidXp()` al arrancar, cuando
+la migración a la v16 deja `game.avoidXpRebase` encendido.
 
 En `AVOID_MILESTONES`. Se calculan sobre la **mejor racha histórica**, que nunca
 baja, y `game.avoidXpPaid` lleva la cuenta de lo ya cobrado. Un hito no se cobra
@@ -212,25 +241,27 @@ Lo que da un día según cuántos hábitos tocan (los de evitar no cuentan):
 | 6 | 225 | 155 |
 | 5 | 190 | 125 |
 
-Con 5 a 8 hábitos al día, a ritmo **realista** —5 días perfectos y 2 buenos por
-semana— y contando los hitos de los cuatro hábitos a evitar (2.400 EXP si los
-cuatro llegan a 100 días limpios). Días desde el primero:
+Con 5 a 8 hábitos al día, todos en *Normal* (25), a ritmo **realista** —5 días
+perfectos y 2 buenos por semana— y contando los hitos de los cuatro hábitos a
+evitar (1.400 EXP desde la 2.7.0, si los cuatro llegan a 100 días limpios). Días
+desde el primero:
 
 | Rango (nivel · EXP) | 8 al día (~277/día) | 6-7 al día (~224/día) | 5 al día (~171/día) |
 |---|---:|---:|---:|
 | D (10 · 1.625) | 6 | 7 | 9 |
-| C (20 · 5.750) | 21 | 25 | 30 |
-| B (30 · 12.375) | 42 | 52 | 68 |
-| A (40 · 21.500) | 75 | 93 | 112 |
-| S (50 · 33.125) | 111 (~3,5 meses) | 137 (~4,5 meses) | 180 (~6 meses) |
-| SS (60 · 47.250) | 162 | 200 | 262 |
-| SS+ (70 · 63.875) | 222 | 275 | 359 |
-| SSS (80 · 83.000) | 291 | 360 | 471 |
-| SSS+ (90 · 104.625) | 369 | 456 | 597 |
-| **X (100 · 128.750)** | **456 (~1 año y 3 meses)** | **564 (~1 año y 6,5 meses)** | **738 (~2 años)** |
+| C (20 · 5.750) | 21 | 25 | 31 |
+| B (30 · 12.375) | 43 | 53 | 69 |
+| A (40 · 21.500) | 76 | 94 | 118 |
+| S (50 · 33.125) | 115 (~3,8 meses) | 142 (~4,7 meses) | 186 (~6 meses) |
+| SS (60 · 47.250) | 166 | 205 | 268 |
+| SS+ (70 · 63.875) | 226 | 279 | 365 |
+| SSS (80 · 83.000) | 295 | 364 | 477 |
+| SSS+ (90 · 104.625) | 373 | 461 | 603 |
+| **X (100 · 128.750)** | **460 (~1 año y 3 meses)** | **568 (~1 año y 7 meses)** | **743 (~2 años)** |
 
-Con todos los días perfectos, el X llega en 422 días con 8 hábitos, 516 con 6-7
-y 665 con 5.
+Con todos los días perfectos, el X llega en 425 días con 8 hábitos, 520 con 6-7
+y 671 con 5. Con dificultades distintas de *Normal*, la cuenta cambia: la
+previsión de **Sistema → Recompensas** la hace con tus valores (abajo).
 
 Cómo ha ido cambiando, a 6-7 hábitos y ritmo realista:
 
@@ -247,9 +278,27 @@ Cómo ha ido cambiando, a 6-7 hábitos y ritmo realista:
 | SSS+ | 3 años y 2 meses | 1 año y 7 meses | 1 año y 3 meses |
 | **X** | **casi 4 años** | **1 año y 11 meses** | **1 año y 6,5 meses** |
 
-Los hitos de "evitar" adelantan entre 8 y 14 días. Son cuentas a ritmo
-constante: cualquier cambio en el número de hábitos las mueve. Pasado el nivel
-100 se sigue subiendo, pero ya no hay rango nuevo.
+La última columna se calculó con los hitos de entonces (2.400 EXP); con los de
+la 2.7.0 son unos 4 días más. Los hitos de "evitar" adelantan entre 5 y 8 días.
+Son cuentas a ritmo constante: cualquier cambio en el número de hábitos las
+mueve. Pasado el nivel 100 se sigue subiendo, pero ya no hay rango nuevo.
+
+### La previsión de la app (2.7.0)
+
+**Sistema → Recompensas** acaba con la previsión hasta el **rango más alto**
+(X, nivel 100; `forecastMax()`), y el panel de nivel la resume en una línea.
+Son dos ritmos:
+
+- **Si cumples todos tus hábitos** (`idealDailyXp()`): para cada día de la
+  semana, lo que darían los hábitos que tocan, con el valor de mañana, más su
+  bono de día perfecto; la media de los siete. Es la cifra que se mueve al
+  cambiar dificultades.
+- **A tu ritmo real** (`realDailyXp()`): lo ganado de verdad en los últimos 30
+  días —hábitos, bonos y misiones, menos los días en blanco—. Los hitos de
+  evitar no entran: son de una vez. Necesita una semana de historia.
+
+Lo que falta se divide por cada ritmo y sale el tiempo y el mes estimados. La
+línea del panel usa el ritmo real y, sin una semana de historia, el ideal.
 
 ---
 
@@ -602,13 +651,15 @@ las misiones aceptadas ni las ausencias — es la diferencia con *Borrar todo*.
 | Atributos | `js/stats.js` — `attributes()` |
 | Rachas generales | `js/stats.js` — `dayStreak()`, `activityStreak()`, `streakGoalFor()`, `streakAtRisk()` |
 | Rachas por hábito | `js/stats.js` — `currentStreak()`, `bestStreak()`, `topStreak()` |
-| Hitos de "evitar" | `js/stats.js` — `AVOID_MILESTONES` |
+| Hitos de "evitar" | `js/stats.js` — `AVOID_MILESTONES` · `js/app.js` — `syncAvoidXp()` |
+| Dificultad de cada hábito | `js/stats.js` — `XP_TIERS`, `habitXp()` · `js/store.js` — `setHabitXp()` · `js/ui.js` — `renderRewards()` |
+| Previsión hasta el rango X | `js/stats.js` — `forecastMax()`, `idealDailyXp()`, `realDailyXp()` |
 | Misiones semanales | `js/stats.js` — `missionProgress()`, `missionXp()`, `suggestMissions()` · `js/store.js` — `acceptMissions()` · `js/app.js` — `syncMissionXp()` · `js/ui.js` — `renderMissions()`, `renderMissionPlan()` |
 | Días en blanco | `js/stats.js` — `isBlankDay()` · `js/app.js` — `syncBlankDays()` |
 | Logros | `js/stats.js` — `ACHIEVEMENTS`, `earnedAchievements()` |
 | Reparto de EXP y subida | `js/app.js` — `grantXp()`, `withScoring()`, `withTodayBonus()`, `onLevelUp()` |
 | Marcas de día y comodines | `js/store.js` — `setDayMark()`, `clearDayMark()`, `isFrozen()`, `refillFreezes()` |
-| Plan de la semana | `js/store.js` — `activeDaysFor()`, `confirmWeekPlan()`, `undoWeekPlan()`, `isWeekLocked()` · `js/app.js` — `confirmPlan()` |
+| Plan de la semana | `js/store.js` — `activeDaysFor()`, `confirmWeekPlan()`, `undoWeekPlan()`, `isWeekLocked()`, `unlockWeekPlan()` · `js/app.js` — `confirmPlan()`, `unlockPlan()` |
 | Ausencias | `js/store.js` — `addAbsence()`, `getAbsences()`, `cancelAbsence()` · `js/app.js` — `onAbsenceSubmit()`, `cancelAbsence()` |
 | Resumen semanal y peso objetivo | `js/stats.js` — `weekSummary()`, `weightGoal()` |
 | Registro de ascensos | `js/store.js` — `recordLevelUp()` · `js/ui.js` — `renderAscents()` |

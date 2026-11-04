@@ -23,7 +23,9 @@ HT.stats = (function () {
      `habit` y `perfectDay` ya existían con estos valores desde la v1: no
      se tocan para que la XP acumulada siga significando lo mismo. ──── */
   const XP = {
-    habit: 25,          // completar un hábito del día (20 hasta la 2.5.0)
+    // completar un hábito del día: el valor de partida. Desde la 2.7.0 cada
+    // hábito puede tener el suyo (XP_TIERS, habitXp()). 20 hasta la 2.5.0.
+    habit: 25,
     // `exercise` y `workout` desaparecieron con la sección Ejercicios (2.2.0).
     // La EXP que ya dieron se queda: la XP guarda cuánta llevas, no de dónde.
     // Misiones semanales (2.6.0). Ocupan el sitio del antiguo `goal: 100`
@@ -40,8 +42,41 @@ HT.stats = (function () {
     goodDayFrom:   0.80    // a partir de este cumplimiento
   };
 
-  // Nombre anterior, conservado porque app.js lo usa.
+  // Nombre anterior: el valor de partida de un hábito.
   const POINTS_PER_HABIT = XP.habit;
+
+  /* Las dificultades que puede tener un hábito (2.7.0). El almacén solo
+     acepta estos números; los nombres son para enseñarlos. */
+  const XP_TIERS = [
+    { xp: 10, name: 'Muy fácil' },
+    { xp: 20, name: 'Fácil' },
+    { xp: 25, name: 'Normal' },
+    { xp: 40, name: 'Difícil' },
+    { xp: 50, name: 'Muy difícil' }            // 2.7.1
+  ];
+
+  function tierName(xp) {
+    const t = XP_TIERS.filter(function (x) { return x.xp === xp; })[0];
+    return t ? t.name : xp + ' EXP';
+  }
+
+  /**
+   * Lo que da un hábito al cumplirlo ESE día. Los cambios de dificultad
+   * valen desde el día siguiente a hacerlos, y se guardan con su fecha: así
+   * desmarcar un día pasado devuelve justo lo que dio entonces.
+   */
+  function habitXp(habit, dateKey) {
+    let v = XP.habit;
+    (habit.xp || []).forEach(function (e) { if (e.from <= dateKey) v = e.xp; });
+    return v;
+  }
+
+  /** EXP de los hábitos cumplidos un día, sin bonos. */
+  function earnedOn(dateKey) {
+    return doHabitsFor(dateKey).reduce(function (s, h) {
+      return isComplete(h, S.getLog(h.id, dateKey)) ? s + habitXp(h, dateKey) : s;
+    }, 0);
+  }
 
   /* Toda la EXP acaba en 0 o en 5. Con 20 por hábito salía sola (20·0,5 =
      10 y 20·0,25 = 5); con 25 ya no (25·0,5 = 12,5), y es este redondeo el
@@ -62,8 +97,8 @@ HT.stats = (function () {
     const ratio = day.done / day.total;
     if (ratio < XP.goodDayFrom) return 0;
 
-    const ganado = day.done * XP.habit;
-    return round5(ganado * (ratio >= 1 ? XP.perfectDayPct : XP.goodDayPct));
+    // Lo ganado de verdad ese día: cada hábito con su valor.
+    return round5(earnedOn(dateKey) * (ratio >= 1 ? XP.perfectDayPct : XP.goodDayPct));
   }
 
   /**
@@ -79,11 +114,13 @@ HT.stats = (function () {
     const faltan = day.total - day.done;
     if (faltan <= 0) return { habits: 0, xp: 0 };
 
-    const bonusPleno = round5(day.total * XP.habit * XP.perfectDayPct);
+    const habits = doHabitsFor(dateKey);
+    const todo = habits.reduce(function (s, h) { return s + habitXp(h, dateKey); }, 0);
+    const bonusPleno = round5(todo * XP.perfectDayPct);
 
     return {
       habits: faltan,
-      xp: faltan * XP.habit + (bonusPleno - dayBonus(dateKey))
+      xp: todo - earnedOn(dateKey) + (bonusPleno - dayBonus(dateKey))
     };
   }
 
@@ -1146,9 +1183,11 @@ HT.stats = (function () {
      Se calcula sobre la MEJOR racha histórica, que nunca baja: así lo ya
      cobrado nunca se puede reclamar dos veces ni retirar. ─────────── */
   const AVOID_MILESTONES = [
+    // 50 / 150 / 400 hasta la 2.6.x. Al cambiar la tabla, app.js reajusta
+    // una vez lo ya cobrado (S.rebaseAvoidXp) sin quitar EXP a nadie.
     { days: 7,   xp: 50,  name: 'Una semana limpio' },
-    { days: 30,  xp: 150, name: 'Un mes limpio' },
-    { days: 100, xp: 400, name: 'Cien días limpio' }
+    { days: 30,  xp: 100, name: 'Un mes limpio' },
+    { days: 100, xp: 200, name: 'Cien días limpio' }
   ];
 
   /** XP acumulada que merece una racha limpia de `streak` días. */
@@ -1443,6 +1482,85 @@ HT.stats = (function () {
     });
   }
 
+  /* ── Previsión hasta el rango más alto (2.7.0) ────────────
+     Dos ritmos, porque responden a preguntas distintas:
+       · ideal — si cumples todos tus hábitos, con lo que dará cada uno a
+         partir de mañana y su bono de día perfecto. Es lo que mueves al
+         cambiar dificultades;
+       · real — lo que has ganado de verdad en los últimos 30 días: hábitos,
+         bonos y misiones, menos los días en blanco. Los hitos de evitar no
+         entran: son de una vez y no dicen nada del ritmo.
+     La meta es fija: el nivel en que empieza el rango más alto. ──────── */
+
+  const FORECAST_LEVEL = 100;
+
+  function idealDailyXp(todayKey) {
+    const manana = U.addDaysKey(todayKey, 1);
+    const habits = doHabitsList();
+    let total = 0;
+    for (let dow = 0; dow < 7; dow++) {
+      const suma = habits.reduce(function (s, h) {
+        return h.activeDays.indexOf(dow) >= 0 ? s + habitXp(h, manana) : s;
+      }, 0);
+      total += suma + round5(suma * XP.perfectDayPct);
+    }
+    return total / 7;
+  }
+
+  /** Ritmo real: { rate, days }, o null con menos de una semana de historia. */
+  function realDailyXp(todayKey) {
+    const primero = firstHabitDay();
+    if (!primero) return null;
+    const fin = U.addDaysKey(todayKey, -1);                // hoy aún no ha terminado
+    let ini = U.addDaysKey(todayKey, -30);
+    if (primero > ini) ini = primero;
+    if (ini > fin) return null;
+
+    const days = daysFromTo(ini, fin);
+    if (days.length < 7) return null;
+
+    const multas = S.getPenalties();
+    let xp = 0;
+    days.forEach(function (k) {
+      xp += earnedOn(k) + dayBonus(k) - (multas[k] || 0);
+    });
+    // Lo cobrado por misiones, repartido entre los días de su semana que
+    // caen dentro de la ventana.
+    S.getMissionWeeks().forEach(function (wk) {
+      const pagado = S.getMissionPaid(wk);
+      if (!pagado) return;
+      const dentro = daysFromTo(wk, U.addDaysKey(wk, 6)).filter(function (k) {
+        return k >= ini && k <= fin;
+      }).length;
+      xp += pagado * dentro / 7;
+    });
+    return { rate: xp / days.length, days: days.length };
+  }
+
+  function forecastMax(todayKey, points) {
+    const today = todayKey || U.todayKey();
+    const meta = xpForLevel(FORECAST_LEVEL);
+    const falta = Math.max(0, meta - (Number(points) || 0));
+
+    function eta(rate) {
+      if (!(rate > 0)) return null;
+      const dias = Math.ceil(falta / rate);
+      return { rate: Math.round(rate), days: dias, date: U.addDaysKey(today, dias) };
+    }
+
+    const real = realDailyXp(today);
+    return {
+      level: FORECAST_LEVEL,
+      rank: rankForLevel(FORECAST_LEVEL),
+      target: meta,
+      remaining: falta,
+      reached: falta === 0,
+      ideal: eta(idealDailyXp(today)),
+      real: real ? eta(real.rate) : null,
+      realDays: real ? real.days : 0
+    };
+  }
+
   /* ── Días en blanco (2.6.0) ───────────────────────────────
      Un día que tocaba algo y acabó sin ningún registro: ni hábitos, ni
      nota, ni peso, ni marca de día. Es la misma regla que corta la racha
@@ -1570,6 +1688,8 @@ HT.stats = (function () {
     missionLabel: missionLabel, missionOptions: missionOptions, missionDefault: missionDefault,
     missionMax: missionMax, missionSpan: missionSpan, suggestMissions: suggestMissions,
     isBlankDay: isBlankDay,
+    XP_TIERS: XP_TIERS, tierName: tierName, habitXp: habitXp,
+    forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 
     AVOID_MILESTONES: AVOID_MILESTONES,
     isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,

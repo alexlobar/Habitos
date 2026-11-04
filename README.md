@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.6.0** · esquema de datos **v15**.
+Versión documentada: **2.7.1** · esquema de datos **v16**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -71,7 +71,11 @@ elegirlas.
   como estaba. Al pulsar *Confirmar y bloquear*, la semana queda **bloqueada
   hasta el domingo** (hay 7 segundos para deshacerlo). El domingo, Plan se abre
   directamente en la semana que viene. Sin plan, todo sigue sus días de
-  siempre. Planificar no da EXP.
+  siempre. Planificar no da EXP. **Cada semana se puede desbloquear una vez**
+  (2.7.0), esta y la que viene, por si surge algo que impide lo planificado:
+  el plan confirmado sirve de punto de partida, lo que ya pasó se queda como
+  estaba y, al volver a confirmar, queda bloqueada del todo hasta el domingo.
+  Las misiones aceptadas no cambian.
 - *Misiones* (2.6.0): hasta tres retos para la semana —cumplir un hábito N
   veces, semana limpia de un hábito a evitar, media por debajo de un máximo,
   N días perfectos o registrar todos los días—. *Sugerir* las propone según la
@@ -109,8 +113,11 @@ nada, sin bajar nunca de nivel y devueltos si rellenas el día.
 **Guardar copia** (2.6.0), en *Tus datos* y en el aviso de copia: abre el menú
 de compartir del móvil para mandarla a Drive, WhatsApp, el correo… Chrome no
 deja compartir archivos `.json`, así que va como `habitos-AAAA-MM-DD.txt` con el
-mismo contenido; *Importar* acepta `.json` y `.txt`. Donde no se puede compartir
-(casi todo el escritorio), se descarga. Cancelar el menú no cuenta como copia.
+mismo contenido; *Importar* acepta `.json` y `.txt`. Se comparte solo el archivo,
+sin texto al lado: con texto, apps como Drive se quedaban con él y tiraban el
+archivo (2.6.1). En el ordenador (sin pantalla táctil) se descarga, y si el
+menú falla también, con un aviso que dice el error. Cancelar el menú no cuenta
+como copia.
 *Exportar JSON* sigue descargando el archivo como siempre.
 
 **Privacidad** (2.3.0), para enseñar la app sin enseñar lo más personal. Tres
@@ -134,6 +141,16 @@ rachas (◈ cumpliendo y el lápiz registrando, sin caja propia desde la 2.3.1),
 los hábitos a evitar y los logros. En *Días sin*, además de la racha, cada
 hábito a evitar lleva su acumulado de toda la historia (2.3.2): `Σ 4 h 50 min`
 en los de máximo al día como Redes, `Σ 3 fallos` en los de fallos o franjas.
+**Recompensas** (2.7.0): cada hábito con su dificultad (*Muy fácil* 10 ·
+*Fácil* 20 · *Normal* 25 · *Difícil* 40 · *Muy difícil* 50 EXP), cambiable ahí mismo o en el
+formulario del hábito; los cambios valen desde mañana. Debajo, la **previsión
+hasta el rango X**: cumpliéndolo todo con esos valores y a tu ritmo real de
+los últimos 30 días. El panel de nivel la resume en una línea.
+Desde la 2.7.1, **Recompensas, Rachas por hábito y Días sin se pliegan** como
+Ascensos y Logros (con su cuenta en la cabecera), y cada desplegable recuerda
+si lo dejaste abierto (en `habitTracker.folds`, aparte de tus datos). Se
+quedan siempre a la vista el panel de nivel, el estado del jugador, las dos
+rachas y las cuatro cifras.
 
 **Ficha de un hábito** (tocando su icono o su nombre). Estadísticas, totales,
 calendario del mes, cumplimiento por día de la semana y los botones de editar,
@@ -342,7 +359,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 15,
+  "version": 16,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -379,6 +396,9 @@ Una sola clave, `habitTracker.v1`:
     // null si no hay ninguna. Al confirmar una semana se guardan todos los
     // hábitos, aunque coincidan con activeDays, para que no cambie por detrás.
     "weekPlan": { "2026-10-26": [2, 4, 6] },
+    // EXP al cumplirlo (v16): cambios con la fecha desde la que valen.
+    // null = 25 siempre. Valores: 10 | 20 | 25 | 40 | 50. Los de evitar, null.
+    "xp": [{ "from": "2026-11-06", "xp": 40 }],
     "reminder": { "enabled": false, "time": "08:00" }   // sin uso desde la 1.6.8
   }],
   "logs": {
@@ -393,6 +413,8 @@ Una sola clave, `habitTracker.v1`:
   "freeNotes": [{ "id": "n_x1", "title": "Objetivos", "text": "…", "updated": 1793009134893 }],
   // semanas confirmadas (bloqueadas): lunes → día en que se confirmó
   "plannedWeeks": { "2026-10-26": "2026-10-27" },
+  // semanas que ya gastaron su único desbloqueo (v16): lunes → día
+  "planUnlocks": { "2026-10-26": "2026-10-29" },
   // misiones aceptadas (v15): lunes → hasta tres. "from" es el día desde el
   // que cuentan; "target", las veces, los fallos máximos o la media máxima.
   // type: "habit_count" | "avoid_clean" | "cap_avg" | "perfect_days" | "log_all"
@@ -414,6 +436,7 @@ Una sola clave, `habitTracker.v1`:
     "bestStreak": 12,                 // mejor racha de un solo hábito
     "habitsCreated": 0,               // los de partida no cuentan
     "avoidXpPaid": 50,                // EXP de hitos de "evitar" ya cobrada
+    "avoidXpRebase": false,           // v16: reajuste pendiente a la tabla nueva de hitos
     "lastExport": "2026-09-30",
     "weekSummarySeen": "2026-10-26", // lunes de la semana cuyo resumen ya se cerró
     "levelLog": [{ "level": 1, "date": "2026-09-16" }],
@@ -468,6 +491,12 @@ queda. La v15 (2.6.0) tampoco necesita migración: `missions`, `missionPaid` y
 `penalties` empiezan vacíos y `penaltyFrom` en el día de la actualización, para
 no cobrar días en blanco anteriores. Una misión cuyo hábito ya no existe, o ya
 no es del tipo que pide, se descarta al sanear.
+
+La v16 (2.7.0) añade `habit.xp` y `planUnlocks`, que empiezan vacíos (todos los
+hábitos valen 25, como antes). Su única migración es una marca: los hitos de
+evitar pasan de 50/150/400 a 50/100/200, y al arrancar `syncAvoidXp()` baja una
+vez lo cobrado a lo que daría la tabla nueva por las mismas rachas, sin quitar
+EXP. Importar una copia anterior a la v16 hace lo mismo.
 
 ### Varias ventanas a la vez (2.3.4)
 

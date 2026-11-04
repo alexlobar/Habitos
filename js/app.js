@@ -214,7 +214,8 @@
     const afterBonus = St.dayBonus(dateKey);
 
     let delta = afterBonus - beforeBonus;
-    if (afterDone !== beforeDone) delta += (afterDone ? 1 : -1) * St.POINTS_PER_HABIT;
+    // Cada hábito paga lo suyo ese día (2.7.0): desmarcar devuelve lo mismo.
+    if (afterDone !== beforeDone) delta += (afterDone ? 1 : -1) * St.habitXp(habit, dateKey);
     if (delta) grantXp(delta);
 
     const effects = S.getSettings().effects;
@@ -251,6 +252,13 @@
       .reduce(function (sum, h) {
         return sum + St.avoidXpFor(St.bestStreak(h, today));
       }, 0);
+
+    // Tabla de hitos nueva (2.7.0): lo cobrado con la vieja se baja una vez
+    // a lo que daría la nueva por las mismas rachas. No se quita EXP: solo
+    // se rehace la cuenta, para que los hitos que vengan se paguen.
+    if (S.getGame().avoidXpRebase) {
+      S.rebaseAvoidXp(Math.min(S.getGame().avoidXpPaid, debido));
+    }
 
     const pagado = S.getGame().avoidXpPaid;
     if (debido <= pagado) return;
@@ -680,6 +688,23 @@
     return result;
   }
 
+  /** El único desbloqueo de una semana confirmada (2.7.0). */
+  function unlockPlan() {
+    const wk = UI.readPlan().weekKey;
+    if (S.wasWeekUnlocked(wk)) return;
+    if (!window.confirm('Solo puedes desbloquear esta semana una vez. Los días que ya han pasado ' +
+                        'se quedan como estaban. Al volver a confirmar, quedará bloqueada hasta el domingo.\n\n' +
+                        '¿Desbloquearla?')) return;
+
+    if (!S.unlockWeekPlan(wk)) {
+      UI.toast('Esta semana no se puede desbloquear.', { type: 'error', icon: '⚠️' });
+      return;
+    }
+    UI.resetPlanDraft();
+    UI.renderPlanView();
+    UI.toast('Semana desbloqueada. Cambia lo que necesites y vuelve a confirmar.', { icon: '🔓' });
+  }
+
   function acceptMissions() {
     const data = UI.readMissions();
     if (!data.list.length) {
@@ -858,13 +883,26 @@
       const reinicia = previous && modo(previous) !== modo(data);
 
       S.updateHabit(editingId, data);
+
+      // La dificultad va aparte: vale desde mañana, no desde hoy.
+      const actualizado = S.getHabit(editingId);
+      const manana = U.addDaysKey(today, 1);
+      const cambiaXp = data.xpValue && actualizado && !St.isAvoid(actualizado) &&
+                       St.habitXp(actualizado, manana) !== data.xpValue;
+      if (cambiaXp) S.setHabitXp(editingId, data.xpValue);
+
       UI.toast(
         reinicia
           ? 'Hábito actualizado. Su histórico se ha reiniciado porque ahora se mide distinto.'
-          : 'Hábito actualizado.',
+          : cambiaXp
+            ? 'Hábito actualizado. Desde mañana da ' + data.xpValue + ' EXP (' + St.tierName(data.xpValue) + ').'
+            : 'Hábito actualizado.',
         { type: 'success', icon: '✓' }
       );
     } else {
+      // Un hábito nuevo no tiene días pasados que devolver: su dificultad
+      // vale desde hoy mismo.
+      if (data.xpValue) data.xp = [{ from: today, xp: data.xpValue }];
       S.addHabit(data);
       UI.toast('Hábito creado.', { type: 'success', icon: '✓' });
     }
@@ -947,7 +985,8 @@
              'application/json');
     S.markExported();
     UI.renderSettings();
-    UI.toast('Copia exportada en JSON.', { type: 'success', icon: '↓' });
+    UI.toast('Copia descargada: habitos-' + today + '.json, en tu carpeta de descargas.',
+             { type: 'success', icon: '↓' });
   }
 
   /**
@@ -961,13 +1000,20 @@
    *
    * La copia solo cuenta como hecha si llegas a compartirla: cancelar el
    * menú no apaga el aviso.
+   *
+   * 2.6.1: se comparte SOLO el archivo. Con un texto al lado, varias apps de
+   * Android (Drive, entre otras) se quedaban con el texto y tiraban el
+   * archivo: el menú salía, pero la copia no llegaba. Y solo en pantallas
+   * táctiles: en Windows el menú de compartir no tiene "guardar", así que
+   * en el ordenador se descarga, que es lo que se espera ahí.
    */
   function shareBackup() {
     const json = JSON.stringify(S.getState(), null, 2);
     const base = 'habitos-' + today;
+    const tactil = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
     let file = null;
-    if (navigator.share && navigator.canShare && typeof File === 'function') {
+    if (tactil && navigator.share && navigator.canShare && typeof File === 'function') {
       const candidatos = [
         new File([json], base + '.json', { type: 'application/json' }),
         new File([json], base + '.txt', { type: 'text/plain' })
@@ -979,16 +1025,20 @@
 
     if (!file) { exportJson(); return; }
 
-    navigator.share({ files: [file], title: 'Copia de Hábitos', text: 'Copia de Hábitos del ' + today })
+    navigator.share({ files: [file] })
       .then(function () {
         S.markExported();
         UI.renderSettings();
-        UI.toast('Copia guardada.', { type: 'success', icon: '💾' });
+        UI.toast('Copia enviada: ' + file.name + '.', { type: 'success', icon: '💾' });
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;     // cerraste el menú: no pasa nada
         console.warn('No se pudo compartir la copia:', err);
-        exportJson();                                    // plan B: descargarla
+        // Plan B: descargarla, diciendo por qué. El nombre del error es lo
+        // que hace falta para saber qué ha fallado en ese móvil.
+        UI.toast('No se pudo abrir el menú de compartir (' + ((err && err.name) || 'error') +
+                 '). Se descarga en su lugar.', { type: 'error', icon: '⚠️', duration: 9000 });
+        exportJson();
       });
   }
 
@@ -1575,6 +1625,21 @@
     });
     els.btnPlanReset.addEventListener('click', UI.resetPlanWeek);
     els.btnPlanConfirm.addEventListener('click', confirmPlan);
+    els.btnPlanUnlock.addEventListener('click', unlockPlan);
+
+    // Recompensas del Sistema: la dificultad de cada hábito, desde mañana.
+    els.rewardList.addEventListener('change', function (e) {
+      const id = e.target.dataset.reward;
+      if (!id) return;
+      const v = Number(e.target.value);
+      const h = S.getHabit(id);
+      if (!h || !S.setHabitXp(id, v)) return;
+      const manana = St.habitXp(S.getHabit(id), U.addDaysKey(today, 1));
+      UI.toast(manana === St.habitXp(h, today)
+        ? h.name + ' sigue dando ' + manana + ' EXP.'
+        : 'Desde mañana, ' + h.name + ' da ' + manana + ' EXP (' + St.tierName(manana) + ').',
+        { icon: '⚖️' });
+    });
 
     // Misiones
     els.missionSlots.addEventListener('change', function (e) {

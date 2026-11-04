@@ -143,7 +143,11 @@ HT.ui = (function () {
       'btnAddFreeNote', 'freeNotesList', 'freeNotesHint',
       'missionCard', 'missionCount', 'missionList', 'missionFoot', 'missionNote',
       'missionPlanCard', 'missionLock', 'missionPlanHint', 'missionPlanList', 'missionEditor',
-      'missionSlots', 'btnMissionAccept', 'btnMissionSuggest', 'setBlankPenalty'
+      'missionSlots', 'btnMissionAccept', 'btnMissionSuggest', 'setBlankPenalty',
+      'planUnlockRow', 'btnPlanUnlock', 'planUnlockHint', 'lvForecast',
+      'rewardsCard', 'rewardPerfect', 'rewardList', 'rewardAvoid',
+      'forecastTitle', 'forecastIdeal', 'forecastReal', 'xpField', 'fXp',
+      'streaksCount', 'avoidCount'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -178,7 +182,31 @@ HT.ui = (function () {
       els.fCategory.appendChild(el('option', { value: cat.id, text: cat.icon + '  ' + cat.name }));
     });
 
+    // Igual con las dificultades: salen de St.XP_TIERS.
+    St.XP_TIERS.forEach(function (t) {
+      els.fXp.appendChild(el('option', { value: String(t.xp), text: t.name + ' · ' + t.xp + ' EXP' }));
+    });
+
     buildEmojiPicker();
+    initFolds();
+  }
+
+  /* Los desplegables del Sistema (2.7.1) recuerdan si los dejaste abiertos.
+     Es una comodidad de este navegador, no un dato tuyo: va en su propia
+     clave, fuera del almacén, y si no se puede leer o escribir no pasa nada. */
+  const FOLD_KEY = 'habitTracker.folds';
+
+  function initFolds() {
+    let abiertos = {};
+    try { abiertos = JSON.parse(localStorage.getItem(FOLD_KEY)) || {}; } catch (e) { abiertos = {}; }
+
+    U.$$('details[data-fold]').forEach(function (d) {
+      if (abiertos[d.dataset.fold]) d.open = true;
+      d.addEventListener('toggle', function () {
+        abiertos[d.dataset.fold] = d.open;
+        try { localStorage.setItem(FOLD_KEY, JSON.stringify(abiertos)); } catch (e) { /* da igual */ }
+      });
+    });
   }
 
   /* ── Navegación entre vistas ──────────────────────────────── */
@@ -360,6 +388,120 @@ HT.ui = (function () {
       ' EXP del nivel ' + info.level + ' · rango ' + info.rank.letter + ', ' + info.rank.name +
       (pend.xp ? ' · ' + fmtNum.format(pend.xp) + ' EXP disponibles hoy' : '')
     );
+
+    // Una línea con la meta de siempre: el rango más alto, a tu ritmo real
+    // si ya hay una semana de historia y, si no, cumpliéndolo todo.
+    const f = St.forecastMax(U.todayKey(), info.xp);
+    const ritmo = f.real || f.ideal;
+    els.lvForecast.hidden = !f.reached && !ritmo;
+    els.lvForecast.textContent = f.reached
+      ? 'Rango ' + f.rank.letter + ' alcanzado. Lo que queda es seguir subiendo.'
+      : ritmo
+        ? 'Rango ' + f.rank.letter + ': ' + durationLabel(ritmo.days) +
+          (f.real ? ' a tu ritmo' : ' si cumples todo') + ' (' + monthLabel(ritmo.date) + ')'
+        : '';
+  }
+
+  /* ── Recompensas y previsión (2.7.0) ──────────────────────── */
+
+  const fmtMonth = new Intl.DateTimeFormat('es-ES', { month: 'short', year: 'numeric' });
+
+  function monthLabel(dateKey) {
+    return fmtMonth.format(U.fromKey(dateKey)).replace('.', '');
+  }
+
+  /** 45 → "1,5 meses"; 560 → "1 año y 6 meses". Redondeo de previsión. */
+  function durationLabel(days) {
+    if (days < 45) return days + (days === 1 ? ' día' : ' días');
+    const meses = Math.round(days / 30.44);
+    if (meses < 12) return meses + ' meses';
+    const anios = Math.floor(meses / 12);
+    const resto = meses % 12;
+    return anios + (anios === 1 ? ' año' : ' años') +
+      (resto ? ' y ' + resto + (resto === 1 ? ' mes' : ' meses') : '');
+  }
+
+  function daysPerWeekLabel(n) {
+    return n === 7 ? 'diario' : n + (n === 1 ? ' día/sem' : ' días/sem');
+  }
+
+  /**
+   * Cada hábito con su dificultad, cambiable ahí mismo. Si hay un cambio
+   * esperando a mañana, se dice. Debajo, la previsión hasta el rango más
+   * alto, que se rehace con cada cambio.
+   */
+  function renderRewards() {
+    const hoy = U.todayKey();
+    const manana = U.addDaysKey(hoy, 1);
+    const habits = S.getHabits()
+      .filter(function (h) { return !St.isAvoid(h); })
+      .sort(byName);
+
+    const frag = document.createDocumentFragment();
+    habits.forEach(function (h) {
+      const ahora = St.habitXp(h, hoy);
+      const luego = St.habitXp(h, manana);
+
+      const li = el('li', { class: 'reward' });
+      li.style.setProperty('--habit-color', h.color);
+
+      const main = el('div', { class: 'reward__main' });
+      main.appendChild(el('span', { class: 'reward__name', text: h.icon + ' ' + h.name }));
+      main.appendChild(el('span', {
+        class: 'reward__meta',
+        text: daysPerWeekLabel(h.activeDays.length) +
+              (luego !== ahora ? ' · hoy ' + ahora + ', desde mañana ' + luego : '')
+      }));
+      li.appendChild(main);
+
+      const select = el('select', {
+        class: 'input input--select reward__select',
+        'data-reward': h.id,
+        'aria-label': 'EXP de ' + h.name
+      });
+      St.XP_TIERS.forEach(function (t) {
+        const opt = el('option', { value: String(t.xp), text: t.name + ' · ' + t.xp });
+        if (t.xp === luego) opt.selected = true;
+        select.appendChild(opt);
+      });
+      li.appendChild(select);
+      frag.appendChild(li);
+    });
+    els.rewardList.textContent = '';
+    els.rewardList.appendChild(frag);
+
+    // El día perfecto de hoy, con lo que vale cada hábito hoy.
+    const hoyHabits = St.doHabitsFor(hoy);
+    const suma = hoyHabits.reduce(function (s, h) { return s + St.habitXp(h, hoy); }, 0);
+    // Va en la cabecera plegada: corto, y el detalle en el título.
+    const perfecto = suma + Math.round(suma * St.XP.perfectDayPct / 5) * 5;
+    els.rewardPerfect.hidden = !suma;
+    els.rewardPerfect.textContent = fmtNum.format(perfecto) + ' EXP';
+    els.rewardPerfect.title = 'Lo que da hoy un día perfecto';
+
+    els.rewardAvoid.textContent = 'Hábitos a evitar: no dan EXP a diario, sino por aguantar — ' +
+      St.AVOID_MILESTONES.map(function (m) { return m.xp + ' a los ' + m.days + ' días'; }).join(', ') + '.';
+
+    const f = St.forecastMax(hoy, S.getGame().points);
+    els.forecastTitle.textContent = 'Previsión hasta el rango ' + f.rank.letter + ' (nivel ' + f.level + ')';
+
+    if (f.reached) {
+      els.forecastIdeal.textContent = 'Ya lo has alcanzado.';
+      els.forecastReal.hidden = true;
+      return;
+    }
+
+    const falta = fmtNum.format(f.remaining) + ' EXP';
+    els.forecastIdeal.textContent = f.ideal
+      ? 'Si cumples todos tus hábitos: ~' + fmtNum.format(f.ideal.rate) + ' EXP/día → ' +
+        durationLabel(f.ideal.days) + ' (' + monthLabel(f.ideal.date) + '). Te faltan ' + falta + '.'
+      : 'Sin hábitos que den EXP no hay previsión.';
+
+    els.forecastReal.hidden = false;
+    els.forecastReal.textContent = f.real
+      ? 'A tu ritmo real (últimos ' + f.realDays + ' días): ~' + fmtNum.format(f.real.rate) +
+        ' EXP/día → ' + durationLabel(f.real.days) + ' (' + monthLabel(f.real.date) + ').'
+      : 'A tu ritmo real: hace falta al menos una semana de historia para calcularlo.';
   }
 
   /**
@@ -1027,10 +1169,16 @@ HT.ui = (function () {
     els.planStatus.textContent = bloqueada ? 'Planificada' : 'Sin planificar';
     els.planLock.hidden = !bloqueada;
 
+    // El único desbloqueo de la semana (2.7.0).
+    const desbloqueada = S.wasWeekUnlocked(wk);
+
     let pista;
     if (bloqueada) {
-      pista = 'Confirmada el ' + U.formatShort(U.fromKey(cuando)) + '. Queda así hasta el domingo. ' +
-              'Si surge algo, anota el día, pausa el hábito o programa una ausencia.';
+      pista = 'Confirmada el ' + U.formatShort(U.fromKey(cuando)) + '. Queda así hasta el domingo' +
+              (desbloqueada ? '.' : ', salvo que la desbloquees.');
+    } else if (desbloqueada) {
+      pista = 'Desbloqueada: cambia lo que necesites y vuelve a confirmar. Lo que ya pasó se queda ' +
+              'como estaba, y esta vez quedará bloqueada hasta el domingo.';
     } else if (plan.offset === 0 && hoy > wk) {
       pista = 'Empiezas hoy: lo que ya pasó se queda como estaba y planificas de hoy al domingo. ' +
               'Al confirmar, la semana queda bloqueada.';
@@ -1080,6 +1228,12 @@ HT.ui = (function () {
     els.planList.classList.toggle('is-locked', bloqueada);
     els.planEmpty.hidden = habits.length > 0;
     els.planActions.hidden = bloqueada || !habits.length;
+
+    els.planUnlockRow.hidden = !bloqueada;
+    els.btnPlanUnlock.hidden = desbloqueada;
+    els.planUnlockHint.textContent = desbloqueada
+      ? 'Ya la desbloqueaste una vez: si surge algo más, anota el día, pausa el hábito o programa una ausencia.'
+      : '¿Te ha surgido algo que te impide lo planificado? Puedes desbloquearla una vez.';
   }
 
   /** Vuelca el borrador sobre una fila sin reconstruirla: el foco no se pierde. */
@@ -2325,6 +2479,7 @@ HT.ui = (function () {
     setStat(els.statQuests, String(St.totalCompletions()));
     setStat(els.statTrophies, S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length);
     renderAttributes(dateKey);
+    renderRewards();
     renderStreakPair(dateKey);
     renderAscents();
 
@@ -2976,6 +3131,7 @@ HT.ui = (function () {
     const habits = visibleHabits(S.getHabits().filter(St.isAvoid));
 
     els.avoidCard.hidden = habits.length === 0;
+    els.avoidCount.textContent = String(habits.length);
     if (!habits.length) return;
 
     const frag = document.createDocumentFragment();
@@ -3141,6 +3297,11 @@ HT.ui = (function () {
         rate: St.habitRate(h, dateKey, 30)
       };
     });
+
+    // En la cabecera plegada: cuántos están en racha ahora mismo.
+    const enRacha = rows.filter(function (r) { return r.current > 0; }).length;
+    els.streaksCount.textContent = enRacha + '/' + habits.length;
+    els.streaksCount.title = enRacha + ' de ' + habits.length + ' hábitos en racha';
 
     // Todo a cero significa que aún no hay historial, no que las rachas valgan 0
     if (!habits.length || !rows.some(function (r) { return r.current || r.best; })) {
@@ -3817,6 +3978,9 @@ HT.ui = (function () {
     els.modalTitle.textContent = habit ? 'Editar hábito' : 'Nuevo hábito';
     els.btnDeleteHabit.hidden = !habit;
     form.dataset.editing = habit ? habit.id : '';
+    // La que valdrá mañana: si hay un cambio pendiente, es la que se eligió.
+    els.fXp.value = String(habit && !St.isAvoid(habit)
+      ? St.habitXp(habit, U.addDaysKey(U.todayKey(), 1)) : St.XP.habit);
 
     if (habit) {
       field('name').value = habit.name;
@@ -3875,6 +4039,7 @@ HT.ui = (function () {
     const cap = type === 'avoid' && !!modo && modo.value === 'cap';
 
     els.avoidModeFields.hidden = type !== 'avoid';
+    els.xpField.hidden = type === 'avoid';
     els.capHint.hidden = !cap;
     els.quantityFields.hidden = type !== 'quantity' && !cap;
     els.entryFields.hidden = type !== 'quantity';
@@ -3922,7 +4087,9 @@ HT.ui = (function () {
       color: field('color').value,
       category: els.fCategory.value || null,
       type: type,
-      activeDays: days
+      activeDays: days,
+      // No se guarda tal cual: app.js decide desde cuándo vale.
+      xpValue: type === 'avoid' ? null : Number(els.fXp.value) || St.XP.habit
     };
 
     if (type === 'avoid') {

@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 15;
+  const VERSION = 16;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -44,6 +44,13 @@ HT.store = (function () {
   const MAX_MISSIONS = 3;
   const MAX_MISSION_WEEKS = 600;
   const MAX_LEDGER = 1000;   // apuntes por día o semana en los libros de EXP
+
+  /* EXP que puede dar un hábito (2.7.0): las cuatro dificultades. 25 es la
+     de siempre y la que vale si no se ha elegido otra. Los nombres viven en
+     stats.js; aquí solo se valida el número. */
+  const XP_TIERS = [10, 20, 25, 40, 50];     // 50 (Muy difícil) desde la 2.7.1
+  const DEFAULT_HABIT_XP = 25;
+  const MAX_XP_CHANGES = 50;
 
   let state = null;
   let listeners = [];
@@ -169,6 +176,7 @@ HT.store = (function () {
       weights: {},
       freeNotes: [],
       plannedWeeks: {},
+      planUnlocks: {},
       missions: {},
       // El hábito que mide el atributo Fuerza en Progreso.
       trainingHabitId: training.id,
@@ -279,8 +287,37 @@ HT.store = (function () {
       pauses: cleanPauses(raw.pauses),
       // Días distintos para semanas concretas. null si no hay ninguna: es lo
       // que permite a activeDaysFor() saltarse la cuenta en el caso normal.
-      weekPlan: cleanWeekPlan(raw.weekPlan)
+      weekPlan: cleanWeekPlan(raw.weekPlan),
+      // EXP que da al cumplirlo (2.7.0). Los de evitar no la usan: pagan por
+      // hitos. null = la de siempre (25).
+      xp: type === 'avoid' ? null : cleanXpHistory(raw.xp)
     };
+  }
+
+  /**
+   * Lo que da un hábito, con la fecha desde la que vale cada cambio:
+   * [{ from, xp }], de la más antigua a la más reciente. Se guarda la
+   * historia y no solo el valor para que desmarcar un día pasado devuelva
+   * justo lo que dio ese día. Un cambio igual al valor anterior no aporta
+   * nada y se descarta; si al final no queda ninguno, null.
+   */
+  function cleanXpHistory(raw) {
+    if (!Array.isArray(raw)) return null;
+
+    const porFecha = {};
+    raw.forEach(function (e) {
+      if (!e || !U.isValidKey(e.from) || XP_TIERS.indexOf(Number(e.xp)) < 0) return;
+      porFecha[e.from] = Number(e.xp);
+    });
+
+    let previo = DEFAULT_HABIT_XP;
+    const out = [];
+    Object.keys(porFecha).sort().forEach(function (k) {
+      if (porFecha[k] === previo) return;
+      out.push({ from: k, xp: porFecha[k] });
+      previo = porFecha[k];
+    });
+    return out.length ? out.slice(-MAX_XP_CHANGES) : null;
   }
 
   /** Lista de días de la semana (0 = domingo) sin repetidos y ordenada. */
@@ -666,6 +703,9 @@ HT.store = (function () {
       weights: cleanByDate(raw.weights, cleanWeight),
       freeNotes: cleanFreeNotes(raw.freeNotes),
       plannedWeeks: cleanPlannedWeeks(raw.plannedWeeks),
+      // Semanas que ya usaron su único desbloqueo (v16): lunes → día en que
+      // se desbloqueó. Misma forma que plannedWeeks.
+      planUnlocks: cleanPlannedWeeks(raw.planUnlocks),
       // Ausente antes de la v15: sin misiones.
       missions: cleanMissions(raw.missions, byId),
       // Hasta la v13 vivía en workout.linkedHabitId, junto a la tabla de
@@ -684,6 +724,10 @@ HT.store = (function () {
         // XP por hitos de malos hábitos ya cobrada. Ausente en datos
         // anteriores: empieza a 0 y solo puede subir.
         avoidXpPaid: Math.max(0, Math.floor(Number(g.avoidXpPaid) || 0)),
+        // Pendiente de reajustar lo cobrado a la tabla nueva de hitos (2.7.0).
+        // Lo pone la migración a la v16 y lo quita app.js al arrancar, porque
+        // la cuenta necesita las rachas, que se calculan en stats.js.
+        avoidXpRebase: g.avoidXpRebase === true,
         // Última copia exportada, para poder avisar cuando lleve tiempo.
         lastExport: U.isValidKey(g.lastExport) ? g.lastExport : null,
         // Lunes de la última semana cuyo resumen cerraste.
@@ -867,6 +911,8 @@ HT.store = (function () {
     if (incoming < 8) migrateNewDefaults();
     if (incoming < 11) migrateAddRedes();
     if (incoming < 13) migrateDropPlanner();
+    // v16: los hitos de evitar pasan de 50/150/400 a 50/100/200.
+    if (incoming < 16) state.game.avoidXpRebase = true;
   }
 
   function load() {
@@ -1218,6 +1264,25 @@ HT.store = (function () {
     return { weekKey: weekKey, prev: prev };
   }
 
+  /**
+   * El único desbloqueo de una semana ya confirmada (2.7.0), para cuando
+   * surge algo que impide lo planificado. El plan se queda como estaba y sirve
+   * de punto de partida; lo que ya pasó sigue fijo, porque confirmWeekPlan()
+   * nunca toca días pasados. Al volver a confirmar, ya no hay más.
+   */
+  function unlockWeekPlan(weekKey) {
+    if (planWeeks().indexOf(weekKey) < 0 || !isWeekLocked(weekKey) || state.planUnlocks[weekKey]) return false;
+    delete state.plannedWeeks[weekKey];
+    state.planUnlocks[weekKey] = U.todayKey();
+    commit('habit:plan', { weekKey: weekKey });
+    return true;
+  }
+
+  /** ¿Esa semana ya gastó su desbloqueo? */
+  function wasWeekUnlocked(weekKey) {
+    return !!state.planUnlocks[weekKey];
+  }
+
   /** Deshace una confirmación: vuelve el plan anterior y la semana se desbloquea. */
   function undoWeekPlan(snapshot) {
     if (!snapshot || !isWeekLocked(snapshot.weekKey)) return false;
@@ -1486,6 +1551,26 @@ HT.store = (function () {
     return true;
   }
 
+  /**
+   * Cambia la EXP que da un hábito. Vale desde MAÑANA, nunca desde hoy: si
+   * valiera ya, se podría marcar con 40, bajarlo a 10 y desmarcar, y
+   * quedarían 30 regalados. Así cada día paga y devuelve con el mismo valor.
+   * Un cambio pendiente para mañana se sustituye por el nuevo.
+   */
+  function setHabitXp(id, value) {
+    const habit = getHabit(id);
+    const v = Number(value);
+    if (!habit || habit.type === 'avoid' || XP_TIERS.indexOf(v) < 0) return null;
+
+    const hoy = U.todayKey();
+    const hist = (habit.xp || []).filter(function (e) { return e.from <= hoy; });
+    hist.push({ from: U.addDaysKey(hoy, 1), xp: v });
+    habit.xp = cleanXpHistory(hist);
+
+    commit('habit:update', habit);
+    return habit;
+  }
+
   function setArchived(id, archived) {
     return updateHabit(id, { archived: !!archived });
   }
@@ -1744,6 +1829,18 @@ HT.store = (function () {
     return true;
   }
 
+  /**
+   * Reajuste único al cambiar la tabla de hitos (2.7.0). Lo cobrado con la
+   * tabla vieja puede pasar de lo que da la nueva por las mismas rachas; si
+   * no se bajara, los hitos siguientes no se pagarían hasta superarlo. La
+   * EXP ya ganada no se toca: solo cambia la cuenta de lo cobrado.
+   */
+  function rebaseAvoidXp(n) {
+    state.game.avoidXpPaid = Math.max(0, Math.floor(Number(n) || 0));
+    state.game.avoidXpRebase = false;
+    save();
+  }
+
   /** Marca hasta dónde se ha cobrado ya la XP de hitos. Nunca baja. */
   function setAvoidXpPaid(n) {
     const next = Math.max(0, Math.floor(Number(n) || 0));
@@ -1908,6 +2005,8 @@ HT.store = (function () {
     // Importar no pasa por las migraciones, pero una copia anterior a la 2.1.0
     // traería de vuelta "Planificar la semana" como hábito activo.
     if (!(raw && raw.version >= 13)) migrateDropPlanner();
+    // Una copia anterior a la v16 trae lo cobrado con la tabla vieja de hitos.
+    if (!(raw && raw.version >= 16)) state.game.avoidXpRebase = true;
     save(true, true);
     emit('state:replace');
     return state;
@@ -1924,6 +2023,8 @@ HT.store = (function () {
     MAX_FREEZES: MAX_FREEZES,
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
     MAX_MISSIONS: MAX_MISSIONS,
+    setHabitXp: setHabitXp, unlockWeekPlan: unlockWeekPlan, wasWeekUnlocked: wasWeekUnlocked,
+    rebaseAvoidXp: rebaseAvoidXp,
     getMissions: getMissions, getMissionWeeks: getMissionWeeks, acceptMissions: acceptMissions,
     getMissionPaid: getMissionPaid, setMissionPaid: setMissionPaid,
     getPenalties: getPenalties, setPenalty: setPenalty, clearPenalty: clearPenalty,

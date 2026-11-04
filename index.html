@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.6.0">
+<html lang="es" data-theme="dark" data-build="2.7.1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -478,6 +478,14 @@
             <button type="button" class="btn btn--primary" id="btnPlanConfirm">Confirmar y bloquear</button>
             <button type="button" class="btn btn--ghost" id="btnPlanReset">Como siempre</button>
           </div>
+
+          <!-- El único desbloqueo de una semana confirmada (2.7.0). -->
+          <div class="plan-unlock" id="planUnlockRow" hidden>
+            <button type="button" class="btn" id="btnPlanUnlock">
+              <span aria-hidden="true">🔓</span> Desbloquear (te queda 1)
+            </button>
+            <p class="card__text card__text--tight" id="planUnlockHint">—</p>
+          </div>
         </article>
 
         <article class="card missions" id="missionPlanCard" aria-labelledby="missionPlanTitle">
@@ -540,6 +548,7 @@
             <p class="sys-level__xp" id="lvXp">0 / 100 EXP</p>
             <p class="sys-level__left" id="lvRemaining">100 EXP para subir de nivel</p>
             <p class="sys-level__ahead" id="lvAhead" hidden></p>
+            <p class="sys-level__forecast" id="lvForecast" hidden></p>
           </article>
 
           <article class="card sys-attrs" aria-labelledby="attrsTitle">
@@ -550,6 +559,30 @@
               Cada atributo es una métrica real de tus hábitos, no una puntuación inventada.
             </p>
           </article>
+
+          <!-- Recompensas (2.7.0): cuánta EXP da cada hábito y cuánto falta
+               para el rango más alto con esos valores y a tu ritmo real.
+               Plegable desde la 2.7.1, como Ascensos. -->
+          <details class="card fold sys-rewards" id="rewardsCard" data-fold="rewards">
+            <summary class="fold__head">
+              <h2 class="fold__title" id="rewardsTitle">Recompensas</h2>
+              <span class="fold__count" id="rewardPerfect">—</span>
+            </summary>
+            <div class="fold__body">
+              <p class="card__text">
+                Cuánta EXP da cada hábito al cumplirlo. Los cambios valen desde mañana;
+                los bonos de día bueno y perfecto se ajustan solos.
+              </p>
+              <ul class="reward-list" id="rewardList"></ul>
+              <p class="reward-avoid" id="rewardAvoid">—</p>
+
+              <div class="forecast" id="forecastBox">
+                <h3 class="forecast__title" id="forecastTitle">Previsión hasta el rango X</h3>
+                <p class="forecast__line" id="forecastIdeal">—</p>
+                <p class="forecast__line" id="forecastReal">—</p>
+              </div>
+            </div>
+          </details>
 
           <article class="card sys-streaks" aria-labelledby="streaksPairTitle">
             <p class="sys-win__tag" aria-hidden="true">Constancia</p>
@@ -590,7 +623,7 @@
             <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
 
-          <details class="card fold ascents" id="ascents">
+          <details class="card fold ascents" id="ascents" data-fold="ascents">
             <summary class="fold__head">
               <h2 class="fold__title">Ascensos</h2>
               <span class="fold__count" id="ascentsCount">0</span>
@@ -600,17 +633,27 @@
           </details>
 
 
-          <article class="card" aria-labelledby="streaksTitle">
-            <header class="card__head"><h2 class="card__title" id="streaksTitle">Rachas por hábito</h2></header>
-            <ul class="streak-list" id="streakList"></ul>
-          </article>
+          <details class="card fold" id="streaksCard" data-fold="streaks">
+            <summary class="fold__head">
+              <h2 class="fold__title" id="streaksTitle">Rachas por hábito</h2>
+              <span class="fold__count" id="streaksCount">0</span>
+            </summary>
+            <div class="fold__body">
+              <ul class="streak-list" id="streakList"></ul>
+            </div>
+          </details>
 
-          <article class="card" id="avoidCard" aria-labelledby="avoidTitle" hidden>
-            <header class="card__head"><h2 class="card__title" id="avoidTitle">Días sin</h2></header>
-            <ul class="streak-list" id="avoidList"></ul>
-          </article>
+          <details class="card fold" id="avoidCard" data-fold="avoid" hidden>
+            <summary class="fold__head">
+              <h2 class="fold__title" id="avoidTitle">Días sin</h2>
+              <span class="fold__count" id="avoidCount">0</span>
+            </summary>
+            <div class="fold__body">
+              <ul class="streak-list" id="avoidList"></ul>
+            </div>
+          </details>
 
-          <details class="card fold" id="achCard">
+          <details class="card fold" id="achCard" data-fold="achievements">
             <summary class="fold__head">
               <h2 class="fold__title">Logros</h2>
               <span class="fold__count" id="achCount">0</span>
@@ -1096,6 +1139,14 @@
             fallado si te pasas del máximo.
           </p>
         </fieldset>
+
+        <!-- Dificultad (2.7.0): la EXP que da al cumplirlo. Los de evitar no
+             la tienen: pagan por hitos de días sin caer. -->
+        <div class="field" id="xpField">
+          <label class="field__label" for="fXp">Dificultad</label>
+          <select id="fXp" name="xp" class="input input--select"></select>
+          <p class="field__hint" id="fXpHint">Lo que da al cumplirlo. Si cambias la de un hábito que ya tienes, vale desde mañana.</p>
+        </div>
 
         <div class="field" id="limitField" hidden>
           <label class="field__label" for="fLimit">Fallos que lo ponen en crítico</label>

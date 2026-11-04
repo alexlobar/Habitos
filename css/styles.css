@@ -2090,6 +2090,53 @@ button.week-cell:disabled:hover { transform: none; }
   color: var(--text-faint);
 }
 .sys-level__ahead { margin-top: var(--sp-1); }
+.sys-level__forecast {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--sys-cyan);
+  text-align: center;
+}
+
+/* ── Recompensas y previsión (2.7.0) ──────────────────────── */
+.reward-list { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.reward {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.reward:last-child { border-bottom: 0; }
+.reward__main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.reward__name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reward__meta { font-size: var(--fs-xs); color: var(--text-faint); }
+.reward__select { flex: none; width: auto; min-width: 8.5rem; }
+.reward-avoid { margin: 0 0 var(--sp-4); font-size: var(--fs-xs); color: var(--text-muted); }
+.forecast {
+  padding: var(--sp-3);
+  border: 1px solid rgb(70 220 255 / .25);
+  border-radius: var(--radius-sm);
+  background: rgb(8 18 34 / .5);
+}
+.forecast__title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--sys-cyan);
+}
+.forecast__line { margin: 0; font-size: var(--fs-sm); color: var(--text); }
+.forecast__line + .forecast__line { margin-top: var(--sp-2); color: var(--text-muted); }
+
+/* Desbloqueo único del plan */
+.plan-unlock { margin-top: var(--sp-3); }
 
 /* ── Panel de nivel ───────────────────────────────────────
    Nivel y rango se muestran por separado y con jerarquías distintas:
@@ -2707,6 +2754,13 @@ button.week-cell:disabled:hover { transform: none; }
   padding: 0 var(--sp-3) var(--sp-3);
 }
 .fold .card__text { padding: 0 var(--sp-4) var(--sp-4); margin: 0; }
+
+/* Desde la 2.7.1 también se pliegan Recompensas, Rachas por hábito y Días
+   sin. Su contenido va en un solo bloque con el margen de la tarjeta, así
+   que lo de dentro no lleva el suyo propio. */
+.fold__body { padding: 0 var(--sp-4) var(--sp-4); }
+.fold__body .card__text { padding: 0; margin: 0 0 var(--sp-3); }
+.fold__body .reward-list { margin-top: 0; }
 
 .ascent {
   display: flex;
