@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.7.5** · esquema de datos **v17**.
+Versión documentada: **2.8.0** · esquema de datos **v18**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -524,7 +524,7 @@ significaba — y sigue salvado.
 
 ## 10. Logros
 
-Quince, en `ACHIEVEMENTS`. Se evalúan en `earnedAchievements()` cada vez que
+Dieciséis, en `ACHIEVEMENTS`. Se evalúan en `earnedAchievements()` cada vez que
 cambia algo y **no se pierden** una vez ganados (salvo con *Reiniciar
 progresión*).
 
@@ -545,6 +545,7 @@ progresión*).
 | ⚡ | Diez mil de EXP | 10.000 de EXP acumulada |
 | 📝 | Cronista | 10 notas de día |
 | 🧭 | Sin faltar un día | 90 días seguidos registrando algo |
+| 🏁 | Visionario | Cumplir un objetivo a largo plazo (2.8.0) |
 
 *Misiones* son veces que se ha completado un hábito, sin contar los de evitar:
 sus días limpios pasan solos y ahogarían el número real de cosas hechas.
@@ -586,6 +587,13 @@ cifra de una sola.
 **Lo que no da EXP, a propósito:** anotar el motivo de un día malo. Pagaría por
 declarar días malos y acabarías inventándolos. Su recompensa es que la racha de
 registro sobrevive.
+
+Tampoco los **objetivos a largo plazo** (2.8.0): la meta la pones tú, y si
+pagaran, fijarse una fácil sería una forma de subir de nivel. Se celebran (aviso,
+confeti y el logro *Visionario* con el primero) y lo que sí da EXP es cumplir
+cada día los hábitos que los llenan. El **temporizador** tampoco paga por sí
+mismo: marca el check o suma los minutos pasando por `withScoring()`, así que da
+y quita exactamente lo mismo que hacerlo a mano.
 
 ### Misiones semanales (2.6.0)
 

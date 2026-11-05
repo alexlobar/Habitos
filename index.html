@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.7.5">
+<html lang="es" data-theme="dark" data-build="2.8.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -669,6 +669,29 @@
             <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
 
+          <!-- Objetivos a largo plazo (2.8.0). Abierto de entrada: es lo que
+               se viene a mirar. Si lo pliegas, se recuerda. -->
+          <details class="card fold goals" id="goalsCard" data-fold="goals" open>
+            <summary class="fold__head">
+              <h2 class="fold__title" id="goalsTitle">Objetivos</h2>
+              <span class="fold__count" id="goalsCount">0</span>
+            </summary>
+            <div class="fold__body">
+              <p class="card__text" id="goalsEmpty">
+                Metas con fecha para tus hábitos: «3.000 páginas en 2027», «100 entrenos
+                este año» o «200 días sin Gula». Cuentan lo que ya apuntas cada día.
+              </p>
+              <ul class="goal-list" id="goalList"></ul>
+              <details class="goals__past" id="goalsPast" hidden>
+                <summary class="goals__past-head" id="goalsPastLabel">Terminados</summary>
+                <ul class="goal-list" id="goalPastList"></ul>
+              </details>
+              <div class="btn-row goals__actions">
+                <button type="button" class="btn" id="btnAddGoal">+ Nuevo objetivo</button>
+              </div>
+            </div>
+          </details>
+
           <details class="card fold ascents" id="ascents" data-fold="ascents">
             <summary class="fold__head">
               <h2 class="fold__title">Ascensos</h2>
@@ -772,6 +795,16 @@
           <header class="card__head"><h2 class="card__title" id="hAttrTitle">Atributos</h2></header>
           <ul class="hattr-list" id="hAttrList"></ul>
           <p class="card__text card__text--tight" id="hAttrNote">—</p>
+        </article>
+
+        <!-- Sus objetivos a largo plazo (2.8.0). -->
+        <article class="card" id="hGoalCard" aria-labelledby="hGoalTitle">
+          <header class="card__head">
+            <h2 class="card__title" id="hGoalTitle">Objetivos</h2>
+            <button type="button" class="btn btn--ghost" id="btnAddHabitGoal">+ Nuevo</button>
+          </header>
+          <ul class="goal-list" id="hGoalList"></ul>
+          <p class="card__text card__text--tight" id="hGoalEmpty">—</p>
         </article>
 
         <article class="card" id="hSumsCard" aria-labelledby="hSumsTitle" hidden>
@@ -1201,6 +1234,18 @@
           <p class="field__hint" id="fXpHint">Lo que da al cumplirlo. Si cambias la de un hábito que ya tienes, vale desde mañana.</p>
         </div>
 
+        <!-- Temporizador (2.8.0): un check con minutos se marca solo al
+             llegar al tiempo. Los de cantidad en min u h lo tienen sin pedirlo. -->
+        <div class="field" id="timerField">
+          <label class="field__label" for="fTimer">Temporizador (opcional)</label>
+          <div class="amount-field timer-field">
+            <input class="input" type="number" id="fTimer" name="timer" min="1" max="600" step="1"
+                   inputmode="numeric" placeholder="Sin temporizador">
+            <span class="amount-field__unit" aria-hidden="true">min</span>
+          </div>
+          <p class="field__hint">Con minutos, la tarjeta tendrá un ▶ y, al llegar al tiempo, se marca sola.</p>
+        </div>
+
         <div class="field" id="limitField" hidden>
           <label class="field__label" for="fLimit">Fallos que lo ponen en crítico</label>
           <input type="number" id="fLimit" name="limit" class="input"
@@ -1225,6 +1270,9 @@
             <input class="input" type="number" id="fStep" name="step" min="1" step="1" value="5">
           </div>
         </div>
+        <p class="field__hint" id="timeUnitHint" hidden>
+          Con la unidad en min u h, la tarjeta tendrá un ▶ para cronometrarlo y sumar el tiempo.
+        </p>
 
         <fieldset class="field" id="entryFields" hidden>
           <legend class="field__label">Cómo registrar</legend>
@@ -1399,6 +1447,89 @@
           <button type="submit" class="btn btn--primary">Programar</button>
         </footer>
       </form>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: objetivo a largo plazo (2.8.0) ══ -->
+  <div class="modal" id="goalModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle">
+      <header class="modal__head">
+        <h2 class="modal__title" id="goalModalTitle">Nuevo objetivo</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+
+      <form class="modal__body" id="goalForm" novalidate>
+        <p class="card__text">
+          Una meta con fecha para uno de tus hábitos. Cuenta todo lo apuntado entre
+          las dos fechas, también lo que ya tengas de antes de crearla.
+        </p>
+
+        <div class="field">
+          <label class="field__label" for="goalHabit">Hábito</label>
+          <select id="goalHabit" class="input input--select"></select>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="goalAmount" id="goalAmountLabel">Meta</label>
+          <div class="amount-field goal-amount">
+            <input class="input" type="number" id="goalAmount" min="1" step="any"
+                   inputmode="decimal" placeholder="0" required>
+            <span class="amount-field__unit" id="goalUnit">—</span>
+          </div>
+        </div>
+
+        <div class="absence-dates">
+          <label class="field">
+            <span class="field__label">Desde</span>
+            <input class="input" type="date" id="goalFrom" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Hasta (incluido)</span>
+            <input class="input" type="date" id="goalTo" required>
+          </label>
+        </div>
+        <div class="btn-row goal-quick" role="group" aria-label="Fechas rápidas">
+          <button type="button" class="btn btn--ghost" data-goal-range="month">Este mes</button>
+          <button type="button" class="btn btn--ghost" data-goal-range="3m">3 meses</button>
+          <button type="button" class="btn btn--ghost" data-goal-range="year">Este año</button>
+          <button type="button" class="btn btn--ghost" data-goal-range="12m">12 meses</button>
+        </div>
+
+        <p class="goal-pace" id="goalPace" aria-live="polite"></p>
+        <p class="field__error" id="goalError" role="alert" hidden></p>
+
+        <footer class="modal__foot">
+          <button type="button" class="btn btn--ghost btn--danger" id="btnDeleteGoal" hidden>Eliminar</button>
+          <span class="modal__spacer"></span>
+          <button type="button" class="btn" data-close>Cancelar</button>
+          <button type="submit" class="btn btn--primary">Guardar</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Temporizador en marcha (2.8.0). Flota sobre la barra de navegación
+       mientras corre, en cualquier sección. -->
+  <div class="timer-bar" id="timerBar" role="region" aria-label="Temporizador" hidden>
+    <div class="timer-bar__ring" id="timerRing" style="--pct:0">
+      <span class="timer-bar__icon" id="timerIcon" aria-hidden="true">⏱️</span>
+    </div>
+    <div class="timer-bar__info">
+      <p class="timer-bar__name" id="timerName">—</p>
+      <p class="timer-bar__time"><span id="timerTime">0:00</span> <span class="timer-bar__goal" id="timerGoal"></span></p>
+    </div>
+    <div class="timer-bar__actions">
+      <button type="button" class="icon-btn timer-bar__btn" id="btnTimerPause" aria-label="Pausar">
+        <svg class="timer-ico timer-ico--pause" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/>
+        </svg>
+        <svg class="timer-ico timer-ico--play" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 5.5v13l10.5-6.5z"/>
+        </svg>
+      </button>
+      <button type="button" class="btn btn--primary timer-bar__finish" id="btnTimerFinish">Terminar</button>
+      <button type="button" class="icon-btn timer-bar__btn" id="btnTimerCancel" aria-label="Descartar el temporizador">✕</button>
     </div>
   </div>
 

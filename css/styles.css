@@ -3917,3 +3917,202 @@ button.week-cell:disabled:hover { transform: none; }
 .free-note__title-input { margin-bottom: var(--sp-2); font-weight: 600; }
 .free-note__input { margin: 0; }
 .free-note__foot { display: flex; justify-content: flex-end; margin-top: var(--sp-2); }
+
+/* ── 2.8.0 · TEMPORIZADOR Y OBJETIVOS A LARGO PLAZO ─────────── */
+
+/* Botón ▶ en la tarjeta. Un poco más pequeño que el check: es secundario. */
+.timer-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 1px solid color-mix(in srgb, var(--habit-color, var(--accent)) 45%, var(--border));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 12%, transparent);
+  color: var(--text);
+  transition: background var(--dur) var(--ease), transform 120ms var(--ease);
+}
+.timer-btn:hover { background: color-mix(in srgb, var(--habit-color, var(--accent)) 26%, transparent); }
+.timer-btn:active { transform: scale(.94); }
+.timer-btn svg { width: 16px; height: 16px; margin-left: 2px; fill: currentColor; }
+.timer-btn.is-running {
+  border-color: var(--habit-color, var(--accent));
+  background: color-mix(in srgb, var(--habit-color, var(--accent)) 30%, transparent);
+  animation: timer-pulse 1.6s var(--ease) infinite;
+}
+@keyframes timer-pulse {
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--habit-color, var(--accent)) 20%, transparent); }
+}
+.habit-card__head > .timer-btn { order: 0; }
+@media (max-width: 767.98px) {
+  /* En la fila del nombre, a la altura del icono (30px) para no estirarla. */
+  .timer-btn { width: 30px; height: 30px; }
+  .timer-btn svg { width: 13px; height: 13px; }
+}
+[data-controls="mini"] .timer-btn { width: 30px; height: 30px; }
+[data-controls="mini"] .timer-btn svg { width: 13px; height: 13px; }
+[data-controls="comfy"] .timer-btn { width: 46px; height: 46px; }
+[data-controls="roomy"] .timer-btn { width: 56px; height: 56px; }
+[data-controls="roomy"] .timer-btn svg { width: 22px; height: 22px; }
+
+.timer-field { max-width: 14rem; }
+.timer-field .input,
+.goal-amount .input { border: 0; background: transparent; box-shadow: none; min-height: 38px; }
+
+/* La barra flota encima de la navegación mientras corre. */
+.timer-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + var(--sp-2));
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: min(calc(100vw - 2 * var(--sp-4)), 460px);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 30px rgb(0 0 0 / .35);
+  transform: translateX(-50%);
+  animation: timer-in 220ms var(--ease);
+}
+@keyframes timer-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+.timer-bar__ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--surface-3) 0);
+}
+.timer-bar[data-reached="true"] .timer-bar__ring { background: var(--success); }
+.timer-bar__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.timer-bar__info { flex: 1; min-width: 0; }
+.timer-bar__name {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timer-bar__time {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.timer-bar__goal { font-size: var(--fs-xs); font-weight: 500; color: var(--text-muted); }
+.timer-bar[data-state="paused"] #timerTime { opacity: .55; }
+.timer-bar__actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.timer-bar__btn { width: 40px; height: 40px; }
+.timer-ico { width: 18px; height: 18px; fill: currentColor; }
+.timer-bar[data-state="running"] .timer-ico--play,
+.timer-bar[data-state="paused"] .timer-ico--pause { display: none; }
+.timer-bar__finish { min-height: 40px; padding: 0 var(--sp-3); }
+
+/* Con la barra a la vista, el final de la página y los avisos suben. */
+body.has-timer .app-shell { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 80px); }
+body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 84px); }
+
+@media (min-width: 1024px) {
+  .timer-bar { left: calc(50% + var(--rail-w) / 2); bottom: var(--sp-5); }
+  body.has-timer .app-shell { padding-bottom: 88px; }
+  body.has-timer .toast-stack { bottom: calc(var(--sp-5) + 80px); }
+}
+
+/* Objetivos. */
+.goal-list { display: grid; gap: var(--sp-3); }
+.goal-list:empty { display: none; }
+.goal {
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--habit-color, var(--accent));
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.goal__head { display: flex; align-items: flex-start; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.goal__icon { flex: none; font-size: 1.2rem; line-height: 1.3; }
+.goal__main { flex: 1; min-width: 0; }
+.goal__name { margin: 0; font-size: var(--fs-sm); font-weight: 650; overflow-wrap: anywhere; }
+.goal__dates { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--text-faint); }
+.goal__edit { flex: none; margin: -4px -4px 0 0; }
+.goal__edit svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.goal__track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+.goal__fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--habit-color, var(--accent));
+  transition: width 600ms var(--ease);
+}
+/* La rayita de "dónde tocaría ir hoy". */
+.goal__mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: calc(var(--pct, 0) * 1%);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+  opacity: .7;
+}
+.goal__nums { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.goal__nums strong { color: var(--text); }
+.goal__status { margin: var(--sp-1) 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+.goal__chip {
+  display: inline-block;
+  margin-right: 2px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  font-weight: 650;
+  color: var(--text);
+}
+.goal[data-status="done"] .goal__chip { background: color-mix(in srgb, var(--success) 25%, transparent); color: var(--success); }
+.goal[data-status="ahead"] .goal__chip { background: color-mix(in srgb, var(--success) 18%, transparent); }
+.goal[data-status="close"] .goal__chip { background: color-mix(in srgb, var(--warning, #ffb454) 22%, transparent); }
+.goal[data-status="behind"] .goal__chip,
+.goal[data-status="impossible"] .goal__chip,
+.goal[data-status="failed"] .goal__chip { background: color-mix(in srgb, var(--danger) 22%, transparent); }
+.goal[data-status="failed"] { opacity: .75; }
+.goals__past { margin-top: var(--sp-3); }
+.goals__past-head {
+  cursor: pointer;
+  padding: var(--sp-2) 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.goals__past .goal-list { margin-top: var(--sp-2); }
+.goals__actions { margin-top: var(--sp-3); }
+.goal-quick { margin: var(--sp-2) 0 0; }
+/* En la ventana del objetivo las dos fechas van a la misma altura: la
+   regla .field + .field bajaba la segunda. */
+#goalForm .absence-dates { margin-top: var(--sp-4); }
+#goalForm .absence-dates .field { margin-top: 0; }
+.goal-quick .btn { min-height: 34px; padding: 0 var(--sp-3); font-size: var(--fs-xs); }
+.goal-pace { min-height: 1.2em; margin: var(--sp-3) 0; font-size: var(--fs-xs); color: var(--text-muted); }

@@ -18,6 +18,7 @@ HT.ui = (function () {
   const cardIndex = {};     // habitId → nodo <li>, para repintar solo lo que cambia
   let lastFocused = null;
   let missingIds = [];      // ids que no estaban en el HTML al arrancar
+  let timerHabitId = null;  // hábito con el temporizador en marcha (2.8.0)
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -150,7 +151,14 @@ HT.ui = (function () {
       'streaksCount', 'avoidCount', 'hSumAvgLabel', 'hAttrList', 'hAttrNote',
       'moodPicker', 'moodCard', 'moodAvg', 'moodLead', 'moodList', 'hMonthCompare',
       'hStreakLabel', 'hBestLabel', 'hRateLabel', 'hTotalLabel',
-      'weightMonthInput', 'weightMonthKg', 'btnWeightMonth', 'weightMonthHint'
+      'weightMonthInput', 'weightMonthKg', 'btnWeightMonth', 'weightMonthHint',
+      'timerField', 'fTimer', 'timeUnitHint',
+      'goalsCard', 'goalsCount', 'goalsEmpty', 'goalList', 'goalsPast', 'goalsPastLabel', 'goalPastList',
+      'btnAddGoal', 'hGoalCard', 'hGoalList', 'hGoalEmpty', 'btnAddHabitGoal',
+      'goalModal', 'goalForm', 'goalModalTitle', 'goalHabit', 'goalAmount', 'goalAmountLabel', 'goalUnit',
+      'goalFrom', 'goalTo', 'goalPace', 'goalError', 'btnDeleteGoal',
+      'timerBar', 'timerRing', 'timerIcon', 'timerName', 'timerTime', 'timerGoal',
+      'btnTimerPause', 'btnTimerFinish', 'btnTimerCancel'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -212,7 +220,9 @@ HT.ui = (function () {
     try { abiertos = JSON.parse(localStorage.getItem(FOLD_KEY)) || {}; } catch (e) { abiertos = {}; }
 
     U.$$('details[data-fold]').forEach(function (d) {
-      if (abiertos[d.dataset.fold]) d.open = true;
+      // Lo que se recuerde manda; si no hay nada, se queda como viene en el
+      // HTML (Objetivos nace abierto, el resto plegado).
+      if (Object.prototype.hasOwnProperty.call(abiertos, d.dataset.fold)) d.open = !!abiertos[d.dataset.fold];
       d.addEventListener('toggle', function () {
         abiertos[d.dataset.fold] = d.open;
         try { localStorage.setItem(FOLD_KEY, JSON.stringify(abiertos)); } catch (e) { /* da igual */ }
@@ -753,6 +763,12 @@ HT.ui = (function () {
     return svg;
   }
 
+  function playIcon() {
+    const svg = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
+    svg.appendChild(svgEl('path', { d: 'M8 5.5v13l10.5-6.5z' }));
+    return svg;
+  }
+
   /**
    * La tarjeta se monta una vez con toda su estructura y después solo se
    * repinta (paintCard). Secciones, de arriba abajo: cabecera con icono,
@@ -798,6 +814,17 @@ HT.ui = (function () {
        Van en la cabecera, a la derecha del nombre, donde antes estaba el
        distintivo de estado. Si no caben al lado, el CSS los baja a su
        propia línea en vez de comerle sitio al nombre, que abre la ficha. */
+    // Temporizador (2.8.0): en la fila del nombre, para que en el móvil no
+    // ocupe una línea propia junto a los − y +. Solo se ve hoy; paintCard decide.
+    if (St.hasTimer(habit)) {
+      const tb = el('button', {
+        type: 'button', class: 'timer-btn', 'data-action': 'timer',
+        title: 'Cronometrar', 'aria-label': 'Cronometrar ' + habit.name
+      });
+      tb.appendChild(playIcon());
+      head.appendChild(tb);
+    }
+
     const controls = el('div', { class: 'habit-card__controls' });
 
     if (habit.type === 'check') {
@@ -931,6 +958,15 @@ HT.ui = (function () {
     // Nunca se pisa lo que el usuario está escribiendo.
     if (amountInput && document.activeElement !== amountInput) {
       amountInput.value = (Number(value) || 0) || '';
+    }
+
+    const timerBtn = $('.timer-btn', li);
+    if (timerBtn) {
+      // Solo hoy, y en un check ya hecho no queda nada que cronometrar.
+      const corriendo = timerHabitId === habit.id;
+      timerBtn.hidden = !corriendo && (dateKey !== U.todayKey() ||
+                                       (habit.type === 'check' && state === 'done'));
+      timerBtn.classList.toggle('is-running', corriendo);
     }
 
     if (habit.type === 'check') {
@@ -2576,6 +2612,7 @@ HT.ui = (function () {
     setStat(els.statTrophies, S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length);
     renderAttributes(dateKey);
     renderRewards();
+    renderGoals();
     renderStreakPair(dateKey);
     renderAscents();
 
@@ -3554,6 +3591,7 @@ HT.ui = (function () {
     els.btnArchiveHabit.classList.toggle('is-on', habit.archived);
 
     renderHabitAttrs(habit, todayKey);
+    renderHabitGoals(habit);
     renderHabitSums(habit, todayKey, weekStart);
     renderHabitHeatmap(habit, monthDate, weekStart, todayKey);
   }
@@ -4227,6 +4265,362 @@ HT.ui = (function () {
     return 'rgb(' + mixed.join(' ') + ')';
   }
 
+  /* ── Objetivos a largo plazo (2.8.0) ──────────────────────── */
+
+  const fmt1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+  const fmtDay = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
+  const fmtDayYear = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  function shortDay(key, conAnio) {
+    return (conAnio ? fmtDayYear : fmtDay).format(U.fromKey(key)).replace('.', '');
+  }
+
+  /** "1 ene – 31 dic 2027", o con los dos años si no coinciden. */
+  function goalRange(goal) {
+    const mismo = goal.from.slice(0, 4) === goal.to.slice(0, 4);
+    return shortDay(goal.from, !mismo) + ' – ' + shortDay(goal.to, true);
+  }
+
+  /** Una cifra con su unidad: "3.000 páginas", "45 días", "20 h 40 min". */
+  function goalAmount(habit, n) {
+    const kind = St.goalKind(habit);
+    if (kind === 'sum') return amountLabel(Math.round(n * 10) / 10, habit.target.unit);
+    return fmt1.format(n) + ' ' + St.goalUnit(habit, n);
+  }
+
+  /** Lo que hace falta a partir de hoy, en la medida que se entiende. */
+  function goalNeedLabel(p) {
+    if (p.kind === 'sum') {
+      const n = p.need >= 10 ? Math.ceil(p.need) : Math.ceil(p.need * 10) / 10;
+      return amountLabel(n, p.habit.target.unit) + ' al día';
+    }
+    const semana = p.need * 7;
+    if (semana >= 6.95) return 'todos los días';
+    return fmt1.format(Math.ceil(semana * 10) / 10) + ' días por semana';
+  }
+
+  const GOAL_STATUS = {
+    done:       'Conseguido',
+    failed:     'No se consiguió',
+    future:     'Aún no ha empezado',
+    early:      'Recién empezado',
+    ahead:      'Vas bien',
+    close:      'Vas justo',
+    behind:     'Vas por detrás',
+    impossible: 'Ya no da tiempo'
+  };
+
+  function goalDetail(goal, p) {
+    const quedan = p.left === 1 ? 'queda 1 día' : 'quedan ' + p.left + ' días';
+    switch (p.status) {
+      case 'done':
+        return goal.doneAt ? 'Lo alcanzaste el ' + shortDay(goal.doneAt, false) + '.' : '¡Meta alcanzada!';
+      case 'failed':
+        return 'Te quedaste en el ' + p.pct + '%: ' + goalAmount(p.habit, p.value) + '.';
+      case 'future':
+        return 'Empieza el ' + shortDay(goal.from, false) + '. Pedirá ' + goalNeedLabel(p) + '.';
+      case 'impossible':
+        return 'Aunque cumplas todos los días que quedan, llegarías a ' +
+               goalAmount(p.habit, p.value + p.left) + '.';
+      case 'early':
+        return 'Hacen falta ' + goalNeedLabel(p) + ' · ' + quedan + '.';
+      default:
+        return 'Hacen falta ' + goalNeedLabel(p) + ' · ' + quedan +
+               ' · a este ritmo acabarías en ' + goalAmount(p.habit, p.projected) + '.';
+    }
+  }
+
+  /** Una fila de objetivo. Igual en el Sistema y en la ficha del hábito. */
+  function goalRow(goal, p) {
+    const li = el('li', { class: 'goal', 'data-id': goal.id, 'data-status': p.status });
+    li.style.setProperty('--habit-color', p.habit.color);
+
+    const head = el('div', { class: 'goal__head' });
+    head.appendChild(el('span', { class: 'goal__icon', 'aria-hidden': 'true', text: p.habit.icon }));
+    const main = el('div', { class: 'goal__main' });
+    main.appendChild(el('p', { class: 'goal__name', text: p.habit.name + ' · ' + goalAmount(p.habit, goal.amount) }));
+    main.appendChild(el('p', { class: 'goal__dates', text: goalRange(goal) }));
+    head.appendChild(main);
+
+    const edit = el('button', {
+      type: 'button', class: 'icon-btn goal__edit', 'data-goal-edit': goal.id,
+      title: 'Editar objetivo', 'aria-label': 'Editar el objetivo de ' + p.habit.name
+    });
+    const svg = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
+    svg.appendChild(svgEl('path', { d: 'M3.5 20.5l4.3-1 11-11-3.3-3.3-11 11z' }));
+    svg.appendChild(svgEl('path', { d: 'M13.2 6.6l3.3 3.3' }));
+    edit.appendChild(svg);
+    head.appendChild(edit);
+    li.appendChild(head);
+
+    // La barra es lo conseguido; la rayita, dónde tocaría ir a estas alturas.
+    const track = el('div', {
+      class: 'goal__track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
+      'aria-valuenow': String(p.pct),
+      'aria-label': p.pct + '% conseguido, ' + p.timePct + '% del tiempo pasado'
+    });
+    const fill = el('span', { class: 'goal__fill' });
+    fill.style.setProperty('--pct', p.pct);
+    track.appendChild(fill);
+    if (p.status !== 'done' && p.status !== 'failed' && p.status !== 'future') {
+      const mark = el('span', { class: 'goal__mark', 'aria-hidden': 'true' });
+      mark.style.setProperty('--pct', p.timePct);
+      track.appendChild(mark);
+    }
+    li.appendChild(track);
+
+    const nums = el('p', { class: 'goal__nums' });
+    nums.appendChild(el('strong', { text: goalAmount(p.habit, p.value) }));
+    nums.appendChild(document.createTextNode(' de ' + goalAmount(p.habit, goal.amount) + ' · ' + p.pct + '%'));
+    li.appendChild(nums);
+
+    const status = el('p', { class: 'goal__status' });
+    status.appendChild(el('span', { class: 'goal__chip', text: GOAL_STATUS[p.status] }));
+    status.appendChild(document.createTextNode(' ' + goalDetail(goal, p)));
+    li.appendChild(status);
+    return li;
+  }
+
+  /** Los objetivos visibles con su progreso, separados en vivos y terminados. */
+  function goalsSplit(filterFn) {
+    const hoy = U.todayKey();
+    const vivos = [];
+    const pasados = [];
+    S.getGoals().forEach(function (g) {
+      if (filterFn && !filterFn(g)) return;
+      const p = St.goalProgress(g, hoy);
+      if (!p || isHiddenHabit(p.habit)) return;
+      (g.to < hoy ? pasados : vivos).push({ goal: g, p: p });
+    });
+    vivos.sort(function (a, b) { return a.goal.to < b.goal.to ? -1 : a.goal.to > b.goal.to ? 1 : 0; });
+    pasados.sort(function (a, b) { return a.goal.to < b.goal.to ? 1 : -1; });
+    return { vivos: vivos, pasados: pasados };
+  }
+
+  function renderGoals() {
+    const r = goalsSplit(null);
+
+    els.goalList.textContent = '';
+    r.vivos.forEach(function (x) { els.goalList.appendChild(goalRow(x.goal, x.p)); });
+    els.goalsCount.textContent = String(r.vivos.length);
+    els.goalsEmpty.hidden = r.vivos.length > 0;
+
+    els.goalPastList.textContent = '';
+    r.pasados.forEach(function (x) { els.goalPastList.appendChild(goalRow(x.goal, x.p)); });
+    els.goalsPast.hidden = !r.pasados.length;
+    const logrados = r.pasados.filter(function (x) { return x.p.status === 'done'; }).length;
+    els.goalsPastLabel.textContent = 'Terminados (' + logrados + ' de ' + r.pasados.length + ' conseguidos)';
+
+    els.btnAddGoal.disabled = S.getGoals().length >= S.MAX_GOALS;
+  }
+
+  function renderHabitGoals(habit) {
+    const r = goalsSplit(function (g) { return g.habitId === habit.id; });
+    const todos = r.vivos.concat(r.pasados);
+
+    els.hGoalList.textContent = '';
+    todos.forEach(function (x) { els.hGoalList.appendChild(goalRow(x.goal, x.p)); });
+    els.hGoalEmpty.hidden = todos.length > 0;
+    els.hGoalEmpty.textContent = 'Sin objetivos. Ponle una meta con fecha, como ' +
+      (St.goalKind(habit) === 'sum'
+        ? goalAmount(habit, Math.round(habit.target.amount * 300)) + ' este año.'
+        : St.goalKind(habit) === 'clean' ? '200 días sin caer este año.' : '150 días este año.');
+    els.btnAddHabitGoal.hidden = habit.archived || S.getGoals().length >= S.MAX_GOALS;
+  }
+
+  /* El formulario de un objetivo. */
+
+  function endOfYearKey(year) { return year + '-12-31'; }
+
+  /** Suma meses sin desbordar: 31 ene + 1 mes = 28 feb, no 3 mar. */
+  function addMonthsKey(key, n) {
+    const d = U.fromKey(key);
+    const ultimo = new Date(d.getFullYear(), d.getMonth() + n + 1, 0).getDate();
+    return U.toKey(new Date(d.getFullYear(), d.getMonth() + n, Math.min(d.getDate(), ultimo)));
+  }
+
+  function goalFormHabit() {
+    return S.getHabit(els.goalHabit.value);
+  }
+
+  function openGoalModal(goal, presetHabitId) {
+    const hoy = U.todayKey();
+    els.goalForm.reset();
+    els.goalError.hidden = true;
+    els.goalForm.dataset.editing = goal ? goal.id : '';
+    els.goalModalTitle.textContent = goal ? 'Editar objetivo' : 'Nuevo objetivo';
+    els.btnDeleteGoal.hidden = !goal;
+
+    // Los hábitos activos y visibles; si el objetivo es de uno archivado,
+    // también ese, o el desplegable cambiaría de hábito sin decir nada.
+    const lista = S.getHabits(true).filter(function (h) {
+      return !isHiddenHabit(h) && (!h.archived || (goal && goal.habitId === h.id));
+    }).sort(byName);
+    els.goalHabit.textContent = '';
+    lista.forEach(function (h) {
+      els.goalHabit.appendChild(el('option', { value: h.id, text: h.icon + '  ' + h.name }));
+    });
+
+    if (goal) {
+      els.goalHabit.value = goal.habitId;
+      els.goalAmount.value = String(goal.amount);
+      els.goalFrom.value = goal.from;
+      els.goalTo.value = goal.to;
+    } else {
+      if (presetHabitId) els.goalHabit.value = presetHabitId;
+      // Hasta fin de año; si queda menos de un mes, hasta el del siguiente.
+      const anio = Number(hoy.slice(0, 4));
+      const fin = U.daysBetween(hoy, endOfYearKey(anio)) < 30 ? endOfYearKey(anio + 1) : endOfYearKey(anio);
+      els.goalFrom.value = hoy;
+      els.goalTo.value = fin;
+    }
+
+    syncGoalForm();
+
+    lastFocused = document.activeElement;
+    els.goalModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    (goal ? els.goalAmount : els.goalHabit).focus();
+  }
+
+  function closeGoalModal() {
+    els.goalModal.hidden = true;
+    document.body.style.overflow = '';
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  /** Fechas rápidas: este mes, 3 meses, este año, 12 meses. */
+  function setGoalRange(kind) {
+    const hoy = U.todayKey();
+    let from = hoy, to = hoy;
+    if (kind === 'month') {
+      from = hoy.slice(0, 8) + '01';
+      to = U.addDaysKey(addMonthsKey(from, 1), -1);
+    } else if (kind === '3m') {
+      to = U.addDaysKey(addMonthsKey(hoy, 3), -1);
+    } else if (kind === 'year') {
+      from = hoy.slice(0, 4) + '-01-01';
+      to = endOfYearKey(hoy.slice(0, 4));
+    } else if (kind === '12m') {
+      to = U.addDaysKey(addMonthsKey(hoy, 12), -1);
+    }
+    els.goalFrom.value = from;
+    els.goalTo.value = to;
+    syncGoalForm();
+  }
+
+  /**
+   * Lo que saldría cumpliendo todo lo que toca en esas fechas, con los días
+   * de la semana de siempre (no se pueden saber los planes ni pausas futuros).
+   */
+  function goalIdeal(habit, from, to) {
+    const kind = St.goalKind(habit);
+    let dias = 0;
+    for (let k = from; k <= to; k = U.addDaysKey(k, 1)) {
+      if (kind === 'clean' || habit.activeDays.indexOf(U.fromKey(k).getDay()) >= 0) dias++;
+    }
+    return kind === 'sum' ? dias * habit.target.amount : dias;
+  }
+
+  /** Unidad, etiqueta y la pista de ritmo, según el hábito y las fechas. */
+  function syncGoalForm() {
+    const habit = goalFormHabit();
+    els.goalPace.textContent = '';
+    if (!habit) return;
+
+    const kind = St.goalKind(habit);
+    const amount = Number(els.goalAmount.value);
+    els.goalUnit.textContent = kind === 'sum' ? habit.target.unit : St.goalUnit(habit, 2);
+    els.goalAmountLabel.textContent = kind === 'sum' ? 'Meta en total'
+      : kind === 'clean' ? 'Días limpios' : 'Días cumplidos';
+
+    const from = els.goalFrom.value;
+    const to = els.goalTo.value;
+    if (!U.isValidKey(from) || !U.isValidKey(to) || to < from) return;
+    const dias = U.daysBetween(from, to) + 1;
+    // Un objetivo de más de diez años no tiene sentido y recorrerlo día a día
+    // en cada tecla tampoco.
+    if (dias > 3660) { els.goalPace.textContent = 'Como mucho, diez años.'; return; }
+
+    const partes = [dias === 1 ? '1 día' : fmtNum.format(dias) + ' días'];
+    partes.push('cumpliendo todo lo que toca, ' + goalAmount(habit, goalIdeal(habit, from, to)));
+
+    if (amount > 0) {
+      const p = St.goalProgress({ habitId: habit.id, amount: amount, from: from, to: to }, U.todayKey());
+      if (p) {
+        if (p.value > 0) partes.push('ya llevas ' + goalAmount(habit, p.value));
+        if (p.status === 'done') partes.push('ya está conseguido');
+        else if (p.status === 'impossible' || (kind !== 'sum' && amount > dias)) partes.push('no cabe en esas fechas');
+        else if (p.left) partes.push('pide ' + goalNeedLabel(p));
+      }
+    }
+    els.goalPace.textContent = partes.join(' · ') + '.';
+  }
+
+  function readGoalForm() {
+    const habit = goalFormHabit();
+    const amount = Number(els.goalAmount.value);
+    const from = els.goalFrom.value;
+    const to = els.goalTo.value;
+    let error = '';
+
+    if (!habit) error = 'Elige un hábito.';
+    else if (!(amount > 0)) error = 'Escribe a cuánto quieres llegar.';
+    else if (!U.isValidKey(from) || !U.isValidKey(to)) error = 'Elige las dos fechas.';
+    else if (to < from) error = 'La fecha final va después de la inicial.';
+    else if (U.daysBetween(from, to) + 1 > 3660) error = 'Como mucho, diez años.';
+    else if (St.goalKind(habit) !== 'sum' && amount > U.daysBetween(from, to) + 1) {
+      error = 'Son ' + (U.daysBetween(from, to) + 1) + ' días: no caben ' + fmt1.format(amount) + '.';
+    }
+
+    els.goalError.textContent = error;
+    els.goalError.hidden = !error;
+    if (error) return null;
+    return { habitId: habit.id, amount: amount, from: from, to: to };
+  }
+
+  /* ── Temporizador (2.8.0) ─────────────────────────────────── */
+
+  /** 75 000 ms → "1:15"; con horas, "1:02:05". */
+  function clock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, '0');
+    return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss;
+  }
+
+  /**
+   * Pinta la barra del temporizador. `t` = { habit, elapsed, goal, running,
+   * reached } en milisegundos, o null para esconderla.
+   */
+  function renderTimer(t, dateKey) {
+    const antes = timerHabitId;
+    timerHabitId = t ? t.habit.id : null;
+
+    els.timerBar.hidden = !t;
+    document.body.classList.toggle('has-timer', !!t);
+
+    // La tarjeta del que corre (y la del que dejó de correr) cambia su botón.
+    if (antes !== timerHabitId) {
+      [antes, timerHabitId].forEach(function (id) {
+        if (id && cardIndex[id] && dateKey) updateCard(id, dateKey);
+      });
+    }
+    if (!t) return;
+
+    els.timerIcon.textContent = t.habit.icon;
+    els.timerName.textContent = t.habit.name;
+    els.timerTime.textContent = clock(t.elapsed);
+    els.timerGoal.textContent = t.goal ? (t.reached ? '· meta ' : '/ ') + clock(t.goal) : '';
+    els.timerRing.style.setProperty('--pct', t.goal ? Math.min(100, Math.round(t.elapsed / t.goal * 100)) : 0);
+    els.timerBar.dataset.state = t.running ? 'running' : 'paused';
+    els.timerBar.dataset.reached = t.reached ? 'true' : 'false';
+    els.btnTimerPause.setAttribute('aria-label', t.running ? 'Pausar' : 'Seguir');
+    els.btnTimerPause.title = t.running ? 'Pausar' : 'Seguir';
+  }
+
   /* ── Modal ────────────────────────────────────────────────── */
 
   /**
@@ -4250,6 +4644,7 @@ HT.ui = (function () {
     // La que valdrá mañana: si hay un cambio pendiente, es la que se eligió.
     els.fXp.value = String(habit && !St.isAvoid(habit)
       ? St.habitXp(habit, U.addDaysKey(U.todayKey(), 1)) : St.XP.habit);
+    els.fTimer.value = habit && habit.timer ? String(habit.timer) : '';
 
     if (habit) {
       field('name').value = habit.name;
@@ -4309,6 +4704,8 @@ HT.ui = (function () {
 
     els.avoidModeFields.hidden = type !== 'avoid';
     els.xpField.hidden = type === 'avoid';
+    els.timerField.hidden = type !== 'check';
+    els.timeUnitHint.hidden = type !== 'quantity';
     els.capHint.hidden = !cap;
     els.quantityFields.hidden = type !== 'quantity' && !cap;
     els.entryFields.hidden = type !== 'quantity';
@@ -4358,7 +4755,9 @@ HT.ui = (function () {
       type: type,
       activeDays: days,
       // No se guarda tal cual: app.js decide desde cuándo vale.
-      xpValue: type === 'avoid' ? null : Number(els.fXp.value) || St.XP.habit
+      xpValue: type === 'avoid' ? null : Number(els.fXp.value) || St.XP.habit,
+      // Vacío o 0 = sin temporizador. El almacén lo recorta a 1–600.
+      timer: type === 'check' && Number(els.fTimer.value) > 0 ? Math.round(Number(els.fTimer.value)) : null
     };
 
     if (type === 'avoid') {
@@ -4528,6 +4927,8 @@ HT.ui = (function () {
     getMissingIds: function () { return missingIds.slice(); },
     isHiddenHabit: isHiddenHabit,
     renderHeader: renderHeader, renderHabitList: renderHabitList, updateCard: updateCard,
+    openGoalModal: openGoalModal, closeGoalModal: closeGoalModal, setGoalRange: setGoalRange,
+    syncGoalForm: syncGoalForm, readGoalForm: readGoalForm, renderTimer: renderTimer,
     renderDayExtras: renderDayExtras, pulse: pulse,
     renderWeek: renderWeek,
     openPauseModal: openPauseModal, closePauseModal: closePauseModal,

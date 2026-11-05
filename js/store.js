@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 17;
+  const VERSION = 18;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -51,6 +51,14 @@ HT.store = (function () {
   const XP_TIERS = [10, 20, 25, 40, 50];     // 50 (Muy difícil) desde la 2.7.1
   const DEFAULT_HABIT_XP = 25;
   const MAX_XP_CHANGES = 50;
+
+  /* Temporizador de un check (2.8.0): minutos que hay que aguantar para
+     darlo por hecho. Hasta 10 horas, que ya es mucho para un hábito. */
+  const MAX_TIMER = 600;
+
+  /* Objetivos a largo plazo (2.8.0): "100 entrenos este año". */
+  const MAX_GOALS = 30;
+  const MAX_GOAL_AMOUNT = 1e9;
 
   let state = null;
   let listeners = [];
@@ -179,6 +187,7 @@ HT.store = (function () {
       plannedWeeks: {},
       planUnlocks: {},
       missions: {},
+      goals: {},
       // El hábito que mide el atributo Fuerza en Progreso.
       trainingHabitId: training.id,
       game: {
@@ -291,8 +300,18 @@ HT.store = (function () {
       weekPlan: cleanWeekPlan(raw.weekPlan),
       // EXP que da al cumplirlo (2.7.0). Los de evitar no la usan: pagan por
       // hitos. null = la de siempre (25).
-      xp: type === 'avoid' ? null : cleanXpHistory(raw.xp)
+      xp: type === 'avoid' ? null : cleanXpHistory(raw.xp),
+      // Minutos del temporizador (v18). Solo en los check: en uno de
+      // cantidad con minutos el temporizador ya sabe cuánto sumar.
+      timer: type === 'check' ? cleanTimer(raw.timer) : null
     };
+  }
+
+  /** Minutos enteros de 1 a MAX_TIMER, o null si no tiene temporizador. */
+  function cleanTimer(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const n = Math.floor(Number(raw));
+    return isFinite(n) && n >= 1 ? Math.min(n, MAX_TIMER) : null;
   }
 
   /**
@@ -612,6 +631,43 @@ HT.store = (function () {
     return Math.round(n * 10) / 10;
   }
 
+  /**
+   * Un objetivo a largo plazo: llegar a `amount` con un hábito entre `from`
+   * y `to` (los dos incluidos). Qué se cuenta depende del hábito y lo decide
+   * stats.js; aquí solo se valida la forma. `doneAt` es el día en que se
+   * celebró haberlo alcanzado, para no celebrarlo dos veces.
+   */
+  function cleanGoal(raw, byId) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (typeof raw.habitId !== 'string' || !byId[raw.habitId]) return null;
+    if (!U.isValidKey(raw.from) || !U.isValidKey(raw.to) || raw.to < raw.from) return null;
+
+    const amount = Math.round(Number(raw.amount) * 100) / 100;
+    if (!isFinite(amount) || amount <= 0) return null;
+
+    return {
+      habitId: raw.habitId,
+      amount: Math.min(amount, MAX_GOAL_AMOUNT),
+      from: raw.from,
+      to: raw.to,
+      created: U.isValidKey(raw.created) ? raw.created : raw.from,
+      doneAt: U.isValidKey(raw.doneAt) ? raw.doneAt : null
+    };
+  }
+
+  function cleanGoals(raw, byId) {
+    if (!isObj(raw)) return {};
+    const out = {};
+    Object.keys(raw)
+      .filter(function (id) { return /^g_[\w-]{1,30}$/.test(id); })
+      .map(function (id) { return { id: id, goal: cleanGoal(raw[id], byId) }; })
+      .filter(function (x) { return x.goal; })
+      .sort(function (a, b) { return a.goal.created < b.goal.created ? 1 : -1; })
+      .slice(0, MAX_GOALS)
+      .forEach(function (x) { out[x.id] = x.goal; });
+    return out;
+  }
+
   /** Ánimo de un día: un entero del 1 al 5, o null. */
   function cleanMood(raw) {
     const n = Number(raw);
@@ -717,6 +773,9 @@ HT.store = (function () {
       planUnlocks: cleanPlannedWeeks(raw.planUnlocks),
       // Ausente antes de la v15: sin misiones.
       missions: cleanMissions(raw.missions, byId),
+      // Objetivos a largo plazo (v18): id → objetivo. Objeto y no lista para
+      // que dos ventanas que tocan objetivos distintos no se pisen al mezclar.
+      goals: cleanGoals(raw.goals, byId),
       // Hasta la v13 vivía en workout.linkedHabitId, junto a la tabla de
       // ejercicios. La tabla, las rutinas y las series se descartan aquí:
       // la sección salió en la 2.2.0 y el hábito es lo único que sigue.
@@ -1541,10 +1600,16 @@ HT.store = (function () {
     if (!habit) return null;
 
     const snapshot = {
-      habit: habit, logs: state.logs[id] || {}, training: state.trainingHabitId === id
+      habit: habit, logs: state.logs[id] || {}, training: state.trainingHabitId === id, goals: {}
     };
     state.habits = state.habits.filter(function (h) { return h.id !== id; });
     delete state.logs[id];
+    // Sus objetivos se van con él; deshacer los devuelve.
+    Object.keys(state.goals).forEach(function (gid) {
+      if (state.goals[gid].habitId !== id) return;
+      snapshot.goals[gid] = state.goals[gid];
+      delete state.goals[gid];
+    });
     if (snapshot.training) state.trainingHabitId = null;
 
     commit('habit:delete', habit);
@@ -1556,6 +1621,7 @@ HT.store = (function () {
     state.habits.push(snapshot.habit);
     if (Object.keys(snapshot.logs).length) state.logs[snapshot.habit.id] = snapshot.logs;
     if (snapshot.training) state.trainingHabitId = snapshot.habit.id;
+    Object.keys(snapshot.goals || {}).forEach(function (gid) { state.goals[gid] = snapshot.goals[gid]; });
     commit('habit:add', snapshot.habit);
     return true;
   }
@@ -2026,6 +2092,74 @@ HT.store = (function () {
     save();
   }
 
+  /* ── Objetivos a largo plazo (2.8.0) ──────────────────────── */
+
+  /** Todos los objetivos, como [{ id, habitId, amount, from, to, … }]. */
+  function getGoals() {
+    return Object.keys(state.goals).map(function (id) {
+      return Object.assign({ id: id }, state.goals[id]);
+    });
+  }
+
+  function getGoal(id) {
+    return state.goals[id] ? Object.assign({ id: id }, state.goals[id]) : null;
+  }
+
+  function habitIndex() {
+    const byId = {};
+    state.habits.forEach(function (h) { byId[h.id] = h; });
+    return byId;
+  }
+
+  /** Crea un objetivo. null si los datos no valen o ya hay demasiados. */
+  function addGoal(data) {
+    if (Object.keys(state.goals).length >= MAX_GOALS) return null;
+    const goal = cleanGoal(Object.assign({}, data, { created: U.todayKey(), doneAt: null }), habitIndex());
+    if (!goal) return null;
+    const id = U.uid('g');
+    state.goals[id] = goal;
+    commit('goal:change', { id: id });
+    return Object.assign({ id: id }, goal);
+  }
+
+  /** Cambia meta, fechas o hábito. Vuelve a celebrarse si se alcanza de nuevo. */
+  function updateGoal(id, patch) {
+    const current = state.goals[id];
+    if (!current) return null;
+    const goal = cleanGoal(Object.assign({}, current, patch, { created: current.created, doneAt: null }),
+                           habitIndex());
+    if (!goal) return null;
+    state.goals[id] = goal;
+    commit('goal:change', { id: id });
+    return Object.assign({ id: id }, goal);
+  }
+
+  /** Devuelve una instantánea con la que restoreGoal() puede deshacer. */
+  function deleteGoal(id) {
+    const goal = state.goals[id];
+    if (!goal) return null;
+    delete state.goals[id];
+    commit('goal:change', { id: id });
+    return { id: id, goal: goal };
+  }
+
+  function restoreGoal(snapshot) {
+    if (!snapshot || state.goals[snapshot.id]) return false;
+    const goal = cleanGoal(snapshot.goal, habitIndex());
+    if (!goal) return false;
+    state.goals[snapshot.id] = goal;
+    commit('goal:change', { id: snapshot.id });
+    return true;
+  }
+
+  /** Apunta (o quita) el día en que se celebró. No repinta: lo llama app.js. */
+  function setGoalDone(id, dateKey) {
+    const goal = state.goals[id];
+    if (!goal) return;
+    goal.doneAt = U.isValidKey(dateKey) ? dateKey : null;
+    save();
+  }
+
   /* ── Mantenimiento ────────────────────────────────────────── */
 
   function replaceState(raw) {
@@ -2050,7 +2184,9 @@ HT.store = (function () {
   return {
     MAX_FREEZES: MAX_FREEZES,
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
-    MAX_MISSIONS: MAX_MISSIONS,
+    MAX_MISSIONS: MAX_MISSIONS, MAX_GOALS: MAX_GOALS, MAX_TIMER: MAX_TIMER,
+    getGoals: getGoals, getGoal: getGoal, addGoal: addGoal, updateGoal: updateGoal,
+    deleteGoal: deleteGoal, restoreGoal: restoreGoal, setGoalDone: setGoalDone,
     setHabitXp: setHabitXp, unlockWeekPlan: unlockWeekPlan, wasWeekUnlocked: wasWeekUnlocked,
     getMood: getMood, setMood: setMood,
     rebaseAvoidXp: rebaseAvoidXp,

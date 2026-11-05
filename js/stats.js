@@ -1819,6 +1819,137 @@ HT.stats = (function () {
     return activityValue(dateKey) === 'miss';
   }
 
+  /* ── Temporizador (2.8.0) ─────────────────────────────────
+     Un check con minutos ("Meditar 10 min") o un hábito de cantidad que
+     se mide en tiempo ("Leer 20 min"). Al terminar, el primero se marca
+     y al segundo se le suma lo cronometrado. ─────────────────────────── */
+
+  // Minutos que vale una unidad. Se compara sin tildes ni mayúsculas.
+  const TIME_UNITS = {
+    'min': 1, 'mins': 1, 'minuto': 1, 'minutos': 1, 'm': 1,
+    'h': 60, 'hr': 60, 'hrs': 60, 'hora': 60, 'horas': 60,
+    's': 1 / 60, 'seg': 1 / 60, 'segs': 1 / 60, 'segundo': 1 / 60, 'segundos': 1 / 60
+  };
+
+  /** Minutos por unidad del hábito, o null si no se mide en tiempo. */
+  function timeUnitFactor(habit) {
+    if (!habit || habit.type !== 'quantity' || !habit.target) return null;
+    const u = String(habit.target.unit || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\.$/, '').trim();
+    return TIME_UNITS[u] || null;
+  }
+
+  /** ¿Tiene botón de temporizador en Hoy? */
+  function hasTimer(habit) {
+    if (!habit || habit.archived) return false;
+    if (habit.type === 'check') return !!habit.timer;
+    return timeUnitFactor(habit) !== null;
+  }
+
+  /** Minutos que hay que llegar a cronometrar (la meta del día). */
+  function timerGoalMinutes(habit) {
+    if (habit.type === 'check') return habit.timer || 0;
+    const f = timeUnitFactor(habit);
+    return f ? habit.target.amount * f : 0;
+  }
+
+  /* ── Objetivos a largo plazo (2.8.0) ──────────────────────
+     "3.000 páginas en 2027", "100 entrenos este año", "200 días sin
+     Gula". Se mide con lo que ya apuntas; no dan EXP, para que fijarse
+     una meta fácil no sea una forma de subir de nivel. ────────────────── */
+
+  /**
+   * Qué cuenta un objetivo según el hábito:
+   *   'sum'   — cantidad: se suma lo apuntado (páginas, minutos…);
+   *   'days'  — check o franjas: días cumplidos;
+   *   'clean' — a evitar: días sin caer (o sin pasarse del máximo).
+   */
+  function goalKind(habit) {
+    if (habit.type === 'quantity') return 'sum';
+    return isAvoid(habit) ? 'clean' : 'days';
+  }
+
+  /** La unidad con la que se escribe la cifra de un objetivo. */
+  function goalUnit(habit, n) {
+    const kind = goalKind(habit);
+    if (kind === 'sum') return habit.target.unit;
+    const dias = n === 1 ? 'día' : 'días';
+    if (kind === 'days') return dias;
+    return dias + (isCapped(habit) ? ' sin pasarte' : ' sin caer');
+  }
+
+  /**
+   * Cómo va un objetivo. Devuelve null si su hábito ya no existe.
+   *   value     — lo conseguido entre `from` y hoy (o `to`, si ya pasó);
+   *   total     — días del objetivo; elapsed — los ya vividos; left — los
+   *               que quedan, hoy incluido;
+   *   expected  — lo que tocaría llevar a estas alturas yendo a ritmo fijo;
+   *   projected — dónde acabarías al ritmo de hasta ahora;
+   *   need      — lo que hace falta por día a partir de hoy;
+   *   status    — 'done' | 'failed' | 'future' | 'early' | 'ahead' |
+   *               'close' | 'behind' | 'impossible'.
+   */
+  function goalProgress(goal, todayKey) {
+    const habit = S.getHabit(goal.habitId);
+    if (!habit) return null;
+
+    const today = todayKey || U.todayKey();
+    const kind = goalKind(habit);
+    // Un día a evitar solo se da por limpio cuando ha terminado: hoy aún
+    // puedes caer. Los demás cuentan lo de hoy en cuanto lo apuntas.
+    const ultimo = goal.to < today ? goal.to : (kind === 'clean' ? U.addDaysKey(today, -1) : today);
+
+    let value = 0;
+    if (ultimo >= goal.from) {
+      if (kind === 'clean') {
+        const desde = habit.createdAt > goal.from ? habit.createdAt : goal.from;
+        for (let k = desde; k <= ultimo; k = U.addDaysKey(k, 1)) {
+          if (!S.isPausedOn(habit, k) && isComplete(habit, S.getLog(habit.id, k))) value++;
+        }
+      } else {
+        const logs = S.getHabitLogs(habit.id);
+        Object.keys(logs).forEach(function (k) {
+          if (k < goal.from || k > ultimo) return;
+          if (kind === 'sum') value += Number(logs[k]) || 0;
+          else if (isComplete(habit, logs[k])) value++;
+        });
+      }
+    }
+    value = Math.round(value * 100) / 100;
+
+    const total = U.daysBetween(goal.from, goal.to) + 1;
+    const fin = goal.to < today ? goal.to : today;
+    const elapsed = fin < goal.from ? 0 : U.daysBetween(goal.from, fin) + 1;
+    const left = today > goal.to ? 0 : U.daysBetween(today > goal.from ? today : goal.from, goal.to) + 1;
+    const falta = Math.max(0, goal.amount - value);
+
+    const expected = goal.amount * elapsed / total;
+    const rate = elapsed ? value / elapsed : 0;
+    const projected = rate * total;
+    const need = left ? falta / left : 0;
+
+    let status;
+    if (value >= goal.amount) status = 'done';
+    else if (today > goal.to) status = 'failed';
+    else if (today < goal.from) status = 'future';
+    // Contando días no se puede hacer más de uno al día.
+    else if (kind !== 'sum' && falta > left) status = 'impossible';
+    else if (elapsed < 3) status = 'early';
+    else if (value >= expected) status = 'ahead';
+    else if (projected >= goal.amount * 0.85) status = 'close';
+    else status = 'behind';
+
+    return {
+      habit: habit, kind: kind, value: value, amount: goal.amount, missing: falta,
+      pct: Math.min(100, Math.round(value / goal.amount * 100)),
+      timePct: Math.min(100, Math.round(elapsed / total * 100)),
+      total: total, elapsed: elapsed, left: left,
+      expected: Math.round(expected * 10) / 10,
+      rate: rate, projected: Math.round(projected * 10) / 10, need: need,
+      status: status
+    };
+  }
+
   /* ── Logros ───────────────────────────────────────────────── */
 
   /* Los `id` son los que están guardados en el almacén: no se tocan nunca.
@@ -1840,7 +1971,8 @@ HT.stats = (function () {
     { id: 'points_1000',  icon: '⚡', name: 'Diez mil de EXP',  hint: 'Acumula 10 000 de EXP' },
     { id: 'historian',    icon: '📝', name: 'Cronista',         hint: 'Escribe 10 notas de día' },
     // Premia aparecer, no rendir: es el único que se gana en los días malos.
-    { id: 'present_90',   icon: '🧭', name: 'Sin faltar un día', hint: '90 días seguidos registrando algo' }
+    { id: 'present_90',   icon: '🧭', name: 'Sin faltar un día', hint: '90 días seguidos registrando algo' },
+    { id: 'goal_done',    icon: '🏁', name: 'Visionario',       hint: 'Cumple un objetivo a largo plazo' }
   ];
 
   /** Nivel en el que empieza un rango. Los logros de rango lo leen de aquí
@@ -1916,6 +2048,7 @@ HT.stats = (function () {
     // El `id` no cambia, así que a quien ya lo tuviera no se le retira.
     if (game.points >= 10000) earned.push('points_1000');
     if (Object.keys(S.getState().notes).length >= 10) earned.push('historian');
+    if (S.getGoals().some(function (g) { return g.doneAt; })) earned.push('goal_done');
 
     return earned;
   }
@@ -1943,6 +2076,8 @@ HT.stats = (function () {
     monthCompare: monthCompare, MOODS: MOODS, moodById: moodById, moodAvg: moodAvg,
     habitEarnedXp: habitEarnedXp, nextAvoidMilestone: nextAvoidMilestone,
     moodSummary: moodSummary,
+    timeUnitFactor: timeUnitFactor, hasTimer: hasTimer, timerGoalMinutes: timerGoalMinutes,
+    goalKind: goalKind, goalUnit: goalUnit, goalProgress: goalProgress,
     forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 
     AVOID_MILESTONES: AVOID_MILESTONES,

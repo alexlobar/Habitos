@@ -286,6 +286,7 @@
     S.setBestStreak(best);
 
     syncAvoidXp();
+    syncGoals();
 
     St.earnedAchievements(today).forEach(function (id) {
       if (S.unlockAchievement(id)) {
@@ -293,6 +294,303 @@
         UI.toast('Logro desbloqueado: ' + ach.name, { type: 'achievement', icon: ach.icon });
       }
     });
+  }
+
+  /* ── Objetivos a largo plazo (2.8.0) ──────────────────────
+     Se celebran una vez, el día en que se alcanzan. Si luego dejan de
+     estarlo (desmarcas un día), se olvida la celebración y, al volver a
+     alcanzarlos, se celebra de nuevo. No dan EXP. ─────────────────────── */
+
+  function syncGoals() {
+    S.getGoals().forEach(function (g) {
+      const p = St.goalProgress(g, today);
+      if (!p) return;
+
+      if (p.status === 'done' && !g.doneAt) {
+        S.setGoalDone(g.id, today);
+        dirty.progress = true;
+        dirty.habit = true;
+        if (UI.isHiddenHabit(p.habit)) return;
+        UI.toast('Objetivo cumplido: ' + p.habit.name + ', ' +
+                 new Intl.NumberFormat('es-ES').format(g.amount) + ' ' + St.goalUnit(p.habit, g.amount) + '.',
+                 { type: 'achievement', icon: '🏁', duration: 6000 });
+        if (S.getSettings().effects) { UI.celebrate(); UI.buzz([40, 60, 40]); }
+      } else if (p.status !== 'done' && g.doneAt) {
+        S.setGoalDone(g.id, null);
+        dirty.progress = true;
+        dirty.habit = true;
+      }
+    });
+  }
+
+  function onGoalSubmit(e) {
+    e.preventDefault();
+    const data = UI.readGoalForm();
+    if (!data) return;
+
+    const editing = UI.els.goalForm.dataset.editing;
+    const r = editing ? S.updateGoal(editing, data) : S.addGoal(data);
+    if (!r) {
+      UI.toast('No se pudo guardar el objetivo' +
+               (editing ? '.' : ': como mucho ' + S.MAX_GOALS + ' a la vez.'), { type: 'error', icon: '⚠️' });
+      return;
+    }
+    UI.closeGoalModal();
+    UI.toast(editing ? 'Objetivo actualizado.' : 'Objetivo creado.', { type: 'success', icon: '🏁' });
+    syncProgressState();
+  }
+
+  function deleteGoal(id) {
+    const g = S.getGoal(id);
+    if (!g) return;
+    if (!window.confirm('¿Eliminar este objetivo? Tus registros no se tocan.')) return;
+    const snap = S.deleteGoal(id);
+    UI.closeGoalModal();
+    UI.toast('Objetivo eliminado.', {
+      icon: '🗑️',
+      action: { label: 'Deshacer', onClick: function () { S.restoreGoal(snap); syncProgressState(); } }
+    });
+  }
+
+  /* ── Temporizador (2.8.0) ─────────────────────────────────
+     Uno a la vez. Se guarda la hora de inicio y no un contador: así sigue
+     contando bien aunque el móvil congele la app o se recargue la página.
+     Vive en su propia clave, fuera del almacén: es de este dispositivo, no
+     un dato tuyo. Lo apuntado al terminar sí va al almacén. ─────────────── */
+
+  const TIMER_KEY = 'habitTracker.timer';
+  // Más de esto en marcha suele ser un temporizador olvidado: se pregunta
+  // antes de apuntarlo.
+  const TIMER_SUSPECT_MS = 3 * 3600 * 1000;
+
+  let timer = null;          // { habitId, date, startedAt (ms) | null si en pausa, accMs, reached }
+  let timerInterval = null;
+  let wakeLock = null;
+
+  function loadTimer() {
+    timer = null;
+    try {
+      const t = JSON.parse(localStorage.getItem(TIMER_KEY));
+      if (t && typeof t.habitId === 'string' && U.isValidKey(t.date) && S.getHabit(t.habitId)) {
+        timer = {
+          habitId: t.habitId,
+          date: t.date,
+          startedAt: typeof t.startedAt === 'number' && isFinite(t.startedAt) ? t.startedAt : null,
+          accMs: Math.max(0, Number(t.accMs) || 0),
+          reached: t.reached === true
+        };
+      }
+    } catch (e) { timer = null; }
+  }
+
+  function saveTimer() {
+    try {
+      if (timer) localStorage.setItem(TIMER_KEY, JSON.stringify(timer));
+      else localStorage.removeItem(TIMER_KEY);
+    } catch (e) { /* sin almacenamiento: sigue en memoria */ }
+  }
+
+  function timerElapsed() {
+    return timer ? timer.accMs + (timer.startedAt ? Math.max(0, Date.now() - timer.startedAt) : 0) : 0;
+  }
+
+  function timerGoalMs(habit) {
+    return Math.round(St.timerGoalMinutes(habit) * 60000);
+  }
+
+  /** Repinta la barra, arranca o para el tic y pide (o suelta) la pantalla. */
+  function paintTimer() {
+    const habit = timer && S.getHabit(timer.habitId);
+    if (timer && !habit) { timer = null; saveTimer(); }
+
+    if (!timer) {
+      if (timerInterval !== null) { clearInterval(timerInterval); timerInterval = null; }
+      releaseWake();
+      UI.renderTimer(null, currentDate);
+      return;
+    }
+
+    const corre = timer.startedAt !== null;
+    if (corre && timerInterval === null) timerInterval = setInterval(tickTimer, 1000);
+    if (!corre && timerInterval !== null) { clearInterval(timerInterval); timerInterval = null; }
+    if (corre) requestWake(); else releaseWake();
+
+    UI.renderTimer({
+      habit: habit, elapsed: timerElapsed(), goal: timerGoalMs(habit),
+      running: corre, reached: timer.reached
+    }, currentDate);
+  }
+
+  function tickTimer() {
+    if (!timer) return;
+    const habit = S.getHabit(timer.habitId);
+    if (!habit) { clearTimer(); return; }
+
+    const meta = timerGoalMs(habit);
+    if (meta && !timer.reached && timerElapsed() >= meta) {
+      timer.reached = true;
+      saveTimer();
+      onTimerGoal(habit);
+      if (!timer) return;          // un check se cierra solo al llegar
+    }
+    paintTimer();
+  }
+
+  /** Llega al tiempo: un check se marca y se cierra; uno de cantidad sigue. */
+  function onTimerGoal(habit) {
+    if (S.getSettings().effects) { chime(); UI.buzz([200, 100, 200]); }
+
+    if (habit.type === 'check') {
+      const fecha = timer.date;
+      clearTimer();
+      if (!St.isComplete(habit, S.getLog(habit.id, fecha))) {
+        withScoring(habit, fecha, function () { S.setLog(habit.id, fecha, true); });
+      }
+      UI.toast('¡Tiempo! ' + habit.name + ' hecho.', { type: 'success', icon: '⏱️' });
+      return;
+    }
+    UI.toast('Meta del día alcanzada en ' + habit.name + '. Sigue si quieres o pulsa Terminar.',
+             { type: 'success', icon: '⏱️', duration: 6000 });
+  }
+
+  function onTimerButton(habit) {
+    if (timer && timer.habitId === habit.id) {
+      if (timer.startedAt === null) toggleTimerPause();
+      return;
+    }
+    if (timer) {
+      const otro = S.getHabit(timer.habitId);
+      UI.toast('Ya hay un temporizador en marcha' + (otro ? ' con ' + otro.name : '') +
+               '. Termínalo o descártalo antes.', { icon: '⏱️' });
+      return;
+    }
+    if (habit.type === 'check' && St.isComplete(habit, S.getLog(habit.id, today))) {
+      UI.toast(habit.name + ' ya está hecho hoy.', { icon: '✓' });
+      return;
+    }
+    timer = { habitId: habit.id, date: today, startedAt: Date.now(), accMs: 0, reached: false };
+    saveTimer();
+    paintTimer();
+  }
+
+  function toggleTimerPause() {
+    if (!timer) return;
+    if (timer.startedAt === null) {
+      timer.startedAt = Date.now();
+    } else {
+      timer.accMs = timerElapsed();
+      timer.startedAt = null;
+    }
+    saveTimer();
+    paintTimer();
+  }
+
+  function clearTimer() {
+    timer = null;
+    saveTimer();
+    paintTimer();
+  }
+
+  /** Terminar: en cantidad suma lo cronometrado; en un check, avisa si faltaba. */
+  function finishTimer() {
+    if (!timer) return;
+    const habit = S.getHabit(timer.habitId);
+    if (!habit) { clearTimer(); return; }
+
+    const ms = timerElapsed();
+    const fecha = timer.date;
+
+    if (habit.type === 'check') {
+      const falta = Math.ceil((timerGoalMs(habit) - ms) / 60000);
+      clearTimer();
+      if (St.isComplete(habit, S.getLog(habit.id, fecha))) return;
+      UI.toast('Faltaba' + (falta === 1 ? ' 1 minuto' : 'n ' + falta + ' minutos') + ': no se ha marcado.', {
+        icon: '⏱️',
+        action: {
+          label: 'Marcar igual',
+          onClick: function () {
+            if (!St.isComplete(habit, S.getLog(habit.id, fecha))) {
+              withScoring(habit, fecha, function () { S.setLog(habit.id, fecha, true); });
+            }
+          }
+        }
+      });
+      return;
+    }
+
+    const factor = St.timeUnitFactor(habit) || 1;
+    const minutos = ms / 60000;
+    // En minutos, a minuto entero; en horas, con dos decimales; en segundos, enteros.
+    const cantidad = factor === 1 ? Math.round(minutos)
+                   : factor > 1 ? Math.round(minutos / factor * 100) / 100
+                   : Math.round(minutos / factor);
+
+    if (cantidad <= 0) {
+      clearTimer();
+      UI.toast('Menos de un minuto: no se apunta nada.', { icon: '⏱️' });
+      return;
+    }
+    if (ms > TIMER_SUSPECT_MS &&
+        !window.confirm('El temporizador lleva ' + Math.round(minutos / 60 * 10) / 10 +
+                        ' horas en marcha. ¿Apuntar ' + cantidad + ' ' + habit.target.unit + ' en ' +
+                        habit.name + '?')) return;
+
+    clearTimer();
+    withScoring(habit, fecha, function () { S.addQuantity(habit.id, fecha, cantidad); });
+    UI.toast('+' + cantidad + ' ' + habit.target.unit + ' en ' + habit.name +
+             (fecha !== today ? ' (el día que lo empezaste)' : '') + '.', { type: 'success', icon: '⏱️' });
+  }
+
+  function cancelTimer() {
+    if (!timer) return;
+    const min = Math.floor(timerElapsed() / 60000);
+    if (min >= 1 && !window.confirm('¿Descartar ' + (min === 1 ? '1 minuto' : min + ' minutos') +
+                                    ' sin apuntarlos?')) return;
+    clearTimer();
+  }
+
+  /* Pantalla encendida mientras corre: con ella apagada, el móvil congela la
+     app y el aviso de "¡Tiempo!" llegaría al volver, no a su hora. El tiempo
+     se cuenta bien igualmente. */
+  function requestWake() {
+    if (wakeLock || document.hidden || !navigator.wakeLock) return;
+    navigator.wakeLock.request('screen').then(function (lock) {
+      wakeLock = lock;
+      lock.addEventListener('release', function () { wakeLock = null; });
+      // Si el temporizador se paró mientras se concedía, se suelta ya.
+      if (!timer || timer.startedAt === null) releaseWake();
+    }).catch(function () { /* sin permiso o sin batería: da igual */ });
+  }
+
+  function releaseWake() {
+    if (!wakeLock) return;
+    const lock = wakeLock;
+    wakeLock = null;
+    lock.release().catch(function () { /* ya suelto */ });
+  }
+
+  /** Dos notas suaves. Sin archivos de sonido: lo genera el navegador. */
+  function chime() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      [[0, 660], [0.35, 880]].forEach(function (n) {
+        const t0 = ctx.currentTime + n[0];
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = n[1];
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 1.3);
+      });
+      setTimeout(function () { ctx.close(); }, 2000);
+    } catch (e) { /* sin audio: queda la vibración y el aviso */ }
   }
 
   /* ── Misiones y días en blanco ────────────────────────────
@@ -425,6 +723,7 @@
     const action = btn.dataset.action;
 
     if (action === 'detail') { openHabit(habit.id); return; }
+    if (action === 'timer') { onTimerButton(habit); return; }
 
     // Una franja de un hábito a evitar apunta un fallo, no un logro: va por
     // el mismo camino que el ✗, fuera de withScoring.
@@ -1779,6 +2078,49 @@
     });
     els.habitModal.addEventListener('keydown', onModalKeydown);
 
+    // Objetivos a largo plazo (2.8.0)
+    els.btnAddGoal.addEventListener('click', function () { UI.openGoalModal(null); });
+    els.btnAddHabitGoal.addEventListener('click', function () { UI.openGoalModal(null, habitId); });
+    [els.goalList, els.goalPastList, els.hGoalList].forEach(function (list) {
+      list.addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-goal-edit]');
+        if (btn) UI.openGoalModal(S.getGoal(btn.dataset.goalEdit));
+      });
+    });
+    els.goalForm.addEventListener('submit', onGoalSubmit);
+    els.goalForm.addEventListener('input', UI.syncGoalForm);
+    els.goalForm.addEventListener('change', UI.syncGoalForm);
+    els.goalForm.addEventListener('click', function (e) {
+      const b = e.target.closest('[data-goal-range]');
+      if (b) UI.setGoalRange(b.dataset.goalRange);
+    });
+    els.btnDeleteGoal.addEventListener('click', function () {
+      deleteGoal(els.goalForm.dataset.editing);
+    });
+    els.goalModal.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closeGoalModal();
+    });
+    els.goalModal.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') UI.closeGoalModal();
+    });
+
+    // Temporizador (2.8.0)
+    els.btnTimerPause.addEventListener('click', toggleTimerPause);
+    els.btnTimerFinish.addEventListener('click', finishTimer);
+    els.btnTimerCancel.addEventListener('click', cancelTimer);
+    // Arrancado o parado en otra ventana: se trae aquí.
+    window.addEventListener('storage', function (e) {
+      if (e.key !== TIMER_KEY) return;
+      loadTimer();
+      paintTimer();
+    });
+    // Al volver a la app, el reloj se pone al día al momento (y si llegó
+    // a la meta con la pantalla apagada, se avisa ahora).
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { releaseWake(); return; }
+      if (timer) tickTimer();
+    });
+
     // Calendario general
     byId('prevPeriod').addEventListener('click', function () { stepPeriod(-1); });
     byId('nextPeriod').addEventListener('click', function () { stepPeriod(1); });
@@ -2103,6 +2445,8 @@
     UI.applyAccent(S.getSettings().accent);
     renderAll();
     bind();
+    loadTimer();
+    if (timer) tickTimer();
 
     syncProgressState();
     syncEconomy();

@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.7.5** · esquema de datos **v17**.
+Versión documentada: **2.8.0** · esquema de datos **v18**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -196,6 +196,57 @@ día de quedar en blanco. En **Histórico**, la tarjeta *Ánimo* cruza los
 de hábitos cumpliste esos días y el ánimo medio de los días buenos (80% o
 más) frente a los demás (`moodSummary()`). El resumen semanal añade el ánimo
 medio. Va con las notas: si se ocultan en Privacidad, se oculta también.
+
+**Temporizador** (2.8.0). Un botón ▶ junto al nombre del hábito, en Hoy, en:
+
+- los **check con minutos**: se activa en el formulario del hábito,
+  *Temporizador (opcional)*, de 1 a 600 min. Al llegar al tiempo suena (si los
+  efectos están activados), vibra y **el hábito se marca solo**. Si terminas
+  antes, avisa de cuánto faltaba y ofrece *Marcar igual*.
+- los **de cantidad medidos en tiempo** (unidad `min`, `h` o `seg`, sin pedir
+  nada): al pulsar *Terminar* se **suma lo cronometrado** al día (a minuto
+  entero; en horas, con dos decimales). Al llegar a la meta del día avisa y
+  sigue contando. Con menos de un minuto no apunta nada.
+
+Mientras corre, una barra flota sobre la navegación en cualquier sección, con el
+tiempo, la meta, un anillo de progreso, *Pausar/Seguir*, *Terminar* y ✕
+(descartar; si lleva un minuto o más, pregunta). Solo hay uno a la vez y solo
+se ve en el día de hoy. Se guarda la hora de inicio, no un contador: **sigue
+contando aunque cierres la app o recargues**, y lo apuntado va al día en que
+empezó, aunque se termine pasada la medianoche. Si lleva más de 3 horas,
+pregunta antes de apuntar, por si se quedó olvidado. Mientras corre mantiene la
+pantalla encendida (si el navegador lo permite): con ella apagada el móvil
+congela la app y el aviso llegaría al volver, aunque el tiempo se cuenta bien
+igualmente. Vive en `habitTracker.timer`, aparte de tus datos: es del
+dispositivo, no se exporta. Otra ventana abierta lo ve al momento.
+
+**Objetivos a largo plazo** (2.8.0). Metas con fecha para un hábito: «3.000
+páginas en 2027», «100 entrenos este año», «200 días sin Gula». Están en el
+**Sistema** (tarjeta *Objetivos*, abierta de entrada y plegable) y en la **ficha
+de cada hábito** (los suyos, con *+ Nuevo*). Qué cuenta cada uno:
+
+| Hábito | Cuenta |
+|---|---|
+| Cantidad | lo apuntado sumado (páginas, minutos…) |
+| Check y franjas | días cumplidos |
+| A evitar | días sin caer (o sin pasarte del máximo); el de hoy cuenta al acabar |
+
+Cuenta todo lo apuntado entre las dos fechas, también lo anterior a crear el
+objetivo. El formulario tiene fechas rápidas (*Este mes*, *3 meses*, *Este año*,
+*12 meses*) y dice cuántos días son, cuánto saldría cumpliendo todo lo que
+toca, cuánto llevas ya y cuánto pide al día o por semana. En la lista, cada
+objetivo lleva su barra con una rayita de **dónde tocaría ir hoy**, lo
+conseguido y su estado: *Vas bien* (llevas al menos lo que tocaría), *Vas
+justo* (a este ritmo llegarías al 85%), *Vas por detrás*, *Ya no da tiempo* (ni
+cumpliendo todos los días que quedan), *Recién empezado* (los dos primeros
+días), *Aún no ha empezado*, *Conseguido* o *No se consiguió*; con lo que hace
+falta al día (o días por semana) y dónde acabarías a este ritmo. Al alcanzar uno
+salta un aviso con confeti, una sola vez. Los terminados pasan a un
+desplegable *Terminados*. Hasta 30. **No dan EXP**, para que fijarse una meta
+fácil no sea una forma de subir de nivel, pero el primero cumplido da el logro
+*Visionario* 🏁. Borrar un hábito se lleva sus objetivos (y *Deshacer* los
+devuelve). Con los hábitos a evitar ocultos en Privacidad, sus objetivos
+también se ocultan.
 
 ---
 
@@ -398,7 +449,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 17,
+  "version": 18,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -438,6 +489,8 @@ Una sola clave, `habitTracker.v1`:
     // EXP al cumplirlo (v16): cambios con la fecha desde la que valen.
     // null = 25 siempre. Valores: 10 | 20 | 25 | 40 | 50. Los de evitar, null.
     "xp": [{ "from": "2026-11-06", "xp": 40 }],
+    // minutos del temporizador (v18), solo en los check: 1–600, o null
+    "timer": null,
     "reminder": { "enabled": false, "time": "08:00" }   // sin uso desde la 1.6.8
   }],
   "logs": {
@@ -459,6 +512,11 @@ Una sola clave, `habitTracker.v1`:
   // que cuentan; "target", las veces, los fallos máximos o la media máxima.
   // type: "habit_count" | "avoid_clean" | "cap_avg" | "perfect_days" | "log_all"
   "missions": { "2026-10-26": [{ "type": "habit_count", "habitId": "h_xxx", "target": 3, "from": "2026-10-28" }] },
+  // objetivos a largo plazo (v18): id → objetivo, hasta 30. Objeto y no lista
+  // para que dos ventanas que tocan objetivos distintos no se pisen al mezclar.
+  // "doneAt": día en que se celebró, para no celebrarlo dos veces.
+  "goals": { "g_ab12cd3": { "habitId": "h_k3f9", "amount": 3000, "from": "2027-01-01",
+                            "to": "2027-12-31", "created": "2026-11-05", "doneAt": null } },
   "frozen": {
     // marcas de día: el motivo es gratis; "skip": true cuesta un comodín
     "2026-09-20": { "reason": "energia", "note": "", "skip": false },
@@ -539,6 +597,11 @@ vez lo cobrado a lo que daría la tabla nueva por las mismas rachas, sin quitar
 EXP. Importar una copia anterior a la v16 hace lo mismo.
 
 La v17 (2.7.4) añade `moods`, que empieza vacío: no necesita migración.
+
+La v18 (2.8.0) añade `goals` (vacío) y `habit.timer` (null): tampoco necesita
+migración. Sube el número para que una ventana abierta con la 2.7.x, que no
+conoce los objetivos, deje de guardar en vez de borrarlos al sanear. Un objetivo
+cuyo hábito ya no existe se descarta al sanear.
 
 ### Varias ventanas a la vez (2.3.4)
 
