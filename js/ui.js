@@ -118,7 +118,7 @@ HT.ui = (function () {
       'habitIcon', 'habitTitle', 'habitMeta', 'hStreak', 'hBest', 'hRate', 'hTotal',
       'hSumsCard', 'hSumWeek', 'hSumMonth', 'hSumTotal', 'hSumAvg', 'hSumBest',
       'hSumDays', 'hSumsNote', 'hSumTotalLabel', 'hSumBestLabel', 'hSumDaysLabel', 'hChartTitle',
-      'habitHeatmap', 'hMonthLabel', 'weekBars', 'weekInsight', 'btnArchiveHabit',
+      'habitHeatmap', 'hMonthLabel', 'btnArchiveHabit',
       'habitModal', 'habitForm', 'modalTitle', 'btnDeleteHabit',
       'setAccent', 'btnResetAccent', 'setEffects',
       'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup',
@@ -148,7 +148,9 @@ HT.ui = (function () {
       'rewardsCard', 'rewardPerfect', 'rewardList', 'rewardAvoid',
       'forecastTitle', 'forecastIdeal', 'forecastReal', 'xpField', 'fXp',
       'streaksCount', 'avoidCount', 'hSumAvgLabel', 'hAttrList', 'hAttrNote',
-      'moodPicker', 'moodCard', 'moodAvg', 'moodLead', 'moodList', 'hMonthCompare'
+      'moodPicker', 'moodCard', 'moodAvg', 'moodLead', 'moodList', 'hMonthCompare',
+      'hStreakLabel', 'hBestLabel', 'hRateLabel', 'hTotalLabel',
+      'weightMonthInput', 'weightMonthKg', 'btnWeightMonth', 'weightMonthHint'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -2018,6 +2020,15 @@ HT.ui = (function () {
 
     renderWeightGoal(meta);
 
+    // Peso de un mes: no se puede apuntar un mes que aún no ha llegado, y
+    // de entrada propone el anterior, que es el que se suele querer rellenar.
+    const esteMes = todayKey.slice(0, 7);
+    els.weightMonthInput.max = esteMes;
+    if (!els.weightMonthInput.value) {
+      const d = U.fromKey(todayKey);
+      els.weightMonthInput.value = U.toKey(new Date(d.getFullYear(), d.getMonth() - 1, 1)).slice(0, 7);
+    }
+
     els.weightEmpty.hidden = !vacio;
     els.weightStats.hidden = vacio;
     els.weightChart.hidden = vacio;
@@ -3532,12 +3543,7 @@ HT.ui = (function () {
     els.habitMeta.textContent = habitSummary(habit);
     els.views.habit.style.setProperty('--habit-color', habit.color);
 
-    els.hStreak.textContent = St.currentStreak(habit, todayKey);
-    els.hBest.textContent = St.bestStreak(habit, todayKey);
-
-    const rate = St.habitRate(habit, todayKey, 30);
-    els.hRate.textContent = rate.total ? rate.pct + '%' : '—';
-    els.hTotal.textContent = St.habitTotal(habit);
+    renderHabitHeadline(habit, todayKey);
 
     renderPauseBanner(habit, todayKey);
 
@@ -3550,7 +3556,49 @@ HT.ui = (function () {
     renderHabitAttrs(habit, todayKey);
     renderHabitSums(habit, todayKey, weekStart);
     renderHabitHeatmap(habit, monthDate, weekStart, todayKey);
-    renderWeekBars(habit, todayKey, weekStart);
+  }
+
+  /**
+   * Las cuatro cifras de arriba de la ficha (2.7.5). En los que se hacen:
+   * racha, récord, cumplimiento a 30 días y la EXP que lleva dado. En los de
+   * evitar, lo que importa es aguantar: racha y récord sin caer, días
+   * limpios a 30 días y cuánto falta para el siguiente hito de EXP.
+   */
+  function renderHabitHeadline(habit, todayKey) {
+    const racha = St.currentStreak(habit, todayKey);
+    const mejor = St.bestStreak(habit, todayKey);
+    const rate = St.habitRate(habit, todayKey, 30);
+    const dias = function (n) { return n + (n === 1 ? ' día' : ' días'); };
+
+    els.hStreak.textContent = racha;
+    els.hBest.textContent = mejor;
+    els.hRate.textContent = rate.total ? rate.pct + '%' : '—';
+    els.hTotal.removeAttribute('title');
+
+    if (!St.isAvoid(habit)) {
+      els.hStreakLabel.textContent = 'Racha actual';
+      els.hBestLabel.textContent = 'Récord';
+      els.hRateLabel.textContent = 'Últimos 30 días';
+      els.hTotalLabel.textContent = 'EXP ganada';
+      els.hTotal.textContent = fmtNum.format(St.habitEarnedXp(habit, todayKey));
+      els.hTotal.title = 'Lo que te ha dado cumplirlo, sin contar los bonos del día';
+      return;
+    }
+
+    const capped = St.isCapped(habit);
+    els.hStreakLabel.textContent = capped ? 'Días sin pasarte' : 'Días sin caer';
+    els.hBestLabel.textContent = capped ? 'Récord sin pasarte' : 'Récord sin caer';
+    els.hRateLabel.textContent = capped ? 'Días dentro (30 días)' : 'Días limpios (30 días)';
+
+    const hito = St.nextAvoidMilestone(habit, todayKey);
+    if (hito) {
+      els.hTotal.textContent = dias(hito.left);
+      els.hTotalLabel.textContent = 'Para +' + hito.milestone.xp + ' EXP (' + hito.milestone.days + ' días)';
+      els.hTotal.title = 'Siguiente hito: ' + hito.milestone.name;
+    } else {
+      els.hTotal.textContent = '✓';
+      els.hTotalLabel.textContent = 'Todos los hitos';
+    }
   }
 
   /**
@@ -3811,40 +3859,6 @@ HT.ui = (function () {
     els.habitHeatmap.textContent = '';
     els.habitHeatmap.appendChild(frag);
     els.hMonthLabel.textContent = U.formatMonth(monthDate);
-  }
-
-  function renderWeekBars(habit, todayKey, weekStart) {
-    const rows = St.habitWeekdayRates(habit, todayKey, weekStart);
-    const frag = document.createDocumentFragment();
-
-    rows.forEach(function (row) {
-      const item = el('li', {
-        class: 'weekbar',
-        'aria-label': row.name + ': ' + (row.total ? row.pct + '%, ' + row.done + ' de ' + row.total : 'sin datos')
-      });
-      item.appendChild(el('span', { class: 'weekbar__day', 'aria-hidden': 'true', text: row.name }));
-
-      const track = el('div', { class: 'weekbar__track' });
-      const fill = el('div', { class: 'weekbar__fill' });
-      fill.style.setProperty('--pct', row.pct);
-      track.appendChild(fill);
-      item.appendChild(track);
-
-      item.appendChild(el('span', {
-        class: 'weekbar__pct', 'aria-hidden': 'true',
-        text: row.total ? row.pct + '%' : '–'
-      }));
-      frag.appendChild(item);
-    });
-
-    els.weekBars.textContent = '';
-    els.weekBars.appendChild(frag);
-
-    const gap = St.weakestWeekday(rows);
-    els.weekInsight.textContent = gap
-      ? 'Los ' + gap.worst.name.toLowerCase() + ' cumples el ' + gap.worst.pct +
-        '% y los ' + gap.best.name.toLowerCase() + ' el ' + gap.best.pct + '%.'
-      : 'Aún no hay suficientes datos para ver un patrón por día.';
   }
 
   /* ── Ajustes ──────────────────────────────────────────────── */

@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.7.4">
+<html lang="es" data-theme="dark" data-build="2.7.5">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -353,21 +353,31 @@
           <article class="card" id="weightCard" aria-labelledby="weightTitle">
             <header class="card__head">
               <h2 class="card__title" id="weightTitle">Peso</h2>
-              <div class="seg seg--compact" role="radiogroup" aria-label="Periodo del peso">
-                <label class="seg__opt">
-                  <input type="radio" name="weightRange" value="30" checked>
-                  <span>30 días</span>
-                </label>
-                <label class="seg__opt">
-                  <input type="radio" name="weightRange" value="90">
-                  <span>90 días</span>
-                </label>
-                <label class="seg__opt">
-                  <input type="radio" name="weightRange" value="0">
-                  <span>Todo</span>
-                </label>
-              </div>
             </header>
+            <!-- Cinco periodos desde la 2.7.5: en su propia fila, porque junto
+                 al título no caben en un móvil. -->
+            <div class="seg seg--compact weight-range" role="radiogroup" aria-label="Periodo del peso">
+              <label class="seg__opt">
+                <input type="radio" name="weightRange" value="30" checked>
+                <span>30 días</span>
+              </label>
+              <label class="seg__opt">
+                <input type="radio" name="weightRange" value="91">
+                <span>3 meses</span>
+              </label>
+              <label class="seg__opt">
+                <input type="radio" name="weightRange" value="182">
+                <span>6 meses</span>
+              </label>
+              <label class="seg__opt">
+                <input type="radio" name="weightRange" value="365">
+                <span>12 meses</span>
+              </label>
+              <label class="seg__opt">
+                <input type="radio" name="weightRange" value="0">
+                <span>Todo</span>
+              </label>
+            </div>
 
             <ul class="weight-stats" id="weightStats"></ul>
             <div class="weight-chart" id="weightChart"></div>
@@ -391,6 +401,26 @@
                 </div>
                 <p class="weight-goal__text" id="weightGoalText" aria-live="polite">—</p>
               </div>
+            </div>
+
+            <!-- Peso de un mes (2.7.5): para rellenar meses pasados sin ir día a
+                 día. Se guarda como el día 1 de ese mes. -->
+            <div class="weight-goal weight-month">
+              <label class="field__label" for="weightMonthInput">Peso de un mes</label>
+              <div class="weight-month__row">
+                <input class="input weight-month__input" type="month" id="weightMonthInput"
+                       aria-label="Mes">
+                <div class="amount-field">
+                  <input class="input weight-entry__input" type="number" id="weightMonthKg"
+                         min="20" max="400" step="0.1" inputmode="decimal" placeholder="—"
+                         aria-label="Peso de ese mes en kg">
+                  <span class="amount-field__unit" aria-hidden="true">kg</span>
+                </div>
+                <button type="button" class="btn" id="btnWeightMonth">Guardar</button>
+              </div>
+              <p class="weight-goal__text" id="weightMonthHint" aria-live="polite">
+                Para los meses en que no te pesaste a diario. Se guarda como el día 1 de ese mes.
+              </p>
             </div>
 
             <div class="blank" id="weightEmpty" hidden>
@@ -729,10 +759,12 @@
         </div>
 
         <ul class="stat-grid" aria-label="Estadísticas del hábito">
-          <li class="stat"><p class="stat__value" id="hStreak">—</p><p class="stat__label">Racha actual</p></li>
-          <li class="stat"><p class="stat__value" id="hBest">—</p><p class="stat__label">Récord</p></li>
-          <li class="stat"><p class="stat__value" id="hRate">—</p><p class="stat__label">Últimos 30 días</p></li>
-          <li class="stat"><p class="stat__value" id="hTotal">—</p><p class="stat__label">Veces cumplido</p></li>
+          <!-- Las etiquetas cambian con el tipo (2.7.5): en un hábito a evitar,
+               "veces cumplido" contaba días limpios y no decía nada útil. -->
+          <li class="stat"><p class="stat__value" id="hStreak">—</p><p class="stat__label" id="hStreakLabel">Racha actual</p></li>
+          <li class="stat"><p class="stat__value" id="hBest">—</p><p class="stat__label" id="hBestLabel">Récord</p></li>
+          <li class="stat"><p class="stat__value" id="hRate">—</p><p class="stat__label" id="hRateLabel">Últimos 30 días</p></li>
+          <li class="stat"><p class="stat__value" id="hTotal">—</p><p class="stat__label" id="hTotalLabel">EXP ganada</p></li>
         </ul>
 
         <!-- A qué atributo del Sistema suma este hábito (2.7.3). -->
@@ -779,12 +811,7 @@
           </header>
           <div class="heatmap" id="habitHeatmap"></div>
         </article>
-
-        <article class="card" aria-labelledby="hWeekTitle">
-          <header class="card__head"><h2 class="card__title" id="hWeekTitle">Por día de la semana</h2></header>
-          <ul class="weekbars" id="weekBars"></ul>
-          <p class="card__text card__text--tight" id="weekInsight"></p>
-        </article>
+        <!-- "Por día de la semana" salió en la 2.7.5. -->
       </section>
 
       <!-- ─── Vista: Ajustes ─── -->

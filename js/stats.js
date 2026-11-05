@@ -1029,6 +1029,34 @@ HT.stats = (function () {
        · evitar por fallos (con o sin franjas) → los fallos.
      Aquí se cuenta en esa unidad, con lo que tocaba cada día al lado. ── */
 
+  /**
+   * EXP que ha dado un hábito al cumplirlo, con el valor de cada día (2.7.5).
+   * Sin bonos de día bueno o perfecto: esos son del día, no del hábito. Los
+   * días anteriores a la 2.5.1 pagaron 20 y aquí cuentan a 25, así que en un
+   * hábito antiguo la cifra puede pasarse un poco.
+   */
+  function habitEarnedXp(habit, todayKey) {
+    const today = todayKey || U.todayKey();
+    const logs = S.getHabitLogs(habit.id);
+    return Object.keys(logs).reduce(function (s, k) {
+      if (k > today || k < habit.createdAt || !isComplete(habit, logs[k])) return s;
+      return s + habitXp(habit, k);
+    }, 0);
+  }
+
+  /**
+   * El próximo hito de un hábito a evitar (2.7.5): el primero que aún no se
+   * ha cobrado —se cobran por la mejor racha— y cuántos días de la racha
+   * actual faltan para él. null si ya están todos.
+   */
+  function nextAvoidMilestone(habit, todayKey) {
+    const today = todayKey || U.todayKey();
+    const mejor = bestStreak(habit, today);
+    const m = AVOID_MILESTONES.filter(function (x) { return x.days > mejor; })[0];
+    if (!m) return null;
+    return { milestone: m, left: Math.max(1, m.days - currentStreak(habit, today)) };
+  }
+
   /** Lo que se apuntó un día, en la unidad del hábito. */
   function unitsOn(habit, key) {
     const v = S.getLog(habit.id, key);
@@ -1274,51 +1302,6 @@ HT.stats = (function () {
         hasData: value > 0
       };
     });
-  }
-
-  /**
-   * Cumplimiento desglosado por día de la semana. Responde a la pregunta
-   * útil de verdad: ¿qué día se me atraganta este hábito?
-   */
-  function habitWeekdayRates(habit, todayKey, weekStart) {
-    const today = todayKey || U.todayKey();
-    const span = U.daysBetween(habit.createdAt, today);
-    const tally = {};
-
-    U.weekdayOrder(weekStart).forEach(function (dow) {
-      tally[dow] = { dow: dow, name: U.weekdayName(dow), total: 0, done: 0, pct: 0 };
-    });
-
-    let key = habit.createdAt;
-    for (let i = 0; i <= span && i < MAX_LOOKBACK; i++) {
-      const outcome = dayOutcome(habit, key);
-      if (outcome !== 'skip') {
-        const row = tally[U.fromKey(key).getDay()];
-        row.total++;
-        if (outcome === 'done') row.done++;
-      }
-      key = U.addDaysKey(key, 1);
-    }
-
-    return U.weekdayOrder(weekStart).map(function (dow) {
-      const row = tally[dow];
-      row.pct = row.total ? Math.round((row.done / row.total) * 100) : 0;
-      return row;
-    });
-  }
-
-  /**
-   * El día más flojo, si hay datos suficientes para que signifique algo.
-   * Con dos registros por día la diferencia es ruido, no una tendencia.
-   */
-  function weakestWeekday(rows) {
-    const usable = rows.filter(function (r) { return r.total >= 3; });
-    if (usable.length < 2) return null;
-
-    const worst = usable.reduce(function (min, r) { return r.pct < min.pct ? r : min; });
-    const best = usable.reduce(function (max, r) { return r.pct > max.pct ? r : max; });
-
-    return best.pct - worst.pct >= 25 ? { worst: worst, best: best } : null;
   }
 
   /* ── Niveles y rangos ─────────────────────────────────────
@@ -1958,6 +1941,7 @@ HT.stats = (function () {
     XP_TIERS: XP_TIERS, tierName: tierName, habitXp: habitXp,
     habitCounts: habitCounts, habitChart: habitChart, habitAttributes: habitAttributes,
     monthCompare: monthCompare, MOODS: MOODS, moodById: moodById, moodAvg: moodAvg,
+    habitEarnedXp: habitEarnedXp, nextAvoidMilestone: nextAvoidMilestone,
     moodSummary: moodSummary,
     forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 
@@ -1983,7 +1967,6 @@ HT.stats = (function () {
     monthSeries: monthSeries, yearSeries: yearSeries, seriesRate: seriesRate,
     habitRate: habitRate, habitTotal: habitTotal, habitSums: habitSums,
     habitSumOver: habitSumOver, avoidTotal: avoidTotal, logStreak: logStreak, habitValueSeries: habitValueSeries,
-    habitWeekdayRates: habitWeekdayRates, weakestWeekday: weakestWeekday,
     earnedAchievements: earnedAchievements, achievementById: achievementById
   };
 })();

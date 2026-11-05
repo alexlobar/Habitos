@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.7.4** · esquema de datos **v17**.
+Versión documentada: **2.7.5** · esquema de datos **v17**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -93,7 +93,9 @@ de Hoy. *Volver* lleva a la pantalla desde la que se entró.
 **Histórico.** La semana en rejilla (hábito × día), los totales de los hábitos
 por cantidad, el cumplimiento de la semana y del mes, el calendario en vista
 de mes o de año, la gráfica de evolución y la evolución del peso (30 días,
-90 días o todo, con la media de 7 días). Bajo el peso, el **peso objetivo**:
+3, 6 o 12 meses, o todo, con la media de 7 días). Debajo, **Peso de un mes**
+(2.7.5): un mes y un peso, para rellenar meses pasados sin ir día a día; se
+guarda como el día 1 de ese mes y avisa si ese día ya tenía uno. Bajo el peso, el **peso objetivo**:
 cuánto falta, a qué ritmo vas y para cuándo llegarías; en la gráfica, una
 línea discontinua si el objetivo está cerca de tus datos.
 
@@ -153,10 +155,19 @@ quedan siempre a la vista el panel de nivel, el estado del jugador, las dos
 rachas y las cuatro cifras.
 
 **Ficha de un hábito** (tocando su icono o su nombre). Estadísticas, totales,
-calendario del mes, cumplimiento por día de la semana y los botones de editar,
+calendario del mes (la tarjeta "Por día de la semana" salió en la 2.7.5) y los botones de editar,
 pausar, archivar y eliminar. Los hábitos con máximo diario (Redes) tienen sus
 propios totales: semana pasada, día más alto, días pasados del mes, y la
 comparación con la semana anterior a estas alturas.
+
+Las cuatro cifras de arriba dependen del tipo (2.7.5):
+
+| Hábitos que se hacen | Hábitos a evitar |
+|---|---|
+| Racha actual | Días sin caer (o *sin pasarte*, con máximo) |
+| Récord | Récord sin caer |
+| Últimos 30 días (% cumplido) | Días limpios en 30 días (o *dentro* del máximo) |
+| EXP ganada (con el valor de cada día, sin bonos) | Días que faltan para el siguiente hito de EXP |
 
 Desde la 2.7.2 **todos los hábitos** tienen *Totales acumulados* y *Valores de
 los últimos 30 días*, cada uno en su unidad (`habitCounts()` y `habitChart()`

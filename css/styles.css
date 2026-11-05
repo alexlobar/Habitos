@@ -2219,6 +2219,20 @@ button.week-cell:disabled:hover { transform: none; }
 .month-compare[data-trend="up"] { border-left-color: var(--success); }
 .month-compare[data-trend="down"] { border-left-color: var(--danger); }
 
+/* Peso (2.7.5): cinco periodos en su propia fila, a lo ancho y con poco
+   relleno, para que "12 meses" quepa en un móvil; y el peso de un mes. */
+.weight-range { margin-bottom: var(--sp-3); grid-auto-columns: minmax(0, 1fr); }
+/* Más específico que .seg--compact, que viene después y si no ganaría. */
+.seg.weight-range .seg__opt span { padding: 4px 2px; text-align: center; line-height: 1.25; }
+.weight-month__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.weight-month__input { flex: 1 1 9rem; min-width: 0; }
+.weight-month__row .amount-field { flex: 1 1 6rem; }
+
 /* Desbloqueo único del plan */
 .plan-unlock { margin-top: var(--sp-3); }
 
@@ -3235,30 +3249,6 @@ button.week-cell:disabled:hover { transform: none; }
   font-size: 1.75rem;
 }
 .habit-hero__meta { margin-top: 2px; font-size: var(--fs-sm); color: var(--text-muted); }
-
-.weekbars { display: grid; gap: var(--sp-2); }
-.weekbar {
-  display: grid;
-  grid-template-columns: 3.2rem 1fr 2.8rem;
-  align-items: center;
-  gap: var(--sp-3);
-  font-size: var(--fs-xs);
-}
-.weekbar__day { color: var(--text-muted); }
-.weekbar__track {
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.weekbar__fill {
-  width: calc(var(--pct, 0) * 1%);
-  height: 100%;
-  border-radius: inherit;
-  background: var(--habit-color, var(--accent));
-  transition: width 400ms var(--ease);
-}
-.weekbar__pct { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Datos de la instalación: versión, origen y estado de la caché */
 .build {

@@ -1465,6 +1465,44 @@
       if (e.key === 'Enter') e.target.blur();
     });
 
+    // Peso de un mes (2.7.5): se guarda como el día 1 de ese mes. Al elegir
+    // el mes se dice qué hay ya en él, para no pisar nada sin saberlo.
+    const mesElegido = function () {
+      const v = els.weightMonthInput.value;
+      return /^\d{4}-\d{2}$/.test(v) && v <= today.slice(0, 7) ? v : null;
+    };
+    const pistaMes = function () {
+      const mes = mesElegido();
+      if (!mes) {
+        els.weightMonthHint.textContent = 'Elige un mes que ya haya pasado o el actual.';
+        return;
+      }
+      const dia1 = S.getWeight(mes + '-01');
+      const pesadas = Object.keys(S.getWeights()).filter(function (k) { return k.slice(0, 7) === mes; }).length;
+      els.weightMonthKg.value = dia1 === null ? '' : String(dia1);
+      els.weightMonthHint.textContent = dia1 !== null
+        ? 'El día 1 ya tiene ' + String(dia1).replace('.', ',') + ' kg: si guardas, se sustituye.'
+        : pesadas
+          ? 'Ese mes ya tiene ' + pesadas + (pesadas === 1 ? ' pesada' : ' pesadas') + '. Esta se añade el día 1.'
+          : 'Para los meses en que no te pesaste a diario. Se guarda como el día 1 de ese mes.';
+    };
+    els.weightMonthInput.addEventListener('change', pistaMes);
+    els.btnWeightMonth.addEventListener('click', function () {
+      const mes = mesElegido();
+      if (!mes) { pistaMes(); return; }
+      const raw = els.weightMonthKg.value.trim();
+      const n = Number(raw.replace(',', '.'));
+      if (!raw || !isFinite(n) || n < 20 || n > 400) {
+        UI.toast('Escribe el peso en kg, entre 20 y 400.', { type: 'error', icon: '⚠️' });
+        return;
+      }
+      const guardado = S.setWeight(mes + '-01', n);
+      UI.toast('Guardado: ' + String(guardado).replace('.', ',') + ' kg el 1 de ' +
+               U.formatMonth(U.fromKey(mes + '-01')).toLowerCase() + '.', { type: 'success', icon: '⚖️' });
+      els.weightMonthKg.value = '';
+      pistaMes();
+    });
+
     UI.els.weightCard.addEventListener('change', function (e) {
       if (e.target.name !== 'weightRange') return;
       weightRange = Number(e.target.value) || 0;
