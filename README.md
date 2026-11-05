@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.8.0** · esquema de datos **v18**.
+Versión documentada: **2.8.1** · esquema de datos **v18**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -119,7 +119,11 @@ mismo contenido; *Importar* acepta `.json` y `.txt`. Se comparte solo el archivo
 sin texto al lado: con texto, apps como Drive se quedaban con él y tiraban el
 archivo (2.6.1). En el ordenador (sin pantalla táctil) se descarga, y si el
 menú falla también, con un aviso que dice el error. Cancelar el menú no cuenta
-como copia.
+como copia. Desde la 2.8.1 va **siempre** como `.txt`: hasta entonces se probaba
+antes `.json`, y Chrome para Android lo daba por bueno al preguntar
+(`canShare`) pero lo rechazaba al compartir con `NotAllowedError`. Si el
+navegador pide un toque nuevo (el anterior caducó), sale un aviso con el botón
+*Compartir* en vez de descargar; a la segunda, se descarga.
 *Exportar JSON* sigue descargando el archivo como siempre.
 
 **Privacidad** (2.3.0), para enseñar la app sin enseñar lo más personal. Tres

@@ -1306,23 +1306,31 @@
    * táctiles: en Windows el menú de compartir no tiene "guardar", así que
    * en el ordenador se descarga, que es lo que se espera ahí.
    */
-  function shareBackup() {
-    const json = JSON.stringify(S.getState(), null, 2);
-    const base = 'habitos-' + today;
+  /*
+   * 2.8.1: siempre como .txt. Antes se probaba primero .json, y Chrome para
+   * Android dice que sí en canShare() pero luego lo rechaza al compartir con
+   * NotAllowedError: su lista de tipos permitidos solo se mira en ese
+   * momento, y .json no está en ella (.txt sí, en todas partes).
+   */
+  function shareBackup(reintento) {
     const tactil = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const puede = tactil && navigator.share && navigator.canShare && typeof File === 'function';
+    if (!puede) { exportJson(); return; }
 
-    let file = null;
-    if (tactil && navigator.share && navigator.canShare && typeof File === 'function') {
-      const candidatos = [
-        new File([json], base + '.json', { type: 'application/json' }),
-        new File([json], base + '.txt', { type: 'text/plain' })
-      ];
-      file = candidatos.filter(function (f) {
-        try { return navigator.canShare({ files: [f] }); } catch (e) { return false; }
-      })[0] || null;
+    // Sin un toque reciente el navegador no abre el menú. Pasa si se llama
+    // desde fuera de un clic, o si el anterior intento ya gastó ese toque:
+    // se pide uno nuevo en vez de fallar.
+    if (navigator.userActivation && !navigator.userActivation.isActive) {
+      if (reintento === true) exportJson(); else askShareAgain();
+      return;
     }
 
-    if (!file) { exportJson(); return; }
+    const json = JSON.stringify(S.getState());
+    const file = new File([json], 'habitos-' + today + '.txt', { type: 'text/plain' });
+
+    let vale = false;
+    try { vale = navigator.canShare({ files: [file] }); } catch (e) { vale = false; }
+    if (!vale) { exportJson(); return; }
 
     navigator.share({ files: [file] })
       .then(function () {
@@ -1333,12 +1341,24 @@
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;     // cerraste el menú: no pasa nada
         console.warn('No se pudo compartir la copia:', err);
-        // Plan B: descargarla, diciendo por qué. El nombre del error es lo
-        // que hace falta para saber qué ha fallado en ese móvil.
+        // Un NotAllowedError a la primera suele ser el toque caducado: se
+        // ofrece otro intento. A la segunda, se descarga diciendo por qué.
+        if (err && err.name === 'NotAllowedError' && reintento !== true) {
+          askShareAgain();
+          return;
+        }
         UI.toast('No se pudo abrir el menú de compartir (' + ((err && err.name) || 'error') +
                  '). Se descarga en su lugar.', { type: 'error', icon: '⚠️', duration: 9000 });
         exportJson();
       });
+  }
+
+  function askShareAgain() {
+    UI.toast('El móvil pide tocar otra vez para abrir el menú de compartir.', {
+      icon: '💾',
+      duration: 9000,
+      action: { label: 'Compartir', onClick: function () { shareBackup(true); } }
+    });
   }
 
   /**
