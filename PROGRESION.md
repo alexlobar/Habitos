@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.7.1** · esquema de datos **v16**.
+Versión documentada: **2.7.4** · esquema de datos **v17**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -359,6 +359,10 @@ de dos ya daban 100. Ahora sube como el nivel:
 | 6 semanas (18) | 100 | 50 |
 | 12 semanas (36) | 100 | 100 |
 | Después, 2 semanas sin entrenar | ~50 | ~50 |
+
+En la ficha de cada hábito (2.7.3), la tarjeta *Atributos* dice a cuál suma,
+cuánto aporta él y cuánto vale el atributo entero; sale de la misma tabla
+(`ATTRS`) que el Sistema.
 
 Los atributos no se guardan: se calculan al abrir el Sistema, así que cambiar la
 fórmula no toca datos. Debajo de cada barra se enseña de dónde sale el número

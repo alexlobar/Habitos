@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.7.1** · esquema de datos **v16**.
+Versión documentada: **2.7.4** · esquema de datos **v17**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -157,6 +157,34 @@ calendario del mes, cumplimiento por día de la semana y los botones de editar,
 pausar, archivar y eliminar. Los hábitos con máximo diario (Redes) tienen sus
 propios totales: semana pasada, día más alto, días pasados del mes, y la
 comparación con la semana anterior a estas alturas.
+
+Desde la 2.7.2 **todos los hábitos** tienen *Totales acumulados* y *Valores de
+los últimos 30 días*, cada uno en su unidad (`habitCounts()` y `habitChart()`
+en `stats.js`):
+
+| Tipo | Totales | Gráfica |
+|---|---|---|
+| Check | veces esta semana y este mes "de" las que tocaban, total, media y mejor semana, semana pasada | veces cumplido en los 7 días hasta cada día, contra sus días por semana |
+| Franjas | igual, contando franjas | franjas cumplidas cada día que tocaba, contra las que tiene |
+| A evitar por fallos | fallos de la semana, del mes y totales, media por semana, día con más, días con fallo del mes, y la semana contra la pasada a estas alturas | fallos de cada día (un día limpio es un 0), con el tope de crítico como techo |
+| Cantidad y con máximo | como hasta ahora | como hasta ahora |
+
+Desde la 2.7.3 la ficha dice también **a qué atributos suma** el hábito (Fuerza
+si es el de entreno; si no, el de su categoría), cuánto aporta él
+(constancia × experiencia) y cuánto vale el atributo entero
+(`habitAttributes()` en `stats.js`). Desde la 2.7.4, *Totales acumulados* abre
+con **este mes contra el anterior a estas alturas** (del día 1 a hoy, contra
+lo mismo del mes pasado), en verde si vas mejor y en rojo si peor; en los
+hábitos a evitar, mejor es menos (`monthCompare()`).
+
+**Ánimo del día** (2.7.4). En la tarjeta de la nota de Hoy, cinco caras (😞 🙁
+😐 🙂 😄); tocar la elegida otra vez la quita. No da EXP ni entra en
+porcentajes, pero es un registro: cuenta para la racha de registro y salva un
+día de quedar en blanco. En **Histórico**, la tarjeta *Ánimo* cruza los
+últimos 90 días con lo cumplido: cuántos días de cada ánimo, qué porcentaje
+de hábitos cumpliste esos días y el ánimo medio de los días buenos (80% o
+más) frente a los demás (`moodSummary()`). El resumen semanal añade el ánimo
+medio. Va con las notas: si se ocultan en Privacidad, se oculta también.
 
 ---
 
@@ -359,7 +387,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 16,
+  "version": 17,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -409,6 +437,7 @@ Una sola clave, `habitTracker.v1`:
   },
   "notes": { "2026-09-15": "Día raro, pero saqué el rato de leer." },
   "weights": { "2026-09-15": 72.4 },  // kg, un decimal, entre 20 y 400
+  "moods": { "2026-09-15": 4 },       // ánimo del día (v17): 1 muy mal … 5 muy bien
   // notas sin día, la más reciente primero; "updated" en milisegundos
   "freeNotes": [{ "id": "n_x1", "title": "Objetivos", "text": "…", "updated": 1793009134893 }],
   // semanas confirmadas (bloqueadas): lunes → día en que se confirmó
@@ -497,6 +526,8 @@ hábitos valen 25, como antes). Su única migración es una marca: los hitos de
 evitar pasan de 50/150/400 a 50/100/200, y al arrancar `syncAvoidXp()` baja una
 vez lo cobrado a lo que daría la tabla nueva por las mismas rachas, sin quitar
 EXP. Importar una copia anterior a la v16 hace lo mismo.
+
+La v17 (2.7.4) añade `moods`, que empieza vacío: no necesita migración.
 
 ### Varias ventanas a la vez (2.3.4)
 

@@ -2135,6 +2135,90 @@ button.week-cell:disabled:hover { transform: none; }
 .forecast__line { margin: 0; font-size: var(--fs-sm); color: var(--text); }
 .forecast__line + .forecast__line { margin-top: var(--sp-2); color: var(--text-muted); }
 
+/* Atributos en la ficha del hábito (2.7.3). Mismos códigos que en el
+   Sistema, pero con los colores normales de la app, no los de su ventana. */
+.hattr-list { display: grid; gap: var(--sp-3); }
+.hattr__head { display: flex; align-items: baseline; gap: var(--sp-2); margin-bottom: 5px; }
+.hattr__code {
+  font-family: var(--sys-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--accent-text);
+}
+.hattr__name { flex: 1; min-width: 0; font-size: var(--fs-sm); font-weight: 600; }
+.hattr__value { flex: none; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.hattr__track { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.hattr__fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--habit-color, var(--accent));
+  transition: width 600ms var(--ease);
+}
+.hattr__detail { margin: 4px 0 0; font-size: var(--fs-xs); color: var(--text-faint); }
+
+/* ── Ánimo del día (2.7.4) ──────────────────────────────────
+   Cinco caras en la tarjeta de la nota. Sin elegir, todas a media luz;
+   elegida una, esa a color y las demás más apagadas. ──────────────── */
+.mood-row { margin-bottom: var(--sp-3); }
+.mood-row .field__label { display: block; margin-bottom: var(--sp-2); }
+.mood-picker { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
+.mood-btn {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 1.4rem;
+  line-height: 1;
+  opacity: .7;
+  filter: grayscale(.6);
+  transition: opacity var(--dur) var(--ease), filter var(--dur) var(--ease),
+              border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.mood-btn:hover { opacity: 1; filter: none; }
+.mood-picker[data-set="true"] .mood-btn { opacity: .35; }
+.mood-btn[aria-pressed="true"] {
+  opacity: 1 !important;
+  filter: none;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.06);
+}
+
+.mood-list { display: grid; gap: var(--sp-3); margin-top: var(--sp-3); }
+.mood-line { display: flex; align-items: center; gap: var(--sp-3); }
+.mood-line[data-empty="true"] { opacity: .45; }
+.mood-line__icon { flex: none; font-size: 1.3rem; }
+.mood-line__main { flex: 1; min-width: 0; }
+.mood-line__head { display: flex; align-items: baseline; gap: var(--sp-2); margin-bottom: 4px; }
+.mood-line__name { flex: 1; font-size: var(--fs-sm); font-weight: 600; }
+.mood-line__meta { flex: none; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.mood-line__track { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.mood-line__fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 600ms var(--ease);
+}
+/* Va con las notas: con ellas ocultas en Privacidad, se oculta también. */
+[data-hide-notes="on"] #moodCard { display: none !important; }
+
+/* Este mes contra el anterior, en la ficha de un hábito (2.7.4). */
+.month-compare {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+}
+.month-compare[data-trend="up"] { border-left-color: var(--success); }
+.month-compare[data-trend="down"] { border-left-color: var(--danger); }
+
 /* Desbloqueo único del plan */
 .plan-unlock { margin-top: var(--sp-3); }
 

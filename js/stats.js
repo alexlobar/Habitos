@@ -458,6 +458,7 @@ HT.stats = (function () {
     if (S.getDayMark(dateKey)) return true;
     if (S.getNote(dateKey)) return true;
     if (S.getWeight(dateKey) !== null) return true;
+    if (S.getMood(dateKey) !== null) return true;      // 2.7.4
 
     return S.getHabits(true).some(function (h) {
       return S.getLog(h.id, dateKey) !== null;
@@ -1019,6 +1020,244 @@ HT.stats = (function () {
     return count;
   }
 
+  /* ── Totales y valores de los hábitos sin cantidad (2.7.2) ─
+     Las fichas de "Totales acumulados" y "Valores de los últimos 30 días"
+     eran solo de los hábitos por cantidad. Los demás también cuentan algo
+     cada día, solo que en otra unidad:
+       · check        → 1 si se cumplió (veces);
+       · franjas      → cuántas franjas se cumplieron;
+       · evitar por fallos (con o sin franjas) → los fallos.
+     Aquí se cuenta en esa unidad, con lo que tocaba cada día al lado. ── */
+
+  /** Lo que se apuntó un día, en la unidad del hábito. */
+  function unitsOn(habit, key) {
+    const v = S.getLog(habit.id, key);
+    if (isAvoid(habit)) return failsOf(v);
+    if (habit.type === 'schedule') {
+      return v && typeof v === 'object'
+        ? Object.keys(v).filter(function (k) { return v[k] === true; }).length : 0;
+    }
+    return v === true ? 1 : 0;
+  }
+
+  /** Lo que tocaba ese día: 1 vez, o todas sus franjas. 0 si no tocaba. */
+  function plannedOn(habit, key) {
+    if (!isActiveOn(habit, key)) return 0;
+    return habit.type === 'schedule' ? habit.slots.length : 1;
+  }
+
+  /**
+   * Totales de un hábito check, de franjas o a evitar por fallos. Cada cifra
+   * va con lo que tocaba en el mismo periodo (`…Plan`), salvo en los de
+   * evitar, donde lo que tocaba no significa nada.
+   */
+  function habitCounts(habit, todayKey, weekStart) {
+    const today = todayKey || U.todayKey();
+    const firstOfWeek = U.toKey(U.startOfWeek(U.fromKey(today), weekStart));
+    const firstOfMonth = today.slice(0, 8) + '01';
+    const firstOfLastWeek = U.addDaysKey(firstOfWeek, -7);
+    const sameDayLastWeek = U.addDaysKey(today, -7);
+
+    let desde = habit.createdAt;
+    const limite = U.addDaysKey(today, -MAX_LOOKBACK);
+    if (desde < limite) desde = limite;
+
+    const out = {
+      week: 0, weekPlan: 0, month: 0, monthPlan: 0, total: 0,
+      lastWeek: 0, lastWeekPlan: 0, lastWeekSoFar: 0,
+      best: 0, bestDay: null, bestWeek: 0, daysMonth: 0, span: 0
+    };
+    const porSemana = {};
+
+    for (let k = desde; k <= today; k = U.addDaysKey(k, 1)) {
+      const n = unitsOn(habit, k);
+      const p = plannedOn(habit, k);
+      out.span++;
+      out.total += n;
+      if (n > out.best) { out.best = n; out.bestDay = k; }
+
+      const wk = U.toKey(U.startOfWeek(U.fromKey(k), weekStart));
+      porSemana[wk] = (porSemana[wk] || 0) + n;
+
+      if (k >= firstOfMonth) { out.month += n; out.monthPlan += p; if (n > 0) out.daysMonth++; }
+      if (k >= firstOfWeek) { out.week += n; out.weekPlan += p; }
+      if (k >= firstOfLastWeek && k < firstOfWeek) {
+        out.lastWeek += n;
+        out.lastWeekPlan += p;
+        if (k <= sameDayLastWeek) out.lastWeekSoFar += n;
+      }
+    }
+
+    Object.keys(porSemana).forEach(function (wk) {
+      if (porSemana[wk] > out.bestWeek) out.bestWeek = porSemana[wk];
+    });
+    // Media por semana desde que existe: con menos de una semana, la semana.
+    out.perWeek = Math.round(out.total / Math.max(1, out.span / 7) * 10) / 10;
+    return out;
+  }
+
+  /**
+   * Lo que pinta la gráfica de 30 días de cualquier hábito:
+   *   { series, meta, unit, mode, over(v) }.
+   * mode 'goal': la línea de guiones es un suelo (hay que llegar).
+   * mode 'cap':  es un techo (pasarla es lo malo).
+   * En un check un día vale 0 o 1 y la línea sería un serrucho, así que se
+   * pinta cuántas veces se cumplió en los 7 días hasta cada uno, contra los
+   * días por semana que tiene.
+   */
+  function habitChart(habit, todayKey, n) {
+    const today = todayKey || U.todayKey();
+    const dias = n || 30;
+
+    if (habit.type === 'quantity' || isCapped(habit)) {
+      const capped = isCapped(habit);
+      return {
+        series: habitValueSeries(habit, today, dias),
+        meta: habit.target.amount, unit: habit.target.unit,
+        mode: capped ? 'cap' : 'goal',
+        over: function (v) { return capped ? v > habit.target.amount : v >= habit.target.amount; }
+      };
+    }
+
+    const punto = function (key, value, hasData) {
+      return {
+        key: key, label: String(U.fromKey(key).getDate()), full: U.formatShort(U.fromKey(key)),
+        value: value, hasData: hasData
+      };
+    };
+    const keys = U.lastNDays(today, dias);
+
+    if (habit.type === 'check') {
+      return {
+        series: keys.map(function (k) {
+          let veces = 0;
+          for (let i = 0; i < 7; i++) veces += unitsOn(habit, U.addDaysKey(k, -i));
+          return punto(k, veces, k >= habit.createdAt);
+        }),
+        meta: habit.activeDays.length, unit: 'veces en 7 días', mode: 'goal',
+        over: function (v) { return v >= habit.activeDays.length; }
+      };
+    }
+
+    if (habit.type === 'schedule') {
+      return {
+        series: keys.map(function (k) {
+          const v = unitsOn(habit, k);
+          // Un día que no tocaba no es un cero: corta la línea.
+          return punto(k, v, k >= habit.createdAt && (plannedOn(habit, k) > 0 || v > 0));
+        }),
+        meta: habit.slots.length, unit: 'franjas', mode: 'goal',
+        over: function (v) { return v >= habit.slots.length; }
+      };
+    }
+
+    // A evitar por fallos: un día limpio SÍ es un dato (cero fallos).
+    const tope = limitOf(habit);
+    return {
+      series: keys.map(function (k) {
+        return punto(k, unitsOn(habit, k), k >= habit.createdAt && !S.isPausedOn(habit, k));
+      }),
+      meta: tope, unit: 'fallos', mode: 'cap',
+      over: function (v) { return v >= tope; }
+    };
+  }
+
+  /**
+   * Este mes contra el anterior A ESTAS ALTURAS (2.7.4): del día 1 a hoy,
+   * contra del día 1 al mismo día del mes pasado (o su último día, si era
+   * más corto). Comparar 5 días con un mes entero diría siempre que vas peor.
+   * En los de evitar, menos es mejor.
+   */
+  function monthCompare(habit, todayKey) {
+    const today = todayKey || U.todayKey();
+    const d = U.fromKey(today);
+    const dia = d.getDate();
+    const largoPrev = new Date(d.getFullYear(), d.getMonth(), 0).getDate();
+    const iniPrev = U.toKey(new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    const finPrev = U.toKey(new Date(d.getFullYear(), d.getMonth() - 1, Math.min(dia, largoPrev)));
+    const cantidad = habit.type === 'quantity' || isCapped(habit);
+
+    const valor = function (k) {
+      if (k < habit.createdAt) return 0;
+      return cantidad ? (Number(S.getLog(habit.id, k)) || 0) : unitsOn(habit, k);
+    };
+    const suma = function (a, b) {
+      return daysFromTo(a, b).reduce(function (s, k) { return s + valor(k); }, 0);
+    };
+
+    return {
+      cur: Math.round(suma(today.slice(0, 8) + '01', today) * 10) / 10,
+      prev: Math.round(suma(iniPrev, finPrev) * 10) / 10,
+      hasPrev: habit.createdAt <= finPrev,
+      day: dia,
+      lessIsBetter: isAvoid(habit),
+      unit: cantidad ? habit.target.unit : isAvoid(habit) ? 'fallos'
+          : habit.type === 'schedule' ? 'franjas' : 'veces'
+    };
+  }
+
+  /* ── Ánimo del día (2.7.4) ─────────────────────────────────
+     Del 1 al 5. No es un hábito: se cruza con lo cumplido para ver si los
+     días buenos de ánimo coinciden con los buenos de hábitos. ────────── */
+
+  const MOODS = [
+    { value: 1, icon: '😞', name: 'Muy mal' },
+    { value: 2, icon: '🙁', name: 'Mal' },
+    { value: 3, icon: '😐', name: 'Normal' },
+    { value: 4, icon: '🙂', name: 'Bien' },
+    { value: 5, icon: '😄', name: 'Muy bien' }
+  ];
+
+  function moodById(v) {
+    return MOODS.filter(function (m) { return m.value === v; })[0] || null;
+  }
+
+  /** Media del ánimo en unos días, o null si no se apuntó en ninguno. */
+  function moodAvg(dateKeys) {
+    const vals = dateKeys.map(S.getMood).filter(function (v) { return v !== null; });
+    if (!vals.length) return null;
+    return Math.round(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length * 10) / 10;
+  }
+
+  /**
+   * El ánimo de los últimos `n` días cruzado con el cumplimiento:
+   *   · por cada ánimo, cuántos días y qué % de hábitos cumpliste de media;
+   *   · el ánimo medio de los días buenos (80% o más) y de los demás.
+   * Solo cuentan los días con ánimo apuntado y algún hábito que tocara.
+   */
+  function moodSummary(todayKey, n) {
+    const today = todayKey || U.todayKey();
+    const rows = MOODS.map(function (m) { return { mood: m, days: 0, sumPct: 0, pct: null }; });
+    let total = 0, suma = 0;
+    const alto = { days: 0, sum: 0 }, bajo = { days: 0, sum: 0 };
+
+    U.lastNDays(today, n || 90).forEach(function (k) {
+      const v = S.getMood(k);
+      if (v === null) return;
+      total++;
+      suma += v;
+      const day = dayStats(k);
+      if (!day.total) return;
+      const pct = day.done / day.total * 100;
+      const row = rows[v - 1];
+      row.days++;
+      row.sumPct += pct;
+      const grupo = pct >= XP.goodDayFrom * 100 ? alto : bajo;
+      grupo.days++;
+      grupo.sum += v;
+    });
+
+    rows.forEach(function (r) { if (r.days) r.pct = Math.round(r.sumPct / r.days); });
+    const media = function (g) { return g.days ? Math.round(g.sum / g.days * 10) / 10 : null; };
+    return {
+      days: total,
+      avg: total ? Math.round(suma / total * 10) / 10 : null,
+      rows: rows,
+      good: { days: alto.days, avg: media(alto) },
+      rest: { days: bajo.days, avg: media(bajo) }
+    };
+  }
+
   /** Valores diarios de los últimos `n` días, para la gráfica de la ficha. */
   function habitValueSeries(habit, todayKey, n) {
     const today = todayKey || U.todayKey();
@@ -1281,21 +1520,49 @@ HT.stats = (function () {
    * Los cinco atributos. Códigos de RPG, datos reales: si una rama no
    * tiene hábitos, su atributo vale 0 y lo dice — no se rellena a ojo.
    */
+  /* De dónde sale cada atributo. Fuerza es el hábito de entreno; los demás,
+     la media de una categoría. Lo leen attributes() y, desde la 2.7.3, la
+     ficha de cada hábito (habitAttributes), así que no pueden discrepar. */
+  const ATTRS = [
+    { code: 'STR', name: 'Fuerza',        training: true },
+    { code: 'VIT', name: 'Vitalidad',     category: 'fisico' },
+    { code: 'AGI', name: 'Agilidad',      category: 'evitar' },
+    { code: 'INT', name: 'Inteligencia',  category: 'aprendizaje' },
+    { code: 'SEN', name: 'Concentración', category: 'mental' }
+  ];
+
   function attributes(todayKey) {
     const today = todayKey || U.todayKey();
-
-    const spec = [
-      { code: 'STR', name: 'Fuerza',        get: function () { return trainingScore(today); } },
-      { code: 'VIT', name: 'Vitalidad',     get: function () { return categoryScore('fisico', today); } },
-      { code: 'AGI', name: 'Agilidad',      get: function () { return categoryScore('evitar', today); } },
-      { code: 'INT', name: 'Inteligencia',  get: function () { return categoryScore('aprendizaje', today); } },
-      { code: 'SEN', name: 'Concentración', get: function () { return categoryScore('mental', today); } }
-    ];
-
-    return spec.map(function (a) {
-      const r = a.get();
+    return ATTRS.map(function (a) {
+      const r = a.training ? trainingScore(today) : categoryScore(a.category, today);
       return { code: a.code, name: a.name, value: r.value, detail: r.detail };
     });
+  }
+
+  /**
+   * A qué atributos suma un hábito y cuánto (2.7.3). Puede ser a dos: el de
+   * entreno suele ser también de Salud, así que da Fuerza y Vitalidad.
+   * `own` es lo que vale el propio hábito (constancia × experiencia) y
+   * `value` el atributo entero; `peers` cuántos hábitos hacen la media.
+   * Un hábito archivado no suma: los atributos solo miran los activos.
+   */
+  function habitAttributes(habit, todayKey) {
+    const today = todayKey || U.todayKey();
+    const todos = attributes(today);
+    const propio = habitAttr(habit, today);
+    const entreno = S.getTrainingHabit();
+
+    return ATTRS.map(function (a, i) {
+      const suma = a.training ? !!entreno && entreno.id === habit.id : habit.category === a.category;
+      if (!suma) return null;
+      const peers = a.training ? 1 : S.getHabits().filter(function (h) { return h.category === a.category; }).length;
+      return {
+        code: a.code, name: a.name, training: !!a.training,
+        value: todos[i].value, own: propio.value,
+        constancia: propio.constancia, exp: propio.exp, goal: propio.goal,
+        counted: propio.counted, peers: peers
+      };
+    }).filter(Boolean);
   }
 
   /* ── Misiones semanales (2.6.0) ───────────────────────────
@@ -1689,6 +1956,9 @@ HT.stats = (function () {
     missionMax: missionMax, missionSpan: missionSpan, suggestMissions: suggestMissions,
     isBlankDay: isBlankDay,
     XP_TIERS: XP_TIERS, tierName: tierName, habitXp: habitXp,
+    habitCounts: habitCounts, habitChart: habitChart, habitAttributes: habitAttributes,
+    monthCompare: monthCompare, MOODS: MOODS, moodById: moodById, moodAvg: moodAvg,
+    moodSummary: moodSummary,
     forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 
     AVOID_MILESTONES: AVOID_MILESTONES,

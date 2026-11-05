@@ -147,7 +147,8 @@ HT.ui = (function () {
       'planUnlockRow', 'btnPlanUnlock', 'planUnlockHint', 'lvForecast',
       'rewardsCard', 'rewardPerfect', 'rewardList', 'rewardAvoid',
       'forecastTitle', 'forecastIdeal', 'forecastReal', 'xpField', 'fXp',
-      'streaksCount', 'avoidCount'
+      'streaksCount', 'avoidCount', 'hSumAvgLabel', 'hAttrList', 'hAttrNote',
+      'moodPicker', 'moodCard', 'moodAvg', 'moodLead', 'moodList', 'hMonthCompare'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
 
     // Un id que falte daría un "Cannot read properties of null" veinte líneas
@@ -180,6 +181,14 @@ HT.ui = (function () {
     // HT.utils.CATEGORIES y nada más.
     U.CATEGORIES.forEach(function (cat) {
       els.fCategory.appendChild(el('option', { value: cat.id, text: cat.icon + '  ' + cat.name }));
+    });
+
+    // Las cinco caras del ánimo, de St.MOODS.
+    St.MOODS.forEach(function (m) {
+      els.moodPicker.appendChild(el('button', {
+        type: 'button', class: 'mood-btn', 'data-mood': String(m.value),
+        'aria-label': m.name, 'aria-pressed': 'false', title: m.name, text: m.icon
+      }));
     });
 
     // Igual con las dificultades: salen de St.XP_TIERS.
@@ -1709,6 +1718,12 @@ HT.ui = (function () {
       growField(els.dayNote);
     }
 
+    const animo = S.getMood(dateKey);
+    U.$$('.mood-btn', els.moodPicker).forEach(function (b) {
+      b.setAttribute('aria-pressed', Number(b.dataset.mood) === animo ? 'true' : 'false');
+    });
+    els.moodPicker.dataset.set = animo === null ? 'false' : 'true';
+
     renderWeightEntry(dateKey);
     renderWeekRecap(dateKey);
     renderPlanNote(dateKey);
@@ -1839,6 +1854,13 @@ HT.ui = (function () {
       lineas.push('Peso: media de ' + kg(r.weight.avg) +
                   (r.weight.change === null ? '' : ' (' + kgDelta(r.weight.change) + ')') + '.');
     }
+    if (!S.getSettings().hideNotes) {
+      const animo = St.moodAvg(daysOfWeek(r.weekKey));
+      if (animo !== null) {
+        const cara = St.moodById(Math.round(animo));
+        lineas.push('Ánimo medio: ' + (cara ? cara.icon + ' ' : '') + fmtNum.format(animo) + ' de 5.');
+      }
+    }
     const mis = St.missionXp(r.weekKey, hoy);
     if (mis.total) {
       lineas.push('🎯 Misiones: ' + mis.done + ' de ' + mis.total + ' cumplidas' +
@@ -1854,6 +1876,69 @@ HT.ui = (function () {
     // Si ya planificaste esta semana, el botón lo dice.
     els.btnRecapPlan.textContent = S.isWeekLocked(estaSemana)
       ? 'Ver el plan de esta semana' : 'Planificar esta semana';
+  }
+
+  /** Los siete días de la semana que empieza en `weekKey`. */
+  function daysOfWeek(weekKey) {
+    const out = [];
+    for (let i = 0; i < 7; i++) out.push(U.addDaysKey(weekKey, i));
+    return out;
+  }
+
+  /* ── Ánimo en Histórico (2.7.4) ───────────────────────────── */
+
+  function renderMoodCard(todayKey) {
+    const r = St.moodSummary(todayKey, 90);
+    els.moodAvg.hidden = r.avg === null;
+    if (r.avg !== null) {
+      const cara = St.moodById(Math.round(r.avg));
+      els.moodAvg.textContent = (cara ? cara.icon + ' ' : '') + fmtNum.format(r.avg);
+    }
+
+    if (!r.days) {
+      els.moodLead.textContent = 'Apunta cómo ha ido el día con las caras de "Notas del día", en Hoy. ' +
+        'Con unos días, aquí verás si tu ánimo va de la mano de tus hábitos.';
+      els.moodList.textContent = '';
+      els.moodList.hidden = true;
+      return;
+    }
+
+    let lead = r.days + (r.days === 1 ? ' día' : ' días') + ' con ánimo en los últimos 90.';
+    if (r.good.avg !== null && r.rest.avg !== null) {
+      const dif = Math.round((r.good.avg - r.rest.avg) * 10) / 10;
+      lead += ' Los días que cumples el 80% o más, tu ánimo medio es ' + fmtNum.format(r.good.avg) +
+        '; los demás, ' + fmtNum.format(r.rest.avg) + '. ' +
+        (Math.abs(dif) < 0.3 ? 'Casi igual: tu ánimo no parece depender de cumplir.'
+          : dif > 0 ? 'Cumplir y estar bien van de la mano.'
+          : 'Curioso: estás mejor los días que cumples menos.');
+    }
+    els.moodLead.textContent = lead;
+
+    const frag = document.createDocumentFragment();
+    r.rows.slice().reverse().forEach(function (row) {
+      const li = el('li', { class: 'mood-line', 'data-empty': row.days ? 'false' : 'true' });
+      li.appendChild(el('span', { class: 'mood-line__icon', 'aria-hidden': 'true', text: row.mood.icon }));
+      const main = el('div', { class: 'mood-line__main' });
+      const head = el('div', { class: 'mood-line__head' });
+      head.appendChild(el('span', { class: 'mood-line__name', text: row.mood.name }));
+      head.appendChild(el('span', {
+        class: 'mood-line__meta',
+        text: row.days ? row.days + (row.days === 1 ? ' día' : ' días') + ' · cumpliste el ' + row.pct + '%' : 'sin días'
+      }));
+      main.appendChild(head);
+      const track = el('div', { class: 'mood-line__track', 'aria-hidden': 'true' });
+      const fill = el('span', { class: 'mood-line__fill' });
+      fill.style.setProperty('--pct', row.pct || 0);
+      track.appendChild(fill);
+      main.appendChild(track);
+      li.appendChild(main);
+      li.setAttribute('aria-label', row.mood.name + ': ' + (row.days
+        ? row.days + ' días, cumpliste de media el ' + row.pct + '% de tus hábitos' : 'sin días'));
+      frag.appendChild(li);
+    });
+    els.moodList.textContent = '';
+    els.moodList.appendChild(frag);
+    els.moodList.hidden = false;
   }
 
   /**
@@ -2528,6 +2613,8 @@ HT.ui = (function () {
     aheadStat(els.statWeekGhost, els.statWeekAhead, week, pend.habits);
     aheadStat(els.statMonthGhost, els.statMonthAhead, month, pend.habits);
 
+    renderMoodCard(U.todayKey());
+
     const yearMode = scale === 'year';
     const today = U.todayKey();
     let series;
@@ -3162,12 +3249,15 @@ HT.ui = (function () {
    * va en unidades reales y lleva la meta marcada con una línea.
    */
   function renderValueChart(habit, todayKey) {
-    const series = St.habitValueSeries(habit, todayKey, 30);
-    const meta = habit.target.amount;
-    const unidad = habit.target.unit;
+    // Desde la 2.7.2 vale para cualquier hábito: stats.js dice qué se pinta
+    // (cantidad, veces en 7 días, franjas o fallos) y contra qué línea.
+    const spec = St.habitChart(habit, todayKey, 30);
+    const series = spec.series;
+    const meta = spec.meta;
+    const unidad = spec.unit;
     // Con un máximo, la línea de guiones es un techo: lo que la supera es lo
     // malo, al revés que con una meta.
-    const capped = St.isCapped(habit);
+    const capped = spec.mode === 'cap';
 
     const width = Math.max(els.habitChart.clientWidth || 0, CHART.minW);
     const ml = 40;                       // más margen: aquí caben "12.400"
@@ -3232,9 +3322,9 @@ HT.ui = (function () {
     series.forEach(function (p, i) {
       if (!p.hasData) return;
 
-      const marca = capped
-        ? (p.value > meta ? ' chart__dot--over' : '')
-        : (p.value >= meta ? ' chart__dot--goal' : '');
+      const marca = spec.over(p.value)
+        ? (capped ? ' chart__dot--over' : ' chart__dot--goal')
+        : '';
       svg.appendChild(svgEl('circle', {
         class: 'chart__dot' + marca,
         cx: x(i), cy: y(p.value), r: 3
@@ -3266,6 +3356,30 @@ HT.ui = (function () {
 
     els.habitChart.textContent = '';
     els.habitChart.appendChild(svg);
+
+    // Los hábitos sin cantidad se leen distinto: un cero es un dato (un día
+    // limpio, una semana sin cumplir) y la frase dice qué es cada punto.
+    if (habit.type !== 'quantity' && !St.isCapped(habit)) {
+      const vistos = series.filter(function (p) { return p.hasData; });
+      const ultimo = vistos.length ? vistos[vistos.length - 1].value : 0;
+      const llegan = vistos.filter(function (p) { return spec.over(p.value); }).length;
+
+      if (!vistos.length) {
+        els.hChartReadout.textContent = 'Todavía no hay días que mostrar.';
+      } else if (habit.type === 'check') {
+        els.hChartReadout.textContent = 'Cada punto: veces cumplido en los 7 días hasta ese día. ' +
+          'Ahora, ' + ultimo + ' de ' + meta + ' por semana · ' + llegan + ' días llegando a tu ritmo.';
+      } else if (habit.type === 'schedule') {
+        els.hChartReadout.textContent = 'Franjas cumplidas cada día que tocaba · ' + llegan +
+          (llegan === 1 ? ' día completo' : ' días completos') + ' de ' + vistos.length + '.';
+      } else {
+        const limpios = vistos.filter(function (p) { return p.value === 0; }).length;
+        els.hChartReadout.textContent = 'Fallos de cada día · ' + limpios +
+          (limpios === 1 ? ' día limpio' : ' días limpios') + ' de ' + vistos.length + ' · ' + llegan +
+          ' en crítico (' + meta + (meta === 1 ? ' fallo' : ' fallos') + ' o más).';
+      }
+      return;
+    }
 
     const conDatos = series.filter(function (p) { return p.hasData && p.value > 0; });
 
@@ -3433,28 +3547,85 @@ HT.ui = (function () {
     els.btnArchiveHabit.setAttribute('aria-label', archiveLabel);
     els.btnArchiveHabit.classList.toggle('is-on', habit.archived);
 
+    renderHabitAttrs(habit, todayKey);
     renderHabitSums(habit, todayKey, weekStart);
     renderHabitHeatmap(habit, monthDate, weekStart, todayKey);
     renderWeekBars(habit, todayKey, weekStart);
   }
 
   /**
-   * Totales acumulados. Solo tiene sentido en los hábitos por cantidad: en
-   * un check sumar "veces" ya lo dice la ficha "Veces cumplido".
+   * A qué atributos del Sistema suma este hábito y cuánto (2.7.3). La barra
+   * es lo que vale el propio hábito; a la derecha, el atributo entero, que
+   * en las ramas es la media de todos sus hábitos.
+   */
+  function renderHabitAttrs(habit, todayKey) {
+    const lista = St.habitAttributes(habit, todayKey);
+    const frag = document.createDocumentFragment();
+
+    lista.forEach(function (a) {
+      const li = el('li', { class: 'hattr' });
+      const head = el('div', { class: 'hattr__head' });
+      head.appendChild(el('span', { class: 'hattr__code', text: a.code }));
+      head.appendChild(el('span', { class: 'hattr__name', text: a.name }));
+      head.appendChild(el('span', { class: 'hattr__value', text: 'Atributo ' + a.value }));
+      li.appendChild(head);
+
+      const track = el('div', { class: 'hattr__track', 'aria-hidden': 'true' });
+      const fill = el('span', { class: 'hattr__fill' });
+      fill.style.setProperty('--pct', a.own);
+      track.appendChild(fill);
+      li.appendChild(track);
+
+      const reparto = a.training
+        ? 'El atributo sale solo de este hábito.'
+        : a.peers === 1
+          ? 'Es el único hábito de su rama: el atributo es él.'
+          : 'Es 1 de ' + a.peers + ' hábitos de su rama: el atributo es la media.';
+      li.appendChild(el('p', {
+        class: 'hattr__detail',
+        text: 'Aporta ' + a.own + ' · Constancia ' + a.constancia + '% · Experiencia ' +
+              a.exp + ' de ' + a.goal + '. ' + reparto
+      }));
+      li.setAttribute('aria-label', a.name + ': este hábito aporta ' + a.own + ', el atributo vale ' + a.value);
+      frag.appendChild(li);
+    });
+
+    els.hAttrList.textContent = '';
+    els.hAttrList.appendChild(frag);
+    els.hAttrList.hidden = !lista.length;
+
+    if (habit.archived) {
+      els.hAttrNote.textContent = 'Archivado: ahora no suma a ningún atributo. Restáuralo para que vuelva a contar.';
+    } else if (!lista.length) {
+      els.hAttrNote.textContent = 'No suma a ningún atributo. Ponle una categoría para que cuente: ' +
+        U.CATEGORIES.map(function (c) { return c.name; }).join(', ') + '.';
+    } else {
+      els.hAttrNote.textContent = 'Cada hábito vale constancia (30 días) × experiencia: llega al máximo tras ' +
+        '12 semanas cumpliéndolo.';
+    }
+  }
+
+  /**
+   * Totales acumulados y gráfica de 30 días. Hasta la 2.7.1 solo salían en
+   * los hábitos por cantidad; desde la 2.7.2, en todos, cada uno contando en
+   * su unidad: veces, franjas o fallos (renderCountSums).
    */
   function renderHabitSums(habit, todayKey, weekStart) {
     const capped = St.isCapped(habit);
     const conCantidad = habit.type === 'quantity' || capped;
-    els.hSumsCard.hidden = !conCantidad;
-    els.hChartCard.hidden = !conCantidad;
-    if (!conCantidad) return;
+    els.hSumsCard.hidden = false;
+    els.hChartCard.hidden = false;
 
     renderValueChart(habit, todayKey);
+    renderMonthCompare(habit, todayKey);
+
+    if (!conCantidad) { renderCountSums(habit, todayKey, weekStart); return; }
 
     const s = St.habitSums(habit, todayKey, weekStart);
     const u = habit.target.unit;
     const con = function (n) { return fmtNum.format(Math.round(n * 10) / 10) + ' ' + u; };
 
+    els.hSumAvgLabel.textContent = 'Media por día';
     els.hSumWeek.textContent = con(s.week);
     els.hSumMonth.textContent = con(s.month);
     els.hSumAvg.textContent = s.days ? con(s.avg) : '—';
@@ -3490,6 +3661,90 @@ HT.ui = (function () {
       ? 'Tu mejor día fue el ' + U.formatShort(U.fromKey(s.bestDay)) + ', y llevas ' + s.days +
         ' días con registro en total. La media cuenta solo esos días, no los que no apuntaste nada.'
       : 'Todavía no has registrado ningún valor en este hábito.';
+  }
+
+  /**
+   * Una línea arriba de los totales: este mes contra el anterior a estas
+   * alturas, con su color — verde si vas mejor, rojo si peor. En los de
+   * evitar, mejor es menos.
+   */
+  function renderMonthCompare(habit, todayKey) {
+    const c = St.monthCompare(habit, todayKey);
+    const singular = { veces: 'vez', franjas: 'franja', fallos: 'fallo' };
+    const con = function (n) {
+      return fmtNum.format(n) + ' ' + (n === 1 && singular[c.unit] ? singular[c.unit] : c.unit);
+    };
+    const node = els.hMonthCompare;
+
+    if (!c.hasPrev) {
+      node.dataset.trend = 'same';
+      node.textContent = 'Este mes llevas ' + con(c.cur) + '. El mes pasado aún no existía este hábito, así que no hay con qué comparar.';
+      return;
+    }
+
+    const dif = Math.round((c.cur - c.prev) * 10) / 10;
+    const mejor = c.lessIsBetter ? dif < 0 : dif > 0;
+    node.dataset.trend = dif === 0 ? 'same' : mejor ? 'up' : 'down';
+    node.textContent = 'Este mes llevas ' + con(c.cur) + '; el mes pasado, hasta el día ' + c.day + ', ' +
+      con(c.prev) + '. ' +
+      (dif === 0 ? 'Igual.' : (dif > 0 ? '+' : '−') + con(Math.abs(dif)) + (mejor ? ' ▲ vas mejor.' : ' ▼ vas peor.'));
+  }
+
+  /**
+   * Las mismas seis fichas para un check, unas franjas o un hábito a evitar
+   * por fallos. En los que se hacen, cada cifra va contra lo que tocaba
+   * ("3 de 5"); en los de evitar, lo que importa es cuánto se cae.
+   */
+  function renderCountSums(habit, todayKey, weekStart) {
+    const c = St.habitCounts(habit, todayKey, weekStart);
+    const fmt = function (n) { return fmtNum.format(n); };
+
+    if (St.isAvoid(habit)) {
+      const f = function (n) { return fmt(n) + (n === 1 ? ' fallo' : ' fallos'); };
+      els.hSumWeek.textContent = f(c.week);
+      els.hSumMonth.textContent = f(c.month);
+      els.hSumTotalLabel.textContent = 'Total histórico';
+      els.hSumTotal.textContent = f(c.total);
+      els.hSumAvgLabel.textContent = 'Media por semana';
+      els.hSumAvg.textContent = fmt(c.perWeek);
+      els.hSumBestLabel.textContent = 'Día con más';
+      els.hSumBest.textContent = c.best ? f(c.best) : '—';
+      els.hSumDaysLabel.textContent = 'Días con fallo este mes';
+      els.hSumDays.textContent = c.daysMonth + (c.daysMonth === 1 ? ' día' : ' días');
+
+      let nota;
+      if (!c.total) nota = 'Ningún fallo desde que existe. Sigue así.';
+      else {
+        const diff = c.week - c.lastWeekSoFar;
+        nota = 'Esta semana llevas ' + f(c.week) + '. ' +
+          (diff === 0 ? 'Igual que la semana pasada a estas alturas.'
+            : f(Math.abs(diff)) + (diff < 0 ? ' menos' : ' más') + ' que la semana pasada a estas alturas.');
+      }
+      els.hSumsNote.textContent = nota;
+      return;
+    }
+
+    const franjas = habit.type === 'schedule';
+    const unidad = function (n) {
+      return fmt(n) + (franjas ? (n === 1 ? ' franja' : ' franjas') : (n === 1 ? ' vez' : ' veces'));
+    };
+    const deTotal = function (n, plan) { return plan ? fmt(n) + ' de ' + fmt(plan) : unidad(n); };
+
+    els.hSumWeek.textContent = deTotal(c.week, c.weekPlan);
+    els.hSumMonth.textContent = deTotal(c.month, c.monthPlan);
+    els.hSumTotalLabel.textContent = 'Total histórico';
+    els.hSumTotal.textContent = unidad(c.total);
+    els.hSumAvgLabel.textContent = 'Media por semana';
+    els.hSumAvg.textContent = fmt(c.perWeek);
+    els.hSumBestLabel.textContent = 'Mejor semana';
+    els.hSumBest.textContent = c.bestWeek ? unidad(c.bestWeek) : '—';
+    els.hSumDaysLabel.textContent = 'Semana pasada';
+    els.hSumDays.textContent = deTotal(c.lastWeek, c.lastWeekPlan);
+
+    els.hSumsNote.textContent = c.total
+      ? (franjas ? 'Cuenta cada franja cumplida. ' : '') +
+        '"De" es lo que tocaba en ese periodo según su plan; la media va desde que lo creaste.'
+      : 'Todavía no lo has cumplido ninguna vez.';
   }
 
   /**

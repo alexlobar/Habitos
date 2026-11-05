@@ -1426,6 +1426,14 @@
     els.dayModal.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') UI.closeDayModal();
     });
+    // Ánimo del día: tocar la cara elegida otra vez la quita.
+    els.moodPicker.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-mood]');
+      if (!btn) return;
+      const v = Number(btn.dataset.mood);
+      S.setMood(currentDate, S.getMood(currentDate) === v ? null : v);
+    });
+
     const saveNote = U.debounce(function () { S.setNote(currentDate, els.dayNote.value); }, 400);
     els.dayNote.addEventListener('input', function () { UI.growField(els.dayNote); saveNote(); });
     els.dayNote.addEventListener('blur', function () { S.setNote(currentDate, els.dayNote.value); });

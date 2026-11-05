@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 16;
+  const VERSION = 17;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -174,6 +174,7 @@ HT.store = (function () {
       notes: {},
       frozen: {},
       weights: {},
+      moods: {},
       freeNotes: [],
       plannedWeeks: {},
       planUnlocks: {},
@@ -611,6 +612,12 @@ HT.store = (function () {
     return Math.round(n * 10) / 10;
   }
 
+  /** Ánimo de un día: un entero del 1 al 5, o null. */
+  function cleanMood(raw) {
+    const n = Number(raw);
+    return n === Math.floor(n) && n >= 1 && n <= 5 ? n : null;
+  }
+
   /**
    * Marca de un día: por qué no salió y si cuenta o no.
    *   reason — id del catálogo, o null si se salvó sin dar motivo
@@ -701,6 +708,8 @@ HT.store = (function () {
       frozen: cleanByDate(raw.frozen, cleanDayMark),
       // Peso por día, en kg. Ausente antes de la v11: empieza vacío.
       weights: cleanByDate(raw.weights, cleanWeight),
+      // Ánimo del día (v17), de 1 (muy mal) a 5 (muy bien).
+      moods: cleanByDate(raw.moods, cleanMood),
       freeNotes: cleanFreeNotes(raw.freeNotes),
       plannedWeeks: cleanPlannedWeeks(raw.plannedWeeks),
       // Semanas que ya usaron su único desbloqueo (v16): lunes → día en que
@@ -1661,6 +1670,25 @@ HT.store = (function () {
     return limpio;
   }
 
+  /* ── Ánimo del día (2.7.4) ─────────────────────────────────
+     Como el peso: no se cumple, no da EXP ni entra en porcentajes. Sí es
+     un registro, así que cuenta para la racha de registro y salva un día de
+     quedar en blanco. ─────────────────────────────────────────────── */
+
+  function getMood(dateKey) {
+    return state.moods[dateKey] !== undefined ? state.moods[dateKey] : null;
+  }
+
+  /** Guarda el ánimo de un día; null lo borra. */
+  function setMood(dateKey, value) {
+    if (!U.isValidKey(dateKey)) return null;
+    const limpio = value === null ? null : cleanMood(value);
+    if (limpio === null) delete state.moods[dateKey];
+    else state.moods[dateKey] = limpio;
+    commit('mood:change', dateKey);
+    return limpio;
+  }
+
   /** La marca completa de un día, o null si no tiene. */
   function getDayMark(dateKey) {
     return state.frozen[dateKey] || null;
@@ -2024,6 +2052,7 @@ HT.store = (function () {
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
     MAX_MISSIONS: MAX_MISSIONS,
     setHabitXp: setHabitXp, unlockWeekPlan: unlockWeekPlan, wasWeekUnlocked: wasWeekUnlocked,
+    getMood: getMood, setMood: setMood,
     rebaseAvoidXp: rebaseAvoidXp,
     getMissions: getMissions, getMissionWeeks: getMissionWeeks, acceptMissions: acceptMissions,
     getMissionPaid: getMissionPaid, setMissionPaid: setMissionPaid,

@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.7.1">
+<html lang="es" data-theme="dark" data-build="2.7.4">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -195,6 +195,11 @@
         </article>
 
         <article class="card note-card" id="noteCard">
+          <!-- Ánimo del día (2.7.4): tocar el mismo otra vez lo quita. -->
+          <div class="mood-row" role="group" aria-labelledby="moodLabel">
+            <span class="field__label" id="moodLabel">¿Cómo ha ido el día?</span>
+            <div class="mood-picker" id="moodPicker"></div>
+          </div>
           <label class="field__label" for="dayNote">Notas del día</label>
           <textarea class="input input--area note-grow" id="dayNote" rows="3"
                     placeholder="¿Cómo ha ido? Qué te ha ayudado, qué te ha frenado…"></textarea>
@@ -330,6 +335,17 @@
                 <table class="data-table" id="chartTable"></table>
               </div>
             </details>
+          </article>
+
+          <!-- Ánimo (2.7.4): el de los últimos 90 días cruzado con lo cumplido.
+               Va con las notas: si se ocultan, se oculta también. -->
+          <article class="card" id="moodCard" aria-labelledby="moodTitle">
+            <header class="card__head">
+              <h2 class="card__title" id="moodTitle">Ánimo</h2>
+              <span class="card__count" id="moodAvg">—</span>
+            </header>
+            <p class="card__text" id="moodLead">—</p>
+            <ul class="mood-list" id="moodList"></ul>
           </article>
 
           <!-- El peso no es un hábito: no se "cumple", así que va aparte y no
@@ -719,15 +735,25 @@
           <li class="stat"><p class="stat__value" id="hTotal">—</p><p class="stat__label">Veces cumplido</p></li>
         </ul>
 
+        <!-- A qué atributo del Sistema suma este hábito (2.7.3). -->
+        <article class="card" id="hAttrCard" aria-labelledby="hAttrTitle">
+          <header class="card__head"><h2 class="card__title" id="hAttrTitle">Atributos</h2></header>
+          <ul class="hattr-list" id="hAttrList"></ul>
+          <p class="card__text card__text--tight" id="hAttrNote">—</p>
+        </article>
+
         <article class="card" id="hSumsCard" aria-labelledby="hSumsTitle" hidden>
           <header class="card__head"><h2 class="card__title" id="hSumsTitle">Totales acumulados</h2></header>
+          <!-- Este mes contra el anterior a estas alturas (2.7.4). -->
+          <p class="month-compare" id="hMonthCompare" data-trend="same">—</p>
           <ul class="stat-grid" aria-label="Totales del hábito">
-            <!-- Tres etiquetas cambian según el hábito: con un máximo diario
-                 (Redes) "mejor día" sería el de más minutos, que es el peor. -->
+            <!-- Cuatro etiquetas cambian según el hábito: con un máximo diario
+                 (Redes) "mejor día" sería el de más minutos, que es el peor; y
+                 desde la 2.7.2 los checks, franjas y fallos cuentan por semana. -->
             <li class="stat"><p class="stat__value" id="hSumWeek">—</p><p class="stat__label">Esta semana</p></li>
             <li class="stat"><p class="stat__value" id="hSumMonth">—</p><p class="stat__label">Este mes</p></li>
             <li class="stat"><p class="stat__value" id="hSumTotal">—</p><p class="stat__label" id="hSumTotalLabel">Total histórico</p></li>
-            <li class="stat"><p class="stat__value" id="hSumAvg">—</p><p class="stat__label">Media por día</p></li>
+            <li class="stat"><p class="stat__value" id="hSumAvg">—</p><p class="stat__label" id="hSumAvgLabel">Media por día</p></li>
             <li class="stat"><p class="stat__value" id="hSumBest">—</p><p class="stat__label" id="hSumBestLabel">Mejor día</p></li>
             <li class="stat"><p class="stat__value" id="hSumDays">—</p><p class="stat__label" id="hSumDaysLabel">Racha apuntando</p></li>
           </ul>
