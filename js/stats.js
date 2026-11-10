@@ -1047,13 +1047,12 @@ HT.stats = (function () {
   /**
    * El próximo hito de un hábito a evitar (2.7.5): el primero que aún no se
    * ha cobrado —se cobran por la mejor racha— y cuántos días de la racha
-   * actual faltan para él. null si ya están todos.
+   * actual faltan para él. Desde la 2.9.0 siempre hay uno: tras los 100
+   * días se repite cada 30.
    */
   function nextAvoidMilestone(habit, todayKey) {
     const today = todayKey || U.todayKey();
-    const mejor = bestStreak(habit, today);
-    const m = AVOID_MILESTONES.filter(function (x) { return x.days > mejor; })[0];
-    if (!m) return null;
+    const m = avoidMilestoneAfter(bestStreak(habit, today));
     return { milestone: m, left: Math.max(1, m.days - currentStreak(habit, today)) };
   }
 
@@ -1412,16 +1411,40 @@ HT.stats = (function () {
     { days: 100, xp: 200, name: 'Cien días limpio' }
   ];
 
+  /* Hitos que no se acaban (2.9.0): pasados los 100 días, +50 cada 30 días
+     más sin caer (130, 160, 190…). Hasta entonces, un hábito a evitar daba
+     350 EXP en toda su vida y dejaba de premiar justo cuando más cuesta.
+     Se cobran igual que los fijos: por la mejor racha, una sola vez. */
+  const AVOID_REPEAT = { after: 100, every: 30, xp: 50 };
+
+  function repeatMilestone(days) {
+    return { days: days, xp: AVOID_REPEAT.xp, name: days + ' días limpio' };
+  }
+
   /** XP acumulada que merece una racha limpia de `streak` días. */
   function avoidXpFor(streak) {
-    return AVOID_MILESTONES.reduce(function (sum, m) {
+    const fijos = AVOID_MILESTONES.reduce(function (sum, m) {
       return streak >= m.days ? sum + m.xp : sum;
     }, 0);
+    const extra = streak > AVOID_REPEAT.after
+      ? Math.floor((streak - AVOID_REPEAT.after) / AVOID_REPEAT.every) : 0;
+    return fijos + extra * AVOID_REPEAT.xp;
   }
 
   /** El hito que se acaba de alcanzar con esa racha, si es justo hoy. */
   function avoidMilestoneAt(streak) {
-    return AVOID_MILESTONES.filter(function (m) { return m.days === streak; })[0] || null;
+    const fijo = AVOID_MILESTONES.filter(function (m) { return m.days === streak; })[0];
+    if (fijo) return fijo;
+    const pasado = streak - AVOID_REPEAT.after;
+    return pasado > 0 && pasado % AVOID_REPEAT.every === 0 ? repeatMilestone(streak) : null;
+  }
+
+  /** El primer hito por encima de un récord de `best` días. Siempre hay uno. */
+  function avoidMilestoneAfter(best) {
+    const fijo = AVOID_MILESTONES.filter(function (m) { return m.days > best; })[0];
+    if (fijo) return fijo;
+    const pasados = Math.floor((best - AVOID_REPEAT.after) / AVOID_REPEAT.every);
+    return repeatMilestone(AVOID_REPEAT.after + (pasados + 1) * AVOID_REPEAT.every);
   }
 
   /** ¿Este cambio de XP ha supuesto subir de nivel? Regla en un solo sitio. */
@@ -2025,7 +2048,7 @@ HT.stats = (function () {
     /* Un solo criterio para las rachas: las de los hábitos a evitar quedan
        fuera, igual que ya lo estaban en la ficha "Racha actual" y en el
        récord general. No se quedan sin premio — cobran sus propios hitos
-       de EXP a los 7, 30 y 100 días sin caer. */
+       de EXP a los 7, 30 y 100 días sin caer, y cada 30 más desde la 2.9.0. */
     const best = S.getHabits().reduce(function (max, h) {
       return isAvoid(h) ? max : Math.max(max, bestStreak(h, today));
     }, 0);
@@ -2080,7 +2103,7 @@ HT.stats = (function () {
     goalKind: goalKind, goalUnit: goalUnit, goalProgress: goalProgress,
     forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 
-    AVOID_MILESTONES: AVOID_MILESTONES,
+    AVOID_MILESTONES: AVOID_MILESTONES, AVOID_REPEAT: AVOID_REPEAT,
     isAvoid: isAvoid, failsOf: failsOf, limitOf: limitOf,
     isCapped: isCapped, slipsOf: slipsOf,
     weightSeries: weightSeries, weightSummary: weightSummary,

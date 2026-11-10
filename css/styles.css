@@ -4115,4 +4115,37 @@ body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bo
 #goalForm .absence-dates { margin-top: var(--sp-4); }
 #goalForm .absence-dates .field { margin-top: 0; }
 .goal-quick .btn { min-height: 34px; padding: 0 var(--sp-3); font-size: var(--fs-xs); }
+/* ── 2.9.0 · La EXP en cada tarjeta ──
+   Una ficha pequeña junto al nombre. Más viva cuanto más difícil; en verde
+   cuando ya está ganada; en los de evitar, el próximo hito. */
+.habit-card__xp {
+  flex: none;
+  align-self: center;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.habit-card__xp[data-xp="40"] { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--accent-text, var(--accent)); }
+.habit-card__xp[data-xp="50"] { border-color: color-mix(in srgb, var(--warning) 60%, var(--border)); color: var(--warning); }
+.habit-card__xp.is-earned {
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+.habit-card__xp--avoid { font-weight: 600; }
+[data-controls="mini"] .habit-card__xp { padding: 0 5px; font-size: 10px; }
+/* Barra y ficha en la misma fila: la barra se estira, la ficha a su derecha. */
+.habit-card__barrow { display: flex; align-items: center; gap: var(--sp-2); }
+.habit-card__barrow > .habit-card__bar { flex: 1; min-width: 0; }
+@media (max-width: 767.98px) {
+  .habit-card__xp { padding: 0 5px; font-size: 10px; }
+}
+
 .goal-pace { min-height: 1.2em; margin: var(--sp-3) 0; font-size: var(--fs-xs); color: var(--text-muted); }

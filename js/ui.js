@@ -501,7 +501,8 @@ HT.ui = (function () {
     els.rewardPerfect.title = 'Lo que da hoy un día perfecto';
 
     els.rewardAvoid.textContent = 'Hábitos a evitar: no dan EXP a diario, sino por aguantar — ' +
-      St.AVOID_MILESTONES.map(function (m) { return m.xp + ' a los ' + m.days + ' días'; }).join(', ') + '.';
+      St.AVOID_MILESTONES.map(function (m) { return m.xp + ' a los ' + m.days + ' días'; }).join(', ') +
+      ' y, después, ' + St.AVOID_REPEAT.xp + ' más cada ' + St.AVOID_REPEAT.every + ' días sin caer.';
 
     const f = St.forecastMax(hoy, S.getGame().points);
     els.forecastTitle.textContent = 'Previsión hasta el rango ' + f.rank.letter + ' (nivel ' + f.level + ')';
@@ -913,7 +914,13 @@ HT.ui = (function () {
     /* ── Barra de progreso ── */
     const track = el('div', { class: 'progress progress--sm habit-card__bar' });
     track.appendChild(el('div', { class: 'progress__fill' }));
-    li.appendChild(track);
+    // La EXP que da (2.9.0), a la derecha de la barra: es la única fila que
+    // tienen todas las tarjetas con hueco libre. Junto al nombre cortaba
+    // "Estiramientos" en el móvil, y con los controles alargaba las de − y +.
+    const barRow = el('div', { class: 'habit-card__barrow' });
+    barRow.appendChild(track);
+    barRow.appendChild(el('span', { class: 'habit-card__xp' }));
+    li.appendChild(barRow);
     li.appendChild(el('p', { class: 'habit-card__pct' }));
 
     // Sin métricas ni mensajes de racha: "Hoy" sirve para marcar hábitos.
@@ -958,6 +965,34 @@ HT.ui = (function () {
     // Nunca se pisa lo que el usuario está escribiendo.
     if (amountInput && document.activeElement !== amountInput) {
       amountInput.value = (Number(value) || 0) || '';
+    }
+
+    const xpNode = $('.habit-card__xp', li);
+    if (xpNode) {
+      let texto = '';
+      let titulo = '';
+      if (avoid) {
+        // Los de evitar no pagan por día: lo que se puede ganar es el
+        // siguiente hito, y depende de seguir sin caer.
+        const next = St.nextAvoidMilestone(habit, U.todayKey());
+        if (next) {
+          texto = '+' + next.milestone.xp + ' en ' + next.left + ' d';
+          titulo = next.milestone.name + ': +' + next.milestone.xp + ' EXP si aguantas ' +
+                   next.left + (next.left === 1 ? ' día más' : ' días más') + ' sin caer';
+        }
+        xpNode.removeAttribute('data-xp');
+      } else {
+        const xp = St.habitXp(habit, dateKey);
+        texto = '+' + xp;
+        titulo = St.tierName(xp) + ' · ' + xp + ' EXP' + (state === 'done' ? ', ya ganada' : ' al cumplirlo');
+        xpNode.dataset.xp = String(xp);
+      }
+      xpNode.textContent = texto;
+      xpNode.title = titulo;
+      xpNode.setAttribute('aria-label', titulo);
+      xpNode.hidden = !texto;
+      xpNode.classList.toggle('is-earned', !avoid && state === 'done');
+      xpNode.classList.toggle('habit-card__xp--avoid', avoid);
     }
 
     const timerBtn = $('.timer-btn', li);
@@ -3628,15 +3663,11 @@ HT.ui = (function () {
     els.hBestLabel.textContent = capped ? 'Récord sin pasarte' : 'Récord sin caer';
     els.hRateLabel.textContent = capped ? 'Días dentro (30 días)' : 'Días limpios (30 días)';
 
+    // Desde la 2.9.0 siempre hay un hito por delante.
     const hito = St.nextAvoidMilestone(habit, todayKey);
-    if (hito) {
-      els.hTotal.textContent = dias(hito.left);
-      els.hTotalLabel.textContent = 'Para +' + hito.milestone.xp + ' EXP (' + hito.milestone.days + ' días)';
-      els.hTotal.title = 'Siguiente hito: ' + hito.milestone.name;
-    } else {
-      els.hTotal.textContent = '✓';
-      els.hTotalLabel.textContent = 'Todos los hitos';
-    }
+    els.hTotal.textContent = dias(hito.left);
+    els.hTotalLabel.textContent = 'Para +' + hito.milestone.xp + ' EXP (' + hito.milestone.days + ' días)';
+    els.hTotal.title = 'Siguiente hito: ' + hito.milestone.name;
   }
 
   /**

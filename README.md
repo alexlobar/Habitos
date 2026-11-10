@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.8.1** · esquema de datos **v18**.
+Versión documentada: **2.9.0** · esquema de datos **v18**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -62,6 +62,17 @@ está la que viene). Durante una ausencia, otra línea dice hasta cuándo dura.
 Con **misiones** aceptadas (2.6.0), una tarjeta arriba con su progreso; tocarla
 lleva a Plan. Con la semana planificada y sin misiones, una línea invita a
 elegirlas.
+
+**La EXP en cada tarjeta** (2.9.0). A la derecha de la barra de progreso, una
+ficha pequeña con lo que da el hábito ese día (`+25`). Cuanto más difícil, más
+viva: violeta con *Difícil* (40) y ámbar con *Muy difícil* (50). En verde
+cuando ya está ganada. En los hábitos a evitar dice el próximo hito y cuánto
+falta (`+100 en 12 d`), porque no pagan por día. Siempre hay uno por delante:
+desde la 2.9.0, pasados los 100 días sin caer, +50 cada 30 días más
+(PROGRESION.md, apartado 3). No cuenta los bonos de día
+bueno o perfecto, que son del día y no del hábito. En el ordenador, al pasar
+el ratón por encima, explica la dificultad o el hito. Va junto a la barra y no junto al
+nombre para no cortar nombres largos en el móvil.
 
 **Plan.** Tres partes:
 

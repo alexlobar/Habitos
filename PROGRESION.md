@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.8.1** · esquema de datos **v18**.
+Versión documentada: **2.9.0** · esquema de datos **v18**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -164,6 +164,26 @@ fallo. Cobran por aguantar, por hábito:
 | 7 días seguidos sin caer | +50 |
 | 30 días seguidos sin caer | +100 (150 hasta la 2.6.x) |
 | 100 días seguidos sin caer | +200 (400 hasta la 2.6.x) |
+| Cada 30 días más (130, 160, 190…) | +50 (desde la 2.9.0) |
+
+**Hitos que no se acaban (2.9.0).** Hasta la 2.8.x un hábito a evitar daba 350
+EXP en toda su vida y, pasado el día 100, nada más. Ahora, tras los 100 días,
+cada 30 días más sin caer pagan 50 (`AVOID_REPEAT` y `avoidXpFor()`):
+
+| Récord sin caer | EXP acumulada del hábito |
+|---|---:|
+| 100 días | 350 |
+| 130 días | 400 |
+| 200 días | 500 |
+| 1 año | 750 |
+| 500 días | 1.000 |
+
+Se cobran igual que los fijos, por la mejor racha y una sola vez: si caes en
+el día 150, el siguiente (160) llega cuando una racha nueva supere los 150 y
+llegue a 160. Quien ya tuviera un récord de más de 130 días cobra de golpe, al
+actualizar, lo que le toque. En el nivel se nota poco (con cuatro hábitos a
+evitar, unas 7 EXP al día de media): es un premio a aguantar, no un atajo. La
+tarjeta de Hoy y la ficha del hábito siempre tienen un próximo hito.
 
 Al cambiar la tabla (2.7.0) no se quita EXP a nadie. Lo que sí se rehace, una
 vez, es la cuenta de lo cobrado (`avoidXpPaid`): baja a lo que daría la tabla
