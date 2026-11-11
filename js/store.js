@@ -11,7 +11,7 @@ HT.store = (function () {
 
   const KEY = 'habitTracker.v1';
   const BACKUP_KEY = 'habitTracker.corrupt-backup';
-  const VERSION = 18;
+  const VERSION = 19;
   const SLOTS = ['morning', 'afternoon', 'night'];
   const MAX_NAME = 40;
   /* Las notas ya no se cortan a 500: desde la 1.7.0 tienen sección propia y
@@ -59,6 +59,13 @@ HT.store = (function () {
   /* Objetivos a largo plazo (2.8.0): "100 entrenos este año". */
   const MAX_GOALS = 30;
   const MAX_GOAL_AMOUNT = 1e9;
+
+  /* Registro del Sistema (2.10.0): cada cambio de EXP con su motivo, más
+     los ascensos, logros y objetivos. Unas 1.500 líneas son ~150 KB y
+     cubren de sobra un año; las más viejas se van quitando. */
+  const MAX_SYSLOG = 1500;
+  const SYSLOG_KINDS = ['habit', 'bonus', 'avoid', 'mission', 'penalty', 'refund', 'plan',
+                        'level', 'rank', 'achievement', 'goal', 'start', 'reset'];
 
   let state = null;
   let listeners = [];
@@ -172,7 +179,8 @@ HT.store = (function () {
         theme: 'dark', fontSize: 'normal',
         hideDone: true, backupDays: 14,
         streakGoal: '2',
-        showDayBar: true, showNotes: true, showFreeze: true, showWeight: true,
+        showDayBar: true, showNotes: true, showFreeze: true, showWeight: true, showXp: true,
+        sysSound: false,
         hideWeight: false, hideAvoid: false, hideNotes: false,
         blankPenalty: true,
         weightGoal: null
@@ -188,6 +196,7 @@ HT.store = (function () {
       planUnlocks: {},
       missions: {},
       goals: {},
+      sysLog: {},
       // El hábito que mide el atributo Fuerza en Progreso.
       trainingHabitId: training.id,
       game: {
@@ -668,6 +677,38 @@ HT.store = (function () {
     return out;
   }
 
+  /**
+   * Una línea del registro: { t (ms), d (día), k (tipo), xp, n (texto),
+   * h (hábito, opcional: para ocultarla si el hábito está oculto) }.
+   */
+  function cleanLogEntry(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const t = Number(raw.t);
+    if (!isFinite(t) || t <= 0) return null;
+    if (!U.isValidKey(raw.d) || SYSLOG_KINDS.indexOf(raw.k) < 0) return null;
+    const xp = Math.round(Number(raw.xp) || 0);
+    const out = {
+      t: Math.round(t), d: raw.d, k: raw.k, xp: isFinite(xp) ? xp : 0,
+      n: typeof raw.n === 'string' ? raw.n.slice(0, 120) : ''
+    };
+    if (typeof raw.h === 'string' && raw.h) out.h = raw.h;
+    return out;
+  }
+
+  /** Las MAX_SYSLOG líneas más recientes. */
+  function cleanSysLog(raw) {
+    if (!isObj(raw)) return {};
+    const out = {};
+    Object.keys(raw)
+      .filter(function (id) { return /^l_[\w-]{1,30}$/.test(id); })
+      .map(function (id) { return { id: id, e: cleanLogEntry(raw[id]) }; })
+      .filter(function (x) { return x.e; })
+      .sort(function (a, b) { return b.e.t - a.e.t; })
+      .slice(0, MAX_SYSLOG)
+      .forEach(function (x) { out[x.id] = x.e; });
+    return out;
+  }
+
   /** Ánimo de un día: un entero del 1 al 5, o null. */
   function cleanMood(raw) {
     const n = Number(raw);
@@ -740,6 +781,10 @@ HT.store = (function () {
           ? Number(s.backupDays) : 14,
         streakGoal: STREAK_GOALS.indexOf(s.streakGoal) >= 0 ? s.streakGoal : '2',
         showDayBar: s.showDayBar !== false,
+        // La EXP de cada tarjeta de Hoy (2.9.1): se ve salvo que se apague.
+        showXp: s.showXp !== false,
+        // Sonido de las ventanas del Sistema (2.9.4): apagado salvo que se encienda.
+        sysSound: s.sysSound === true,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false,
         showWeight: s.showWeight !== false,
@@ -776,6 +821,9 @@ HT.store = (function () {
       // Objetivos a largo plazo (v18): id → objetivo. Objeto y no lista para
       // que dos ventanas que tocan objetivos distintos no se pisen al mezclar.
       goals: cleanGoals(raw.goals, byId),
+      // Registro del Sistema (v19): id → línea. Objeto y no lista, como los
+      // objetivos, para que dos ventanas no se pisen las líneas al mezclar.
+      sysLog: cleanSysLog(raw.sysLog),
       // Hasta la v13 vivía en workout.linkedHabitId, junto a la tabla de
       // ejercicios. La tabla, las rutinas y las series se descartan aquí:
       // la sección salió en la 2.2.0 y el hábito es lo único que sigue.
@@ -981,6 +1029,17 @@ HT.store = (function () {
     if (incoming < 13) migrateDropPlanner();
     // v16: los hitos de evitar pasan de 50/150/400 a 50/100/200.
     if (incoming < 16) state.game.avoidXpRebase = true;
+    // v19: el registro empieza aquí, con la EXP que ya se tenía. Lo de antes
+    // no se guardaba y no se puede reconstruir con su motivo.
+    if (incoming < 19 && !Object.keys(state.sysLog).length) logStart();
+  }
+
+  function logStart() {
+    const id = 'l_' + Date.now().toString(36) + 'start';
+    state.sysLog[id] = {
+      t: Date.now(), d: U.todayKey(), k: 'start', xp: 0,
+      n: 'Empieza el registro · ' + state.game.points + ' EXP acumulada hasta hoy'
+    };
   }
 
   function load() {
@@ -1890,6 +1949,8 @@ HT.store = (function () {
         ? Number(next.backupDays) : 14,
       streakGoal: STREAK_GOALS.indexOf(next.streakGoal) >= 0 ? next.streakGoal : '2',
       showDayBar: next.showDayBar !== false,
+      showXp: next.showXp !== false,
+      sysSound: next.sysSound === true,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false,
       showWeight: next.showWeight !== false,
@@ -2160,6 +2221,38 @@ HT.store = (function () {
     save();
   }
 
+  /* ── Registro del Sistema (2.10.0) ────────────────────────── */
+
+  /**
+   * Apunta una línea: { k, xp, n, h?, d? }. `d` es el día al que se refiere
+   * (por defecto hoy). Avisa con un evento 'game:' para que el repintado no
+   * vuelva a lanzar el cálculo de misiones y días en blanco.
+   */
+  let lastLogT = 0;
+
+  function addLog(entry) {
+    // Dos líneas del mismo clic (hábito y bono) caen en el mismo milisegundo:
+    // se separan uno para que la lista respete el orden en que pasaron.
+    const t = Math.max(Date.now(), lastLogT + 1);
+    lastLogT = t;
+    const e = cleanLogEntry(Object.assign({ t: t, d: U.todayKey() }, entry));
+    if (!e) return;
+    const id = 'l_' + e.t.toString(36) + Math.random().toString(36).slice(2, 7);
+    state.sysLog[id] = e;
+
+    const ids = Object.keys(state.sysLog);
+    if (ids.length > MAX_SYSLOG + 50) state.sysLog = cleanSysLog(state.sysLog);
+    save();
+    emit('game:log');
+  }
+
+  /** Todas las líneas, de la más reciente a la más antigua. */
+  function getSysLog() {
+    return Object.keys(state.sysLog)
+      .map(function (id) { return Object.assign({ id: id }, state.sysLog[id]); })
+      .sort(function (a, b) { return b.t - a.t; });
+  }
+
   /* ── Mantenimiento ────────────────────────────────────────── */
 
   function replaceState(raw) {
@@ -2185,6 +2278,7 @@ HT.store = (function () {
     MAX_FREEZES: MAX_FREEZES,
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
     MAX_MISSIONS: MAX_MISSIONS, MAX_GOALS: MAX_GOALS, MAX_TIMER: MAX_TIMER,
+    addLog: addLog, getSysLog: getSysLog,
     getGoals: getGoals, getGoal: getGoal, addGoal: addGoal, updateGoal: updateGoal,
     deleteGoal: deleteGoal, restoreGoal: restoreGoal, setGoalDone: setGoalDone,
     setHabitXp: setHabitXp, unlockWeekPlan: unlockWeekPlan, wasWeekUnlocked: wasWeekUnlocked,

@@ -141,6 +141,10 @@
         // Solo cambia la lista de Notas, y mientras se escribe ni eso.
         dirty.notes = true;
         break;
+      case 'game:log':
+        // Una línea nueva en el registro: solo cambia el Sistema.
+        dirty.progress = true;
+        break;
       case 'game:points':
       case 'game:achievement':
       case 'game:streak':
@@ -175,7 +179,7 @@
    * lo que permite detectar la subida de nivel una sola vez, sin depender
    * de quién reparta ni de qué pantalla esté abierta.
    */
-  function grantXp(amount) {
+  function grantXp(amount, why) {
     const delta = Math.floor(Number(amount) || 0);
     if (!delta) return false;
 
@@ -183,9 +187,20 @@
     S.addPoints(delta);
     const after = S.getGame().points;
 
+    // Registro del Sistema (2.10.0): lo que de verdad ha cambiado (sumar a 0
+    // puede dar menos de lo pedido) y por qué. `why` = { k, n, h?, d? }.
+    if (after !== before) {
+      S.addLog(Object.assign({ k: 'plan', n: 'Ajuste de EXP' }, why || {}, { xp: after - before }));
+    }
+
     if (!St.leveledUp(before, after)) return false;
     onLevelUp(St.levelInfo(after));
     return true;
+  }
+
+  /** " (10 nov)" si el día no es hoy: en el registro, para saber a qué día fue. */
+  function dayTag(dateKey) {
+    return dateKey === today ? '' : ' (' + U.formatShort(U.fromKey(dateKey)) + ')';
   }
 
   /* La presentación va aparte de la detección: cambiar la celebración no
@@ -197,6 +212,10 @@
     // registro no, así que una excepción pintando la ventana no puede
     // llevarse por delante la fecha del ascenso.
     S.recordLevelUp(info.level, today);
+    S.addLog({ k: 'level', xp: 0, n: 'Subida al nivel ' + info.level });
+    if (info.rank.from === info.level) {
+      S.addLog({ k: 'rank', xp: 0, n: 'Nuevo rango ' + info.rank.letter + ' · ' + info.rank.name });
+    }
     UI.showLevelUp(info.level, info.rank.name, info.rank);
   }
 
@@ -213,16 +232,29 @@
     const afterPerfect = St.dayStats(dateKey).perfect;
     const afterBonus = St.dayBonus(dateKey);
 
-    let delta = afterBonus - beforeBonus;
     // Cada hábito paga lo suyo ese día (2.7.0): desmarcar devuelve lo mismo.
-    if (afterDone !== beforeDone) delta += (afterDone ? 1 : -1) * St.habitXp(habit, dateKey);
-    if (delta) grantXp(delta);
+    // Hábito y bono van por separado para que el registro diga qué fue cada cosa.
+    const habitDelta = afterDone !== beforeDone ? (afterDone ? 1 : -1) * St.habitXp(habit, dateKey) : 0;
+    const bonusDelta = afterBonus - beforeBonus;
+    const delta = habitDelta + bonusDelta;
+    if (habitDelta) {
+      grantXp(habitDelta, { k: 'habit', h: habit.id, d: dateKey,
+        n: (habitDelta > 0 ? 'Cumplido: ' : 'Desmarcado: ') + habit.name + dayTag(dateKey) });
+    }
+    if (bonusDelta) {
+      grantXp(bonusDelta, { k: 'bonus', d: dateKey,
+        n: (bonusDelta < 0 ? 'Bono retirado' : afterPerfect ? 'Bono de día perfecto' : 'Bono de día bueno') +
+           dayTag(dateKey) });
+    }
 
     const effects = S.getSettings().effects;
 
     if (afterDone && !beforeDone) {
       UI.pulse(habit.id);
       if (effects) UI.buzz(25);
+      // La EXP ganada vuela a la chapa (2.9.2). Lleva los bonos del día si
+      // este hábito los ha cambiado, que es lo que de verdad ha sumado.
+      if (effects && delta > 0) UI.floatXp(habit.id, delta);
 
       const streak = St.currentStreak(habit, today);
       if (streak >= 3) {
@@ -231,10 +263,9 @@
       }
     }
 
-    if (afterPerfect && !beforePerfect) {
-      UI.toast('Día perfecto. Todos los hábitos cumplidos.', { type: 'success', icon: '⭐' });
-      if (effects) { UI.celebrate(); UI.buzz([40, 60, 40]); }
-    }
+    // Día perfecto (2.9.3): ventana del Sistema "Misión diaria completada".
+    // Sin efectos, el aviso de siempre (lo decide la UI).
+    if (afterPerfect && !beforePerfect) UI.showPerfectDay(dateKey, today);
 
     syncProgressState();
   }
@@ -263,16 +294,24 @@
     const pagado = S.getGame().avoidXpPaid;
     if (debido <= pagado) return;
 
+    // Qué hábitos acaban de llegar a un hito, para el aviso y el registro.
+    const hoy = S.getHabits().filter(St.isAvoid).map(function (h) {
+      return { h: h, hito: St.avoidMilestoneAt(St.currentStreak(h, today)) };
+    }).filter(function (x) { return x.hito; });
+
     // Se apunta antes de pagar: si algo fallase, se cobra de menos y no de más.
     S.setAvoidXpPaid(debido);
-    grantXp(debido - pagado);
+    grantXp(debido - pagado, hoy.length === 1
+      ? { k: 'avoid', h: hoy[0].h.id, n: hoy[0].hito.name + ': ' + hoy[0].h.name }
+      : { k: 'avoid', n: hoy.length
+          ? 'Hitos: ' + hoy.map(function (x) { return x.h.name; }).join(', ')
+          : 'Hitos de hábitos a evitar' });
 
     // La EXP se cobra igual, pero con los de evitar ocultos el aviso no
     // dice el nombre: sería justo lo que se quiere esconder.
-    S.getHabits().filter(St.isAvoid).forEach(function (h) {
-      if (UI.isHiddenHabit(h)) return;
-      const hito = St.avoidMilestoneAt(St.currentStreak(h, today));
-      if (hito) UI.toast(hito.name + ': ' + h.name, { type: 'achievement', icon: '💧' });
+    hoy.forEach(function (x) {
+      if (UI.isHiddenHabit(x.h)) return;
+      UI.toast(x.hito.name + ': ' + x.h.name, { type: 'achievement', icon: '💧' });
     });
   }
 
@@ -291,6 +330,7 @@
     St.earnedAchievements(today).forEach(function (id) {
       if (S.unlockAchievement(id)) {
         const ach = St.achievementById(id);
+        S.addLog({ k: 'achievement', xp: 0, n: 'Logro: ' + ach.icon + ' ' + ach.name });
         UI.toast('Logro desbloqueado: ' + ach.name, { type: 'achievement', icon: ach.icon });
       }
     });
@@ -308,6 +348,9 @@
 
       if (p.status === 'done' && !g.doneAt) {
         S.setGoalDone(g.id, today);
+        S.addLog({ k: 'goal', xp: 0, h: p.habit.id,
+                   n: 'Objetivo cumplido: ' + p.habit.name + ', ' +
+                      new Intl.NumberFormat('es-ES').format(g.amount) + ' ' + St.goalUnit(p.habit, g.amount) });
         dirty.progress = true;
         dirty.habit = true;
         if (UI.isHiddenHabit(p.habit)) return;
@@ -612,7 +655,10 @@
       if (r.xp === pagado) return;
 
       S.setMissionPaid(wk, r.xp);
-      grantXp(r.xp - pagado);
+      const semana = 'semana del ' + U.formatShort(U.fromKey(wk));
+      grantXp(r.xp - pagado, { k: 'mission',
+        n: r.xp < pagado ? 'Misión que dejó de cumplirse (' + semana + ')'
+         : r.all ? 'Las tres misiones (' + semana + ')' : 'Misión cumplida (' + semana + ')' });
 
       if (r.xp > pagado) {
         UI.toast(r.all ? '¡Las tres misiones cumplidas! +' + (r.xp - pagado) + ' EXP'
@@ -640,7 +686,10 @@
       if (St.isBlankDay(k)) return;
       const n = libro[k];
       S.clearPenalty(k);
-      if (n) { grantXp(n); devuelto += n; }
+      if (n) {
+        grantXp(n, { k: 'refund', d: k, n: 'Penalización anulada: día ' + U.formatShort(U.fromKey(k)) + ' rellenado' });
+        devuelto += n;
+      }
     });
 
     if (S.getSettings().blankPenalty) {
@@ -657,10 +706,21 @@
         const n = Math.max(0, Math.min(St.XP.blankDay, pts - suelo));
 
         S.setPenalty(k, n);
-        if (n) grantXp(-n);
+        const quePaso = 'Penalización: día ' + U.formatShort(U.fromKey(k)) + ' en blanco';
+        if (n) grantXp(-n, { k: 'penalty', d: k, n: quePaso });
+        else S.addLog({ k: 'penalty', xp: 0, d: k, n: quePaso + ' (sin EXP que quitar en este nivel)' });
         restado += n;
         nuevos.push(k);
       }
+    }
+
+    // Con efectos, ventanas del Sistema (2.9.4): roja al penalizar y otra al
+    // anularla. Sin efectos, los avisos de siempre.
+    const irAlDia = function () { goToDate(nuevos[nuevos.length - 1]); UI.setView('today'); };
+    if (UI.motionOk()) {
+      if (nuevos.length) UI.showPenalty(restado, nuevos, irAlDia);
+      if (devuelto) UI.showRefund(devuelto);
+      return;
     }
 
     if (nuevos.length) {
@@ -672,12 +732,28 @@
                (nuevos.length === 1 ? ' Si lo rellenas' : ' Si los rellenas') + ', se devuelven.', {
         icon: '⬜',
         duration: 9000,
-        action: { label: 'Ir al día', onClick: function () { goToDate(nuevos[nuevos.length - 1]); UI.setView('today'); } }
+        action: { label: 'Ir al día', onClick: irAlDia }
       });
     }
     if (devuelto) {
       UI.toast('Día rellenado: +' + devuelto + ' EXP devueltos.', { type: 'success', icon: '↩' });
     }
+  }
+
+  /* ── Misiones diarias (2.9.4) ─────────────────────────────
+     La primera vez que se abre la app cada día, la ventana del Sistema con
+     lo que queda por hacer hoy. Una vez por día y dispositivo (se apunta
+     aparte, no en tus datos), solo con efectos y si queda algo. ────────── */
+
+  const DAILY_KEY = 'habitTracker.dailySeen';
+
+  function maybeDailyMissions() {
+    if (!UI.motionOk() || document.hidden) return;
+    let visto = null;
+    try { visto = localStorage.getItem(DAILY_KEY); } catch (e) { return; }
+    if (visto === today) return;
+    try { localStorage.setItem(DAILY_KEY, today); } catch (e) { /* da igual */ }
+    UI.showDailyMissions(today);
   }
 
   /* ── Navegación entre días ────────────────────────────────── */
@@ -982,7 +1058,10 @@
     const antes = St.dayBonus(today);
     const result = mutate();
     const delta = St.dayBonus(today) - antes;
-    if (delta) grantXp(delta);
+    if (delta) {
+      grantXp(delta, { k: 'plan',
+        n: delta > 0 ? 'Bono de hoy (cambio de plan o ausencia)' : 'Bono de hoy retirado (cambio de plan o ausencia)' });
+    }
     syncProgressState();
     return result;
   }
@@ -1386,6 +1465,7 @@
                         'Tus hábitos y todo su histórico se conservan. ¿Continuar?')) return;
 
     S.resetProgress();
+    S.addLog({ k: 'reset', xp: 0, n: 'Progresión reiniciada: EXP, nivel y logros a cero' });
     UI.toast('Progresión reiniciada. Tus hábitos siguen intactos.', { type: 'success', icon: '↺' });
   }
 
@@ -1522,6 +1602,8 @@
     dirty.all = true;
     dirty.economy = true;        // ayer acaba de cerrarse, y quizá una semana
     scheduleFlush();
+    // Día nuevo con la app abierta (o al volver a ella): misiones del día.
+    setTimeout(maybeDailyMissions, 400);
   }
 
   function scheduleMidnight() {
@@ -2124,6 +2206,12 @@
       if (e.key === 'Escape') UI.closeGoalModal();
     });
 
+    // Registro del Sistema (2.10.0)
+    U.$$('input[name="logFilter"]').forEach(function (r) {
+      r.addEventListener('change', function () { if (r.checked) UI.setLogFilter(r.value); });
+    });
+    els.btnSysLogMore.addEventListener('click', UI.moreSysLog);
+
     // Temporizador (2.8.0)
     els.btnTimerPause.addEventListener('click', toggleTimerPause);
     els.btnTimerFinish.addEventListener('click', finishTimer);
@@ -2219,6 +2307,9 @@
     els.setEffects.addEventListener('click', function () {
       S.setSettings({ effects: !S.getSettings().effects });
     });
+    els.setSysSound.addEventListener('click', function () {
+      S.setSettings({ sysSound: !S.getSettings().sysSound });
+    });
     els.setBlankPenalty.addEventListener('click', function () {
       const on = !S.getSettings().blankPenalty;
       S.setSettings({ blankPenalty: on });
@@ -2256,6 +2347,7 @@
     };
     toggle(els.setHideDone, 'hideDone');
     toggle(els.setDayBar, 'showDayBar');
+    toggle(els.setShowXp, 'showXp');
     toggle(els.setShowFreeze, 'showFreeze');
     toggle(els.setShowNotes, 'showNotes');
     toggle(els.setShowWeight, 'showWeight');
@@ -2287,7 +2379,10 @@
 
     // Cambio de día tras suspender el equipo o dejar la pestaña de fondo
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) refreshDate();
+      if (document.hidden) return;
+      refreshDate();
+      // Si la app llevaba abierta de fondo desde ayer, las misiones del día.
+      setTimeout(maybeDailyMissions, 400);
     });
     window.addEventListener('focus', refreshDate);
 
@@ -2502,6 +2597,12 @@
 
     // El último, porque es el que hay que ver aunque haya salido otro.
     checkBuildMatch();
+
+    // Abriendo desde un atajo del icono se va directo a lo pedido, sin la
+    // ventana de misiones del día por delante.
+    let atajo = false;
+    try { atajo = !!new URLSearchParams(location.search).get('go'); } catch (e) { atajo = false; }
+    if (!atajo) setTimeout(maybeDailyMissions, 600);
 
     openShortcut();
   }

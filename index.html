@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.9.0">
+<html lang="es" data-theme="dark" data-build="2.10.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -97,6 +97,8 @@
             <div class="progress__fill" id="dayProgressFill" style="--pct:0"></div>
           </div>
           <p class="day-summary__count"><strong id="doneCount">0</strong>/<span id="totalCount">0</span></p>
+          <!-- Nota del día (2.10.0): S, A, B, C, D o E según lo cumplido. -->
+          <span class="day-grade" id="dayGrade" hidden>—</span>
         </div>
 
         <button type="button" class="day-back" id="btnToday" hidden>Volver a hoy</button>
@@ -692,6 +694,42 @@
             </div>
           </details>
 
+          <!-- Registro del Sistema (2.10.0): toda la EXP que entra y sale,
+               con su motivo, y los ascensos, logros y objetivos. -->
+          <details class="card fold syslog" id="sysLogCard" data-fold="syslog">
+            <summary class="fold__head">
+              <h2 class="fold__title">Registro del Sistema</h2>
+              <span class="fold__count" id="sysLogCount">0</span>
+            </summary>
+            <div class="fold__body">
+              <ul class="syslog__totals" id="sysLogTotals" aria-label="EXP ganada"></ul>
+
+              <h3 class="syslog__sub">De dónde sale tu EXP · últimos 30 días</h3>
+              <ul class="syslog__sources" id="sysLogSources"></ul>
+
+              <div class="seg seg--compact syslog__filter" role="radiogroup" aria-label="Qué enseñar del registro">
+                <label class="seg__opt">
+                  <input type="radio" name="logFilter" value="all" checked>
+                  <span>Todo</span>
+                </label>
+                <label class="seg__opt">
+                  <input type="radio" name="logFilter" value="xp">
+                  <span>EXP</span>
+                </label>
+                <label class="seg__opt">
+                  <input type="radio" name="logFilter" value="events">
+                  <span>Hitos</span>
+                </label>
+              </div>
+
+              <ol class="syslog__list" id="sysLogList"></ol>
+              <p class="card__text card__text--tight" id="sysLogEmpty" hidden>Aún no hay nada en el registro.</p>
+              <div class="btn-row">
+                <button type="button" class="btn btn--ghost" id="btnSysLogMore" hidden>Ver más</button>
+              </div>
+            </div>
+          </details>
+
           <details class="card fold ascents" id="ascents" data-fold="ascents">
             <summary class="fold__head">
               <h2 class="fold__title">Ascensos</h2>
@@ -905,6 +943,17 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
+          <!-- Sonido de las ventanas del Sistema (2.9.4). -->
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="sysSoundLabel">Sonido del Sistema</span>
+              <span class="field-row__hint">Un aviso corto al abrirse cada ventana del Sistema: nivel, día perfecto, misiones, penalización.</span>
+            </span>
+            <button type="button" class="switch" id="setSysSound"
+                    role="switch" aria-checked="false" aria-labelledby="sysSoundLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
           <div class="field-row">
             <span class="field-row__text">
               <span id="blankPenaltyLabel">Restar EXP por días en blanco</span>
@@ -948,6 +997,17 @@
             <span id="dayBarLabel">Barra de progreso del día</span>
             <button type="button" class="switch" id="setDayBar"
                     role="switch" aria-checked="true" aria-labelledby="dayBarLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <!-- La ficha +25 / +40… de cada tarjeta (2.9.1). -->
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="xpSwLabel">EXP de cada hábito</span>
+              <span class="field-row__hint">La ficha +25, +40… junto a la barra de cada tarjeta.</span>
+            </span>
+            <button type="button" class="switch" id="setShowXp"
+                    role="switch" aria-checked="true" aria-labelledby="xpSwLabel">
               <span class="switch__thumb"></span>
             </button>
           </div>
@@ -1540,9 +1600,11 @@
       <span class="levelup__corner levelup__corner--tl" aria-hidden="true"></span>
       <span class="levelup__corner levelup__corner--br" aria-hidden="true"></span>
       <p class="levelup__tag">Sistema</p>
-      <p class="levelup__title">Subida de nivel</p>
+      <p class="levelup__title" id="levelUpTitle">Subida de nivel</p>
       <p class="levelup__level" id="levelUpLevel">1</p>
       <p class="levelup__rank" id="levelUpRank" hidden>Nuevo rango</p>
+      <!-- Lista de la ventana de misiones diarias (2.9.4). -->
+      <ul class="levelup__list" id="levelUpList" hidden></ul>
       <p class="levelup__hint" id="levelUpHint">Nivel 1 alcanzado</p>
     </div>
   </div>

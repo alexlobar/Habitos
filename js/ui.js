@@ -107,7 +107,9 @@ HT.ui = (function () {
       'lvGhost', 'lvAhead', 'statWeekGhost', 'statWeekAhead', 'statMonthGhost', 'statMonthAhead',
       'attrList', 'statQuests', 'statTrophies',
       'ascents', 'ascentsCount', 'ascentsList', 'ascentsNote',
-      'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint',
+      'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint', 'levelUpTitle', 'levelUpList',
+      'setSysSound', 'dayGrade',
+      'sysLogCard', 'sysLogCount', 'sysLogTotals', 'sysLogSources', 'sysLogList', 'sysLogEmpty', 'btnSysLogMore',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList', 'achCard', 'achCount',
       'statWeekBar', 'statMonthBar',
@@ -124,7 +126,7 @@ HT.ui = (function () {
       'setAccent', 'btnResetAccent', 'setEffects',
       'setControls', 'allHabitsCount', 'setTheme', 'setFontSize', 'setBackup',
       'backupStatus', 'backupIcon', 'backupTitle', 'backupHint', 'btnBackupNow',
-      'setHideDone', 'setDayBar', 'setShowFreeze', 'setShowNotes',
+      'setHideDone', 'setDayBar', 'setShowXp', 'setShowFreeze', 'setShowNotes',
       'setHideWeight', 'setHideAvoid', 'setHideNotes',
       'btnResetProgress', 'noteCard', 'btnBackFromProgress',
       'notesToday', 'notesTodayLabel', 'notesSearch', 'notesList', 'notesCount',
@@ -262,6 +264,95 @@ HT.ui = (function () {
 
   /* ── Cabecera ─────────────────────────────────────────────── */
 
+  /* ── Números y anillo vivos (2.9.3) ───────────────────────
+     Solo con Efectos activados y sin "reducir movimiento"; si no, el valor
+     se pone tal cual, como siempre. La primera vez tampoco se anima: al
+     abrir la app no hay "antes" del que venir. ─────────────────────── */
+
+  function motionOk() {
+    return S.getSettings().effects && !prefersReducedMotion();
+  }
+
+  /** Cambia un número pequeño con un giro, hacia arriba si sube. */
+  function rollText(node, value) {
+    const nuevo = String(value);
+    const antes = node.textContent;
+    if (antes === nuevo) return;
+    node.textContent = nuevo;
+    if (!motionOk() || antes === '' || antes === '—' || isNaN(Number(antes))) return;
+    const clase = Number(nuevo) > Number(antes) ? 'is-roll-up' : 'is-roll-down';
+    node.classList.remove('is-roll-up', 'is-roll-down');
+    void node.offsetWidth;                  // reinicia la animación
+    node.classList.add(clase);
+  }
+
+  /** Cuenta de un número al siguiente, como un marcador. */
+  function countTo(node, value) {
+    const desde = Number(node.dataset.val);
+    node.dataset.val = String(value);
+    if (node._tween) { cancelAnimationFrame(node._tween); node._tween = null; }
+    if (!motionOk() || !isFinite(desde) || node.dataset.val === '' || desde === value ||
+        Math.abs(value - desde) > 100000) {
+      node.textContent = fmtNum.format(value);
+      return;
+    }
+    const t0 = performance.now();
+    const dur = 650;
+    const paso = function (now) {
+      const k = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 3);      // frena al final
+      node.textContent = fmtNum.format(Math.round(desde + (value - desde) * e));
+      node._tween = k < 1 ? requestAnimationFrame(paso) : null;
+    };
+    node._tween = requestAnimationFrame(paso);
+    // Con la pestaña de fondo no hay fotogramas: que quede bien igualmente.
+    setTimeout(function () { if (node.dataset.val === String(value)) node.textContent = fmtNum.format(value); }, dur + 200);
+  }
+
+  /**
+   * El anillo de nivel de la chapa. Se llena despacio con un destello al
+   * ganar EXP; al subir de nivel termina de llenarse, se vacía y se vuelve
+   * a llenar hasta lo que llevas del nivel nuevo.
+   */
+  let ringLast = null;
+  let ringTimer = null;
+
+  function paintRing(info) {
+    const ring = els.levelRing;
+    const antes = ringLast;
+    ringLast = { level: info.level, pct: info.pct, xp: info.xp };
+
+    if (!antes || !motionOk()) {
+      clearTimeout(ringTimer);
+      ring.classList.add('is-instant');
+      ring.style.setProperty('--ring-pct', info.pct);
+      void ring.offsetWidth;
+      ring.classList.remove('is-instant');
+      return;
+    }
+    if (antes.level === info.level && antes.pct === info.pct && antes.xp === info.xp) return;
+
+    clearTimeout(ringTimer);
+    if (info.level > antes.level) {
+      ring.style.setProperty('--ring-pct', 100);
+      ringTimer = setTimeout(function () {
+        ring.classList.add('is-instant');
+        ring.style.setProperty('--ring-pct', 0);
+        void ring.offsetWidth;
+        ring.classList.remove('is-instant');
+        ring.style.setProperty('--ring-pct', ringLast.pct);
+      }, 750);
+    } else {
+      ring.style.setProperty('--ring-pct', info.pct);
+    }
+
+    if (info.xp > antes.xp) {
+      ring.classList.remove('is-charging');
+      void ring.offsetWidth;
+      ring.classList.add('is-charging');
+    }
+  }
+
   function renderHeader(dateKey, todayKey) {
     const date = U.fromKey(dateKey);
     const day = St.dayStats(dateKey);
@@ -278,8 +369,22 @@ HT.ui = (function () {
     els.nextDay.disabled = isToday;
     els.btnToday.hidden = isToday;
 
-    els.doneCount.textContent = day.done;
+    // El contador del día rueda al cambiar (2.9.3).
+    rollText(els.doneCount, day.done);
     els.totalCount.textContent = day.total;
+
+    // Nota del día (2.10.0). Hoy no sale hasta cumplir algo: una E a las
+    // ocho de la mañana no dice nada.
+    const nota = St.dayGrade(dateKey, day);
+    const verNota = !!nota && !(isToday && day.done === 0);
+    els.dayGrade.hidden = !verNota;
+    if (verNota) {
+      rollText(els.dayGrade, nota.letter);
+      els.dayGrade.dataset.grade = nota.letter;
+      els.dayGrade.title = (isToday ? 'Hoy vas en rango ' : 'Nota del día: ') + nota.letter +
+                           ' (' + nota.pct + '% cumplido)';
+      els.dayGrade.setAttribute('aria-label', els.dayGrade.title);
+    }
 
     els.dayProgressFill.style.setProperty('--pct', day.pct);
     els.dayProgress.setAttribute('aria-valuenow', day.pct);
@@ -287,11 +392,11 @@ HT.ui = (function () {
 
     renderStreakChip(todayKey);
 
-    els.levelNum.textContent = info.level;
+    rollText(els.levelNum, info.level);
     els.levelRankLetter.textContent = info.rank.letter;
     els.levelBadge.dataset.rank = info.rank.id;
-    els.pointsValue.textContent = info.xp;
-    els.levelRing.style.setProperty('--ring-pct', info.pct);
+    countTo(els.pointsValue, info.xp);
+    paintRing(info);
     els.levelBadge.setAttribute(
       'aria-label',
       'Nivel ' + info.level + ', rango ' + info.rank.name + ', ' + info.xp +
@@ -654,12 +759,162 @@ HT.ui = (function () {
    * toca la detección.
    */
   let levelUpTimer = null;
+  // Ventanas del Sistema esperando turno (2.9.3): un día perfecto suele
+  // traer a la vez una subida de nivel, y se enseñan una detrás de otra.
+  const sysQueue = [];
 
   function hideLevelUp() {
     clearTimeout(levelUpTimer);
     levelUpTimer = null;
     els.levelUp.hidden = true;
     els.levelUp.classList.remove('is-open');
+    if (sysQueue.length) setTimeout(function () { openSysWindow(sysQueue.shift()); }, 280);
+  }
+
+  /** El color de un rango (el mismo de la chapa), leído de la tabla CSS. */
+  function rankColor(rankId) {
+    const probe = document.createElement('span');
+    probe.dataset.rank = rankId;
+    probe.hidden = true;
+    document.body.appendChild(probe);
+    const c = getComputedStyle(probe).getPropertyValue('--rank-color').trim();
+    probe.remove();
+    return /^#[0-9a-f]{6}$/i.test(c) ? c : null;
+  }
+
+  /**
+   * Abre la ventana del Sistema con lo que diga `w`:
+   *   { kind, title, big, chip, chipColor, hint, duration, confetti }.
+   * Si ya hay una abierta, espera su turno.
+   */
+  function openSysWindow(w) {
+    if (!els.levelUp.hidden) { sysQueue.push(w); return; }
+
+    els.levelUp.dataset.kind = w.kind;
+    els.levelUpTitle.textContent = w.title;
+    els.levelUpLevel.textContent = w.big;
+    els.levelUpRank.textContent = w.chip || '';
+    els.levelUpRank.hidden = !w.chip;
+    if (w.chipColor) els.levelUp.style.setProperty('--win-rank', w.chipColor);
+    else els.levelUp.style.removeProperty('--win-rank');
+    els.levelUpHint.textContent = w.hint;
+
+    // Lista de líneas (misiones diarias): [{ icon, text, xp }].
+    els.levelUpList.textContent = '';
+    (w.list || []).forEach(function (it) {
+      const li = el('li', { class: 'levelup__item' });
+      li.appendChild(el('span', { class: 'levelup__item-icon', 'aria-hidden': 'true', text: it.icon }));
+      li.appendChild(el('span', { class: 'levelup__item-text', text: it.text }));
+      if (it.xp) li.appendChild(el('span', { class: 'levelup__item-xp', text: it.xp }));
+      els.levelUpList.appendChild(li);
+    });
+    els.levelUpList.hidden = !(w.list && w.list.length);
+
+    clearTimeout(levelUpTimer);
+    els.levelUp.hidden = false;
+    void els.levelUp.offsetWidth;
+    els.levelUp.classList.add('is-open');
+    levelUpTimer = setTimeout(hideLevelUp, w.duration);
+
+    sysSound(w.kind);
+    if (w.confetti !== false) celebrate(w.confetti);
+    buzz(w.kind === 'penalty' ? [120, 80, 120] : [30, 50, 30, 50, 60]);
+  }
+
+  /**
+   * Sonido del Sistema (2.9.4), si está encendido en Ajustes. Sin archivos:
+   * lo genera el navegador. Un acorde que sube al subir de nivel, dos notas
+   * graves en una penalización y un "ding" en lo demás.
+   */
+  let audioCtx = null;
+
+  function sysSound(kind) {
+    if (!S.getSettings().sysSound) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = audioCtx || new Ctx();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const notas = kind === 'level'   ? [[0, 523], [0.09, 659], [0.18, 784], [0.3, 1047]]
+                  : kind === 'penalty' ? [[0, 196], [0.22, 147]]
+                  : kind === 'perfect' ? [[0, 784], [0.12, 1175]]
+                  : [[0, 880], [0.1, 1320]];
+      notas.forEach(function (n) {
+        const t0 = audioCtx.currentTime + n[0];
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = kind === 'penalty' ? 'triangle' : 'sine';
+        osc.frequency.value = n[1];
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.9);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 1);
+      });
+    } catch (e) { /* sin audio: no pasa nada */ }
+  }
+
+  /**
+   * Misiones diarias (2.9.4): la primera vez que abres la app cada día, los
+   * hábitos de hoy que faltan con la EXP de cada uno y lo que hay en juego en
+   * total, bono de día perfecto incluido. `pend` viene de St.pendingToday().
+   */
+  function showDailyMissions(todayKey) {
+    const pend = St.pendingToday(todayKey);
+    const faltan = St.doHabitsFor(todayKey).filter(function (h) {
+      return !isHiddenHabit(h) && !St.isComplete(h, S.getLog(h.id, todayKey));
+    });
+    if (!faltan.length) return false;
+
+    const MAX = 6;
+    const lista = faltan.sort(function (a, b) { return St.habitXp(b, todayKey) - St.habitXp(a, todayKey); })
+      .slice(0, MAX)
+      .map(function (h) { return { icon: h.icon, text: h.name, xp: '+' + St.habitXp(h, todayKey) }; });
+    if (faltan.length > MAX) lista.push({ icon: '…', text: 'y ' + (faltan.length - MAX) + ' más', xp: '' });
+
+    openSysWindow({
+      kind: 'daily',
+      title: 'Misiones diarias',
+      big: '+' + fmtNum.format(pend.xp) + ' EXP',
+      chip: faltan.length === 1 ? '1 misión disponible' : faltan.length + ' misiones disponibles',
+      hint: 'En juego hoy, con el bono de día perfecto. Toca para cerrar.',
+      list: lista,
+      duration: 7000,
+      confetti: false
+    });
+    return true;
+  }
+
+  /** Penalización por días en blanco (2.9.4), en una ventana roja. */
+  function showPenalty(xp, dias, onGo) {
+    openSysWindow({
+      kind: 'penalty',
+      title: 'Penalización',
+      big: xp ? '−' + fmtNum.format(xp) + ' EXP' : 'Sin EXP que quitar',
+      chip: dias.length === 1 ? 'Día en blanco · ' + U.formatShort(U.fromKey(dias[0]))
+                              : dias.length + ' días en blanco',
+      hint: 'Rellena ' + (dias.length === 1 ? 'ese día' : 'esos días') + ' y se anula. Nunca te baja de nivel.',
+      duration: 5200,
+      confetti: false
+    });
+    toast(dias.length === 1 ? 'Ir al día en blanco para rellenarlo.' : 'Ir al último día en blanco.', {
+      icon: '⬜', duration: 9000, action: { label: 'Ir al día', onClick: onGo }
+    });
+  }
+
+  /** Penalización anulada: el día se ha rellenado y la EXP vuelve. */
+  function showRefund(xp) {
+    openSysWindow({
+      kind: 'refund',
+      title: 'Penalización anulada',
+      big: '+' + fmtNum.format(xp) + ' EXP',
+      chip: '',
+      hint: 'Día rellenado: la EXP restada vuelve a ser tuya.',
+      duration: 3200,
+      confetti: false
+    });
   }
 
   /**
@@ -669,6 +924,9 @@ HT.ui = (function () {
    */
   function showLevelUp(level, rankName, rank) {
     const badge = els.levelBadge;
+    // El rango nuevo se pone ya en la chapa: así su color (2.9.3) llega con
+    // la celebración y no un fotograma después.
+    if (rank) badge.dataset.rank = rank.id;
     badge.classList.remove('is-levelup');
     void badge.offsetWidth;                 // reinicia la animación
     badge.classList.add('is-levelup');
@@ -683,23 +941,44 @@ HT.ui = (function () {
 
     // Un rango nuevo solo se anuncia si el nivel es justo su frontera.
     const nuevoRango = !!rank && rank.from === level;
+    // Con rango nuevo, el confeti y la etiqueta van en su color (2.9.3).
+    const color = nuevoRango ? rankColor(rank.id) : null;
 
-    els.levelUpLevel.textContent = 'Nivel ' + level;
-    els.levelUpRank.textContent = 'Nuevo rango · ' + rank.letter + ' — ' + rankName;
-    els.levelUpRank.hidden = !nuevoRango;
-    els.levelUpHint.textContent = nuevoRango
-      ? 'Has ascendido de rango'
-      : 'Rango ' + (rank ? rank.letter : '') + ' · ' + rankName;
+    openSysWindow({
+      kind: 'level',
+      title: 'Subida de nivel',
+      big: 'Nivel ' + level,
+      chip: nuevoRango ? 'Nuevo rango · ' + rank.letter + ' — ' + rankName : '',
+      chipColor: color,
+      hint: nuevoRango ? 'Has ascendido de rango' : 'Rango ' + (rank ? rank.letter : '') + ' · ' + rankName,
+      duration: nuevoRango ? 4200 : 3200,
+      confetti: color ? [color, lighten(color, .45), '#ffffff', color] : null
+    });
+  }
 
-    clearTimeout(levelUpTimer);
-    els.levelUp.hidden = false;
-    void els.levelUp.offsetWidth;
-    els.levelUp.classList.add('is-open');
-
-    levelUpTimer = setTimeout(hideLevelUp, nuevoRango ? 4200 : 3200);
-
-    celebrate();
-    buzz([30, 50, 30, 50, 60]);
+  /**
+   * Día perfecto (2.9.3): la misma ventana del Sistema, como misión diaria
+   * completada, con la EXP que dio el día y la racha. Sin efectos, el aviso
+   * de siempre.
+   */
+  function showPerfectDay(dateKey, todayKey) {
+    const xp = St.earnedOn(dateKey) + St.dayBonus(dateKey);
+    if (!S.getSettings().effects || prefersReducedMotion()) {
+      toast('Día perfecto. Todos los hábitos cumplidos.', { type: 'success', icon: '⭐' });
+      return;
+    }
+    const racha = St.dayStreak(todayKey);
+    const esHoy = dateKey === todayKey;
+    openSysWindow({
+      kind: 'perfect',
+      title: 'Misión diaria completada',
+      big: '+' + fmtNum.format(xp) + ' EXP',
+      chip: esHoy && racha > 0 ? 'Racha ◈ ' + racha + (racha === 1 ? ' día' : ' días') : '',
+      hint: esHoy ? 'Todos los hábitos de hoy cumplidos'
+                  : 'Todos los hábitos del ' + U.formatShort(U.fromKey(dateKey)) + ' cumplidos',
+      duration: 3400,
+      confetti: null
+    });
   }
 
   /* ── Selector de día ──────────────────────────────────────
@@ -940,6 +1219,11 @@ HT.ui = (function () {
 
     li.dataset.state = state;
     li.classList.toggle('is-done', state === 'done');
+
+    // Brillo según la racha (2.9.3): suave desde 7 días, más intenso desde
+    // 30 y dorado desde 100. En los de evitar, días sin caer.
+    const racha = St.currentStreak(habit, dateKey);
+    li.dataset.streak = racha >= 100 ? '100' : racha >= 30 ? '30' : racha >= 7 ? '7' : '';
     li.style.setProperty('--card-pct', pct);
 
     $('.progress__fill', li).style.setProperty('--pct', pct);
@@ -1758,6 +2042,60 @@ HT.ui = (function () {
     target.classList.remove('is-popping');
     void target.offsetWidth;
     target.classList.add('is-popping');
+  }
+
+  /**
+   * "+25 EXP" que sale de la tarjeta y vuela hasta la chapa de nivel (2.9.2).
+   * Sale de la ficha de EXP si está a la vista; si no, del lado derecho de
+   * la tarjeta. Al llegar, la chapa da un pequeño salto. La posición se toma
+   * en el momento de marcar: luego la tarjeta puede irse al cajón de
+   * cumplidos. Quien llama decide si hay efectos; aquí se respeta además el
+   * "reducir movimiento" del sistema.
+   */
+  function floatXp(habitId, amount) {
+    if (!(amount > 0) || prefersReducedMotion()) return;
+    const card = cardIndex[habitId];
+    const badge = els.levelBadge;
+    if (!card || !card.isConnected || typeof card.animate !== 'function') return;
+
+    const chip = $('.habit-card__xp', card);
+    const desdeChip = chip && chip.offsetWidth > 0;
+    const r = (desdeChip ? chip : card).getBoundingClientRect();
+    const sx = desdeChip ? r.left + r.width / 2 : r.right - 48;
+    const sy = r.top + r.height / 2;
+
+    const b = badge.getBoundingClientRect();
+    if (!b.width) return;                     // sin chapa a la vista, no hay adónde ir
+    const dx = (b.left + b.width / 2) - sx;
+    const dy = (b.top + b.height / 2) - sy;
+
+    const node = el('span', { class: 'xp-float', 'aria-hidden': 'true', text: '+' + fmtNum.format(amount) + ' EXP' });
+    node.style.left = sx + 'px';
+    node.style.top = sy + 'px';
+    // Del color del rango, como la chapa a la que va (2.9.3).
+    const colorRango = getComputedStyle(badge).getPropertyValue('--rank-color').trim();
+    if (colorRango) node.style.setProperty('--float-color', colorRango);
+    document.body.appendChild(node);
+
+    let hecho = false;
+    const fin = function () {
+      if (hecho) return;
+      hecho = true;
+      node.remove();
+      badge.classList.remove('is-bumped');
+      void badge.offsetWidth;                 // reinicia la animación
+      badge.classList.add('is-bumped');
+    };
+
+    // Sube un poco, se queda un instante para leerse y vuela a la chapa.
+    const anim = node.animate([
+      { transform: 'translate(-50%, -50%) scale(.6)', opacity: 0 },
+      { transform: 'translate(-50%, calc(-50% - 26px)) scale(1.12)', opacity: 1, offset: 0.22 },
+      { transform: 'translate(-50%, calc(-50% - 26px)) scale(1)', opacity: 1, offset: 0.5 },
+      { transform: 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(.45)', opacity: 0.15 }
+    ], { duration: 1150, easing: 'cubic-bezier(.45, 0, .3, 1)' });
+    anim.onfinish = fin;
+    setTimeout(fin, 1500);                    // por si la pestaña se esconde a mitad
   }
 
   /* ── Comodín de racha y notas del día ─────────────────────── */
@@ -2590,6 +2928,11 @@ HT.ui = (function () {
     });
     if (level === null) cell.classList.add('heat--empty');
     if (opts.future) cell.disabled = true;
+    // La nota del día en una esquina (2.10.0), solo en el calendario general.
+    if (opts.grade) {
+      cell.dataset.grade = opts.grade;
+      cell.appendChild(el('span', { class: 'heat__grade', 'aria-hidden': 'true', text: opts.grade }));
+    }
     return cell;
   }
 
@@ -2648,6 +2991,7 @@ HT.ui = (function () {
     renderAttributes(dateKey);
     renderRewards();
     renderGoals();
+    renderSysLog();
     renderStreakPair(dateKey);
     renderAscents();
 
@@ -2740,8 +3084,11 @@ HT.ui = (function () {
     if (!key) return heatCell(null);
 
     const day = St.dayStats(key);
-    return heatCell(key, St.heatLevel(day), dayCellLabel(key, day), {
-      isToday: key === today, frozen: day.frozen, future: key > today
+    const nota = key > today || (key === today && !day.done) ? null : St.dayGrade(key, day);
+    return heatCell(key, St.heatLevel(day),
+                    dayCellLabel(key, day) + (nota ? ' · nota ' + nota.letter : ''), {
+      isToday: key === today, frozen: day.frozen, future: key > today,
+      grade: nota ? nota.letter : null
     });
   }
 
@@ -3944,6 +4291,7 @@ HT.ui = (function () {
     els.setBackup.value = String(s.backupDays);
     els.setHideDone.setAttribute('aria-checked', s.hideDone ? 'true' : 'false');
     els.setDayBar.setAttribute('aria-checked', s.showDayBar ? 'true' : 'false');
+    els.setShowXp.setAttribute('aria-checked', s.showXp ? 'true' : 'false');
     els.setShowFreeze.setAttribute('aria-checked', s.showFreeze ? 'true' : 'false');
     els.setShowNotes.setAttribute('aria-checked', s.showNotes ? 'true' : 'false');
     els.setShowWeight.setAttribute('aria-checked', s.showWeight ? 'true' : 'false');
@@ -3958,6 +4306,7 @@ HT.ui = (function () {
 
     renderBackupStatus(s);
     els.setEffects.setAttribute('aria-checked', s.effects ? 'true' : 'false');
+    els.setSysSound.setAttribute('aria-checked', s.sysSound ? 'true' : 'false');
     els.setBlankPenalty.setAttribute('aria-checked', s.blankPenalty ? 'true' : 'false');
     renderArchived();
     renderBuildInfo();
@@ -4248,6 +4597,8 @@ HT.ui = (function () {
     root.hideWeight = s.hideWeight ? 'on' : 'off';
     root.hideAvoid = s.hideAvoid ? 'on' : 'off';
     root.hideNotes = s.hideNotes ? 'on' : 'off';
+    // La ficha de EXP de las tarjetas (2.9.1), también por CSS.
+    root.showXp = s.showXp ? 'on' : 'off';
     // Si se ocultan las notas con Notas abierta, se vuelve a Hoy.
     if (s.hideNotes && !els.views.notes.hidden) setView('today');
     // El de congelar además depende de si ese día hay algo que salvar, así
@@ -4457,6 +4808,137 @@ HT.ui = (function () {
         ? goalAmount(habit, Math.round(habit.target.amount * 300)) + ' este año.'
         : St.goalKind(habit) === 'clean' ? '200 días sin caer este año.' : '150 días este año.');
     els.btnAddHabitGoal.hidden = habit.archived || S.getGoals().length >= S.MAX_GOALS;
+  }
+
+  /* ── Registro del Sistema (2.10.0) ────────────────────────── */
+
+  const LOG_KIND = {
+    habit:       { tag: 'Hábito',   group: 'habit' },
+    bonus:       { tag: 'Bono',     group: 'bonus' },
+    plan:        { tag: 'Bono',     group: 'bonus' },
+    mission:     { tag: 'Misión',   group: 'mission' },
+    avoid:       { tag: 'Hito',     group: 'avoid' },
+    penalty:     { tag: 'Penal.',   group: 'penalty' },
+    refund:      { tag: 'Anulada',  group: 'penalty' },
+    level:       { tag: 'Nivel',    group: null },
+    rank:        { tag: 'Rango',    group: null },
+    achievement: { tag: 'Logro',    group: null },
+    goal:        { tag: 'Objetivo', group: null },
+    start:       { tag: 'Sistema',  group: null },
+    reset:       { tag: 'Sistema',  group: null }
+  };
+  const LOG_GROUPS = [
+    { id: 'habit',   name: 'Hábitos cumplidos' },
+    { id: 'bonus',   name: 'Bonos de día bueno y perfecto' },
+    { id: 'mission', name: 'Misiones semanales' },
+    { id: 'avoid',   name: 'Hitos de hábitos a evitar' },
+    { id: 'penalty', name: 'Penalizaciones (netas)' }
+  ];
+  const LOG_PAGE = 60;
+  let logFilter = 'all';
+  let logLimit = LOG_PAGE;
+
+  const fmtHour = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+  function signed(n) {
+    return (n > 0 ? '+' : n < 0 ? '−' : '') + fmtNum.format(Math.abs(n));
+  }
+
+  /** Lo que se ve de una línea: con el hábito oculto, sin su nombre. */
+  function logText(e) {
+    if (e.h) {
+      const h = S.getHabit(e.h);
+      if (h && isHiddenHabit(h)) return e.k === 'avoid' ? 'Hito de un hábito privado' : 'Hábito privado';
+    }
+    return e.n;
+  }
+
+  function setLogFilter(value) {
+    logFilter = value;
+    logLimit = LOG_PAGE;
+    renderSysLog();
+  }
+
+  function moreSysLog() {
+    logLimit += 100;
+    renderSysLog();
+  }
+
+  function renderSysLog() {
+    const todo = S.getSysLog();
+    const hoy = U.todayKey();
+    const desde7 = U.addDaysKey(hoy, -6);
+    const desde30 = U.addDaysKey(hoy, -29);
+    const diaDe = function (e) { return U.toKey(new Date(e.t)); };
+
+    els.sysLogCount.textContent = String(todo.length);
+
+    // Cuánta EXP ha entrado (neta) hoy, en 7 días y en 30.
+    const suma = function (desde) {
+      return todo.reduce(function (s, e) { return diaDe(e) >= desde ? s + e.xp : s; }, 0);
+    };
+    els.sysLogTotals.textContent = '';
+    [['Hoy', suma(hoy)], ['7 días', suma(desde7)], ['30 días', suma(desde30)]].forEach(function (x) {
+      const li = el('li', { class: 'syslog__total' });
+      li.appendChild(el('span', { class: 'syslog__total-value', 'data-sign': x[1] < 0 ? 'neg' : 'pos', text: signed(x[1]) }));
+      li.appendChild(el('span', { class: 'syslog__total-label', text: x[0] }));
+      els.sysLogTotals.appendChild(li);
+    });
+
+    // De dónde sale, en los últimos 30 días.
+    const porGrupo = {};
+    todo.forEach(function (e) {
+      const g = LOG_KIND[e.k] && LOG_KIND[e.k].group;
+      if (!g || diaDe(e) < desde30) return;
+      porGrupo[g] = (porGrupo[g] || 0) + e.xp;
+    });
+    const maxAbs = LOG_GROUPS.reduce(function (m, g) { return Math.max(m, Math.abs(porGrupo[g.id] || 0)); }, 0);
+    els.sysLogSources.textContent = '';
+    LOG_GROUPS.forEach(function (g) {
+      const v = porGrupo[g.id] || 0;
+      const li = el('li', { class: 'syslog__source', 'data-empty': v ? null : 'true' });
+      const head = el('div', { class: 'syslog__source-head' });
+      head.appendChild(el('span', { class: 'syslog__source-name', text: g.name }));
+      head.appendChild(el('span', { class: 'syslog__source-value', 'data-sign': v < 0 ? 'neg' : 'pos', text: signed(v) }));
+      li.appendChild(head);
+      const track = el('div', { class: 'syslog__source-track' });
+      const fill = el('span', { class: 'syslog__source-fill', 'data-sign': v < 0 ? 'neg' : 'pos' });
+      fill.style.setProperty('--pct', maxAbs ? Math.round(Math.abs(v) / maxAbs * 100) : 0);
+      track.appendChild(fill);
+      li.appendChild(track);
+      els.sysLogSources.appendChild(li);
+    });
+
+    // La lista, por días, de lo más reciente a lo más antiguo.
+    const filtradas = todo.filter(function (e) {
+      if (logFilter === 'xp') return e.xp !== 0;
+      if (logFilter === 'events') return e.xp === 0 || e.k === 'avoid' || e.k === 'mission';
+      return true;
+    });
+    const vista = filtradas.slice(0, logLimit);
+
+    els.sysLogList.textContent = '';
+    let diaActual = null;
+    vista.forEach(function (e) {
+      const d = diaDe(e);
+      if (d !== diaActual) {
+        diaActual = d;
+        const dia = d === hoy ? 'Hoy · ' + U.formatShort(U.fromKey(d))
+                  : d === U.addDaysKey(hoy, -1) ? 'Ayer · ' + U.formatShort(U.fromKey(d))
+                  : U.weekdayLong(U.fromKey(d)) + ' · ' + U.formatShort(U.fromKey(d));
+        els.sysLogList.appendChild(el('li', { class: 'syslog__day', text: dia }));
+      }
+      const li = el('li', { class: 'syslog__line', 'data-kind': e.k, 'data-sign': e.xp < 0 ? 'neg' : e.xp > 0 ? 'pos' : 'none' });
+      li.appendChild(el('span', { class: 'syslog__time', text: fmtHour.format(new Date(e.t)) }));
+      li.appendChild(el('span', { class: 'syslog__xp', text: e.xp ? signed(e.xp) : '·' }));
+      li.appendChild(el('span', { class: 'syslog__tag', text: (LOG_KIND[e.k] || { tag: '' }).tag }));
+      li.appendChild(el('span', { class: 'syslog__text', text: logText(e) }));
+      els.sysLogList.appendChild(li);
+    });
+
+    els.sysLogEmpty.hidden = vista.length > 0;
+    els.btnSysLogMore.hidden = filtradas.length <= logLimit;
+    els.btnSysLogMore.textContent = 'Ver más (' + (filtradas.length - vista.length) + ')';
   }
 
   /* El formulario de un objetivo. */
@@ -4843,7 +5325,11 @@ HT.ui = (function () {
     const node = el('div', { class: 'toast' + (o.type ? ' toast--' + o.type : '') });
 
     if (o.icon) node.appendChild(el('span', { class: 'toast__icon', 'aria-hidden': 'true', text: o.icon }));
-    node.appendChild(el('span', { class: 'toast__text', text: message }));
+    // Con la etiqueta del Sistema delante (2.9.4), como las ventanas grandes.
+    const texto = el('span', { class: 'toast__text' });
+    texto.appendChild(el('span', { class: 'toast__tag', 'aria-hidden': 'true', text: 'Sistema' }));
+    texto.appendChild(document.createTextNode(message));
+    node.appendChild(texto);
 
     let life = 3000;
 
@@ -4880,7 +5366,8 @@ HT.ui = (function () {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
-  function celebrate() {
+  /** `palette` (opcional, 2.9.3): los colores del confeti, p. ej. los de un rango nuevo. */
+  function celebrate(palette) {
     if (prefersReducedMotion()) return;
 
     const canvas = els.confetti;
@@ -4900,7 +5387,8 @@ HT.ui = (function () {
     // en lugar de llevar el violeta original escrito a mano.
     const accent = getComputedStyle(document.documentElement)
       .getPropertyValue('--accent').trim() || U.DEFAULT_ACCENT;
-    const colors = [accent, '#3ddc97', '#38bdf8', '#ffb454', '#fb7185'];
+    const colors = Array.isArray(palette) && palette.length
+      ? palette : [accent, '#3ddc97', '#38bdf8', '#ffb454', '#fb7185'];
     const pieces = [];
     for (let i = 0; i < 90; i++) {
       pieces.push({
@@ -4960,7 +5448,7 @@ HT.ui = (function () {
     renderHeader: renderHeader, renderHabitList: renderHabitList, updateCard: updateCard,
     openGoalModal: openGoalModal, closeGoalModal: closeGoalModal, setGoalRange: setGoalRange,
     syncGoalForm: syncGoalForm, readGoalForm: readGoalForm, renderTimer: renderTimer,
-    renderDayExtras: renderDayExtras, pulse: pulse,
+    renderDayExtras: renderDayExtras, pulse: pulse, floatXp: floatXp,
     renderWeek: renderWeek,
     openPauseModal: openPauseModal, closePauseModal: closePauseModal,
     renderPlanView: renderPlanView, setPlanOffset: setPlanOffset, getPlanOffset: getPlanOffset,
@@ -4981,7 +5469,10 @@ HT.ui = (function () {
     renderWeight: renderWeight, renderWeightEntry: renderWeightEntry,
     streakMessage: streakMessage,
     renderLevelPanel: renderLevelPanel,
-    showLevelUp: showLevelUp, hideLevelUp: hideLevelUp,
+    showLevelUp: showLevelUp, hideLevelUp: hideLevelUp, showPerfectDay: showPerfectDay,
+    showDailyMissions: showDailyMissions, showPenalty: showPenalty, showRefund: showRefund,
+    setLogFilter: setLogFilter, moreSysLog: moreSysLog,
+    motionOk: motionOk,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,
     renderSettings: renderSettings, renderPersist: renderPersist, applyAccent: applyAccent, applyControls: applyControls,
     applyTheme: applyTheme, applyFontSize: applyFontSize,

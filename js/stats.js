@@ -1842,6 +1842,29 @@ HT.stats = (function () {
     return activityValue(dateKey) === 'miss';
   }
 
+  /* ── Nota del día (2.10.0) ────────────────────────────────
+     Una letra según lo cumplido de lo que tocaba: S el día perfecto, A desde
+     el 80%, B desde el 60%, C desde el 40%, D desde el 20% y E por debajo.
+     Solo cuentan los hábitos que se hacen, como el porcentaje del día. ── */
+
+  const DAY_GRADES = [
+    { letter: 'S', from: 1 },
+    { letter: 'A', from: 0.8 },
+    { letter: 'B', from: 0.6 },
+    { letter: 'C', from: 0.4 },
+    { letter: 'D', from: 0.2 },
+    { letter: 'E', from: 0 }
+  ];
+
+  /** { letter, pct } del día, o null si ese día no tocaba nada. */
+  function dayGrade(dateKey, day) {
+    const d = day || dayStats(dateKey);
+    if (!d.total) return null;
+    const r = d.done / d.total;
+    const g = DAY_GRADES.filter(function (x) { return r >= x.from; })[0];
+    return { letter: g.letter, pct: Math.round(r * 100) };
+  }
+
   /* ── Temporizador (2.8.0) ─────────────────────────────────
      Un check con minutos ("Meditar 10 min") o un hábito de cantidad que
      se mide en tiempo ("Leer 20 min"). Al terminar, el primero se marca
@@ -2084,7 +2107,7 @@ HT.stats = (function () {
     SLOT_LABELS: SLOT_LABELS,
     XP: XP, RANKS: RANKS, XP_TABLE: XP_TABLE,
     POINTS_PER_HABIT: POINTS_PER_HABIT,
-    dayBonus: dayBonus,
+    dayBonus: dayBonus, earnedOn: earnedOn,
     ACHIEVEMENTS: ACHIEVEMENTS,
 
     xpForLevel: xpForLevel, levelFromXp: levelFromXp,
@@ -2100,6 +2123,7 @@ HT.stats = (function () {
     habitEarnedXp: habitEarnedXp, nextAvoidMilestone: nextAvoidMilestone,
     moodSummary: moodSummary,
     timeUnitFactor: timeUnitFactor, hasTimer: hasTimer, timerGoalMinutes: timerGoalMinutes,
+    DAY_GRADES: DAY_GRADES, dayGrade: dayGrade,
     goalKind: goalKind, goalUnit: goalUnit, goalProgress: goalProgress,
     forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 

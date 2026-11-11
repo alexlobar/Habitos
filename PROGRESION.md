@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.9.0** · esquema de datos **v18**.
+Versión documentada: **2.10.0** · esquema de datos **v19**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -661,6 +661,22 @@ corta la racha de registro). Un comodín, una pausa o una ausencia lo salvan.
   se estrenó o en que se volvió a encender.
 - Se apaga en *Ajustes → Preferencias → Restar EXP por días en blanco*. Lo ya
   restado se sigue devolviendo si rellenas el día.
+
+---
+
+### El registro del Sistema (2.10.0)
+
+Toda la EXP entra por `grantXp(cantidad, motivo)`, y desde la 2.10.0 cada
+entrada deja una línea en `sysLog` con lo que **de verdad** cambió (sumar a 0
+puede dar menos de lo pedido) y por qué. `withScoring()` apunta por separado
+el hábito y el cambio de bono, para que se vea qué fue cada cosa. Además se
+apuntan, sin EXP, las subidas de nivel, los rangos nuevos, los logros y los
+objetivos cumplidos. El Sistema enseña la EXP neta de hoy, 7 y 30 días, el
+reparto por origen a 30 días y la lista completa.
+
+Las cifras del registro y las de la EXP total cuadran desde que empieza el
+registro: la primera línea dice cuánta había. Con dos ventanas a la vez, las
+líneas de cada una se juntan (son un objeto, no una lista).
 
 ---
 

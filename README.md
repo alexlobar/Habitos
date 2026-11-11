@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.9.0** · esquema de datos **v18**.
+Versión documentada: **2.10.0** · esquema de datos **v19**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -69,7 +69,90 @@ viva: violeta con *Difícil* (40) y ámbar con *Muy difícil* (50). En verde
 cuando ya está ganada. En los hábitos a evitar dice el próximo hito y cuánto
 falta (`+100 en 12 d`), porque no pagan por día. Siempre hay uno por delante:
 desde la 2.9.0, pasados los 100 días sin caer, +50 cada 30 días más
-(PROGRESION.md, apartado 3). No cuenta los bonos de día
+(PROGRESION.md, apartado 3). Se puede ocultar en *Ajustes → EXP de cada
+hábito* (2.9.1, `settings.showXp`, encendido de entrada); solo cambia lo que
+se ve, la EXP se cobra igual.
+
+**La EXP vuela a la chapa** (2.9.2). Al cumplir un hábito, un «+25 EXP» sale
+de su tarjeta (de la ficha de EXP si está a la vista), sube un poco, se queda
+un instante y vuela hasta la chapa de nivel, que da un pequeño salto con un
+destello. La cifra es lo que de verdad ha sumado: si ese hábito deja el día
+bueno o perfecto, lleva también el bono. Va con *Efectos* de Ajustes y no sale
+si el sistema tiene activado *reducir movimiento* (`floatXp()` en `ui.js`).
+
+**Detalles del Sistema** (2.9.3):
+
+- *Tarjetas que brillan con la racha*: un halo suave del color del hábito a
+  partir de 7 días seguidos, más intenso desde 30 y **dorado** (respirando
+  despacio) desde 100. En los de evitar, días sin caer. Es una sombra: no
+  mueve nada.
+- *Misión diaria completada*: al cumplir todo el día sale la ventana del
+  Sistema, en dorado, con la EXP del día (hábitos y bono) y la racha ◈. Si
+  coincide con una subida de nivel, salen una detrás de otra.
+- *Números que ruedan*: el `3/9` del día y el nivel giran al cambiar (hacia
+  arriba si suben), y la EXP de la chapa cuenta hasta la cifra nueva.
+- *Anillo de nivel vivo*: se llena despacio con un destello al ganar EXP; al
+  subir de nivel termina de llenarse, se vacía y vuelve a llenarse.
+- *Color del rango*: el anillo, la pastilla de EXP que vuela y, al ascender de
+  rango, el confeti y la etiqueta de la ventana van en el color de tu rango
+  (E celeste, D verde, C amarillo, B naranja, A rojo, S rosa… X blanco).
+
+Lo que se mueve va con *Efectos* y respeta *reducir movimiento*; sin ellos,
+los valores cambian de golpe como antes y el día perfecto es el aviso de
+siempre. El brillo de las rachas y los colores de rango se ven siempre (el
+dorado deja de respirar con *reducir movimiento*).
+
+**Más Sistema** (2.9.4):
+
+- *Misiones diarias*: la primera vez que abres la app cada día (también si
+  vuelves a ella pasada la medianoche), una ventana del Sistema con los hábitos
+  que faltan hoy, la EXP de cada uno (los que más dan primero, hasta seis) y
+  lo que hay en juego en total con el bono de día perfecto. Una vez al día por
+  dispositivo (`habitTracker.dailySeen`, aparte de tus datos). No sale si no
+  queda nada, ni al abrir desde un atajo del icono.
+- *Penalización en rojo*: un día en blanco que resta EXP abre una ventana roja
+  «PENALIZACIÓN · −25 EXP» con el día, seguida del aviso con *Ir al día*. Al
+  rellenarlo, otra en verde: «Penalización anulada · +25 EXP».
+- *Avisos del Sistema*: todos los avisos de abajo llevan la etiqueta
+  `[SISTEMA]`, fondo azul noche, borde cian y el canto izquierdo de su color
+  (verde si va bien, rojo si es un error, violeta en logros). Son oscuros
+  también con el tema claro, como la pantalla del Sistema.
+- *Sonido del Sistema*: en *Ajustes → Preferencias* (apagado de entrada). Un
+  acorde que sube al subir de nivel, dos notas al completar el día, dos graves
+  en una penalización y un «ding» en lo demás. Lo genera el navegador, sin
+  archivos. Al abrir la app, el navegador puede no dejar sonar nada hasta
+  que toques la pantalla.
+
+Las ventanas nuevas van con *Efectos*; sin ellos, la penalización y su
+devolución son los avisos de siempre y no hay ventana de misiones.
+
+**Nota del día** (2.10.0). Cada día recibe una letra según lo cumplido de lo
+que tocaba (solo los hábitos que se hacen): **S** el día perfecto, **A** desde
+el 80%, **B** desde el 60%, **C** desde el 40%, **D** desde el 20% y **E** por
+debajo (`St.dayGrade()`). Sale junto al `3/9` de la cabecera («Hoy vas en
+rango B»), y hoy solo a partir del primer hábito cumplido. En el calendario
+de Histórico, en la esquina de cada día (en la vista de año no cabe). Colores:
+S dorada, A verde, B cian, C violeta, D naranja, E gris.
+
+**Registro del Sistema** (2.10.0). En el Sistema, plegable y a todo el ancho
+en el ordenador. Es el histórico de **toda la EXP que entra y sale y por qué**:
+
+- Arriba, la EXP neta de hoy, de 7 días y de 30 días.
+- *De dónde sale tu EXP (30 días)*: barras por origen —hábitos cumplidos,
+  bonos de día bueno y perfecto, misiones, hitos de evitar y penalizaciones
+  netas—.
+- La lista, por días y con la hora, con aspecto de terminal: `+25 HÁBITO
+  Cumplido: Lectura`, `+65 BONO Bono de día perfecto`, `−25 PENAL.
+  Penalización: día 8 nov en blanco`, `+25 ANULADA…`, `+50 MISIÓN…`,
+  `+100 HITO Un mes limpio: Gula`. También lo que no da EXP: subidas de
+  nivel, rangos nuevos, logros y objetivos cumplidos. Desmarcar sale en negativo.
+- Filtro *Todo / EXP / Hitos* y *Ver más* (60 líneas de entrada).
+
+Guarda las 1.500 líneas más recientes (unos 150 KB, más de un año de uso
+normal). **Empieza el día que actualizas**: lo anterior no se guardaba y no se
+puede reconstruir con su motivo, así que la primera línea dice cuánta EXP
+llevabas. Con los hábitos a evitar ocultos, sus líneas salen como «Hábito
+privado». No cuenta los bonos de día
 bueno o perfecto, que son del día y no del hábito. En el ordenador, al pasar
 el ratón por encima, explica la dificultad o el hito. Va junto a la barra y no junto al
 nombre para no cortar nombres largos en el móvil.
@@ -464,7 +547,7 @@ Una sola clave, `habitTracker.v1`:
 
 ```jsonc
 {
-  "version": 18,
+  "version": 19,
   "settings": {
     "accent": "#4361ee", "effects": true,
     "theme": "dark",                  // "dark" | "light"
@@ -532,6 +615,13 @@ Una sola clave, `habitTracker.v1`:
   // "doneAt": día en que se celebró, para no celebrarlo dos veces.
   "goals": { "g_ab12cd3": { "habitId": "h_k3f9", "amount": 3000, "from": "2027-01-01",
                             "to": "2027-12-31", "created": "2026-11-05", "doneAt": null } },
+  // registro del Sistema (v19): id → línea, las 1.500 más recientes.
+  // t: momento (ms) · d: día al que se refiere · xp: cambio real (0 en eventos)
+  // k: "habit" | "bonus" | "plan" | "mission" | "avoid" | "penalty" | "refund" |
+  //    "level" | "rank" | "achievement" | "goal" | "start" | "reset"
+  // h (opcional): hábito, para ocultar la línea si el hábito está oculto
+  "sysLog": { "l_mh3x9k2ab1c": { "t": 1794357460000, "d": "2026-11-11", "k": "habit",
+                                 "xp": 25, "n": "Cumplido: Lectura", "h": "h_k3f9" } },
   "frozen": {
     // marcas de día: el motivo es gratis; "skip": true cuesta un comodín
     "2026-09-20": { "reason": "energia", "note": "", "skip": false },
@@ -617,6 +707,11 @@ La v18 (2.8.0) añade `goals` (vacío) y `habit.timer` (null): tampoco necesita
 migración. Sube el número para que una ventana abierta con la 2.7.x, que no
 conoce los objetivos, deje de guardar en vez de borrarlos al sanear. Un objetivo
 cuyo hábito ya no existe se descarta al sanear.
+
+La v19 (2.10.0) añade `sysLog`. Al llegar desde una anterior se crea con una
+sola línea, «Empieza el registro · N EXP acumulada hasta hoy». También añade
+dos ajustes que no necesitan migración: `settings.showXp` (2.9.1) y
+`settings.sysSound` (2.9.4).
 
 ### Varias ventanas a la vez (2.3.4)
 

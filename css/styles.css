@@ -4140,6 +4140,358 @@ body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bo
   color: var(--success);
 }
 .habit-card__xp--avoid { font-weight: 600; }
+/* "+25 EXP" volando a la chapa de nivel (2.9.2). La posición la pone ui.js;
+   el movimiento es una animación de Web Animations, no de CSS. */
+.xp-float {
+  position: fixed;
+  z-index: 70;
+  padding: 2px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-elevated));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+/* La chapa recibe la EXP con un pequeño salto y un destello. */
+.level-badge.is-bumped { animation: badge-bump 480ms var(--ease); }
+@keyframes badge-bump {
+  35% {
+    transform: scale(1.1);
+    border-color: var(--accent);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+
+/* ── 2.9.3 · Detalles del Sistema ─────────────────────────── */
+
+/* Tarjetas que brillan con la racha: 7, 30 y 100 días (dorado). Es una
+   sombra exterior, así que no cambia el tamaño de nada. */
+.habit-card[data-streak="7"] {
+  border-color: color-mix(in srgb, var(--habit-color) 38%, var(--border));
+  box-shadow: 0 0 12px -5px color-mix(in srgb, var(--habit-color) 70%, transparent);
+}
+.habit-card[data-streak="30"] {
+  border-color: color-mix(in srgb, var(--habit-color) 60%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--habit-color) 25%, transparent),
+              0 0 20px -4px color-mix(in srgb, var(--habit-color) 80%, transparent);
+}
+.habit-card[data-streak="100"] {
+  border-color: color-mix(in srgb, #fbbf24 70%, var(--border));
+  box-shadow: 0 0 0 1px rgb(251 191 36 / .35), 0 0 24px -3px rgb(251 191 36 / .75);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .habit-card[data-streak="100"]:not([data-state="critical"]) { animation: gold-breathe 3.6s ease-in-out infinite; }
+}
+@keyframes gold-breathe {
+  50% { box-shadow: 0 0 0 1px rgb(251 191 36 / .5), 0 0 32px -2px rgb(251 191 36 / .95); }
+}
+
+/* Números que ruedan: el nuevo entra desde abajo si sube, desde arriba si baja. */
+#doneCount, #levelNum { display: inline-block; }
+.is-roll-up   { animation: roll-up 380ms cubic-bezier(.2, .9, .3, 1.2); }
+.is-roll-down { animation: roll-down 380ms cubic-bezier(.2, .9, .3, 1.2); }
+@keyframes roll-up   { from { transform: translateY(70%); opacity: 0; } }
+@keyframes roll-down { from { transform: translateY(-70%); opacity: 0; } }
+
+/* El anillo de nivel se llena despacio. Registrar la variable es lo que
+   deja animar el degradado cónico; donde no se pueda, cambia de golpe. */
+@property --ring-pct {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+.level-badge__ring {
+  /* Del color del rango (2.9.3), como la letra de al lado. */
+  background: conic-gradient(var(--rank-color, var(--accent)) calc(var(--ring-pct) * 1%), var(--surface-3) 0);
+  transition: --ring-pct 700ms cubic-bezier(.3, .7, .2, 1);
+}
+.level-badge__ring.is-instant { transition: none; }
+.level-badge__ring.is-charging { animation: ring-charge 800ms var(--ease); }
+@keyframes ring-charge {
+  30% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--rank-color, var(--accent)) 60%, transparent),
+                    0 0 14px color-mix(in srgb, var(--rank-color, var(--accent)) 70%, transparent); }
+}
+/* La pastilla que vuela también lleva el color del rango. */
+.xp-float {
+  border-color: color-mix(in srgb, var(--float-color, var(--accent)) 60%, transparent);
+  background: color-mix(in srgb, var(--float-color, var(--accent)) 22%, var(--bg-elevated));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--float-color, var(--accent)) 45%, transparent);
+}
+
+/* Ventana del Sistema: la etiqueta de rango nuevo, en su color; y el día
+   perfecto, en dorado en vez de cian. */
+.levelup[style*="--win-rank"] .levelup__rank {
+  border-color: var(--win-rank);
+  color: var(--win-rank);
+  box-shadow: 0 0 18px -4px var(--win-rank);
+}
+.levelup[data-kind="perfect"] .levelup__title { color: #fbbf24; text-shadow: 0 0 24px rgb(251 191 36 / .7); }
+.levelup[data-kind="perfect"] .levelup__level { text-shadow: 0 0 30px rgb(251 191 36 / .45); }
+.levelup[data-kind="perfect"] .levelup__panel { box-shadow: 0 0 80px -20px #fbbf24, inset 0 1px 0 0 rgb(251 191 36 / .35); }
+.levelup[data-kind="perfect"] .levelup__rank { border-color: #46dcff; color: #7dd3fc; }
+
+/* ── 2.9.4 · Más Sistema ───────────────────────────────────── */
+
+/* Avisos con estilo de ventana del Sistema: fondo azul noche, borde cian,
+   canto izquierdo de color según el tipo y la etiqueta [SISTEMA] encima.
+   Oscuros también en el tema claro, como la pantalla del Sistema. */
+.toast {
+  position: relative;
+  border: 1px solid rgb(70 220 255 / .45);
+  border-left: 3px solid #46dcff;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(70 220 255 / .10), rgb(70 220 255 / .02) 60%),
+    rgb(8 18 34 / .96);
+  box-shadow: 0 10px 30px rgb(0 0 0 / .4), 0 0 24px -10px #46dcff;
+  color: #e6f1ff;
+}
+.toast__text { display: grid; gap: 1px; }
+.toast__tag {
+  font-family: var(--sys-mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: rgb(70 220 255 / .75);
+}
+.toast__tag::before { content: "["; }
+.toast__tag::after { content: "]"; }
+.toast--success { border-color: rgb(61 220 151 / .45); border-left-color: #3ddc97; }
+.toast--success .toast__tag { color: rgb(61 220 151 / .85); }
+.toast--error { border-color: rgb(255 92 122 / .5); border-left-color: #ff5c7a; box-shadow: 0 10px 30px rgb(0 0 0 / .4), 0 0 24px -10px #ff5c7a; }
+.toast--error .toast__tag { color: rgb(255 92 122 / .9); }
+.toast--achievement {
+  border-color: rgb(167 139 250 / .55);
+  border-left-color: #a78bfa;
+  background:
+    linear-gradient(120deg, rgb(167 139 250 / .18), rgb(70 220 255 / .04) 70%),
+    rgb(8 18 34 / .96);
+}
+.toast--achievement .toast__tag { color: #c4b5fd; }
+
+/* Lista de la ventana de misiones diarias. */
+.levelup__list {
+  display: grid;
+  gap: 6px;
+  margin: var(--sp-3) auto 0;
+  padding: 0;
+  max-width: 300px;
+  list-style: none;
+  text-align: left;
+}
+.levelup__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 5px 10px;
+  border: 1px solid rgb(70 220 255 / .22);
+  border-radius: 6px;
+  background: rgb(70 220 255 / .05);
+  font-family: var(--sys-mono, monospace);
+  font-size: var(--fs-xs);
+  color: #d6e6ff;
+}
+.levelup__item-icon { flex: none; font-family: initial; }
+.levelup__item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.levelup__item-xp { flex: none; font-weight: 700; color: #46dcff; }
+.levelup[data-kind="daily"] .levelup__level { font-size: 2.1rem; }
+
+/* Penalización en rojo; anulada, en verde. */
+.levelup[data-kind="penalty"] .levelup__panel {
+  border-color: rgb(255 92 122 / .7);
+  background: linear-gradient(180deg, rgb(255 92 122 / .16), rgb(255 92 122 / .03) 55%), rgb(26 8 14 / .95);
+  box-shadow: 0 0 80px -20px #ff5c7a, inset 0 1px 0 0 rgb(255 92 122 / .4);
+}
+.levelup[data-kind="penalty"] .levelup__tag { color: rgb(255 92 122 / .7); }
+.levelup[data-kind="penalty"] .levelup__title { color: #ff5c7a; text-shadow: 0 0 24px rgb(255 92 122 / .75); }
+.levelup[data-kind="penalty"] .levelup__level { color: #ffd1da; text-shadow: 0 0 30px rgb(255 92 122 / .5); }
+.levelup[data-kind="penalty"] .levelup__rank { border-color: #ff5c7a; color: #ff9fb1; }
+.levelup[data-kind="penalty"] .levelup__corner--tl { border-color: #ff5c7a; }
+.levelup[data-kind="penalty"] .levelup__corner--br { border-color: #ff9f43; }
+.levelup[data-kind="penalty"] .levelup__panel::after { border-color: #ff5c7a; }
+.levelup[data-kind="refund"] .levelup__title { color: #3ddc97; text-shadow: 0 0 24px rgb(61 220 151 / .7); }
+.levelup[data-kind="refund"] .levelup__panel { box-shadow: 0 0 80px -20px #3ddc97, inset 0 1px 0 0 rgb(61 220 151 / .35); }
+
+/* ── 2.10.0 · Nota del día y registro del Sistema ───────────── */
+
+/* La cabecera ya no puede ensanchar la página: con rachas de tres cifras
+   ("121") la fila de arriba no cabía en 375 px y toda la app se desbordaba
+   20 px a lo ancho. Ahora la columna no crece por su contenido y el nombre
+   del día se recorta con "…" antes que empujar la chapa fuera. */
+@media (max-width: 1023.98px) {
+  /* Solo con una columna: en el ordenador manda la del raíl lateral. */
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+}
+.day-head__meta { overflow: hidden; text-overflow: ellipsis; }
+.app-header__top > .day-nav { flex: 1 1 auto; }
+.level-badge { flex: none; }
+@media (max-width: 420px) {
+  /* Unos píxeles de flechas y huecos para que "Miércoles" quepa entero. */
+  .day-nav { gap: 2px; }
+  .day-nav .icon-btn { width: 24px; }
+  .app-header__top { gap: 6px; }
+}
+
+/* Los colores de cada nota: S dorada, A verde, B cian, C violeta, D naranja, E gris. */
+[data-grade="S"] { --grade-color: #fbbf24; }
+[data-grade="A"] { --grade-color: #3ddc97; }
+[data-grade="B"] { --grade-color: #46dcff; }
+[data-grade="C"] { --grade-color: #a78bfa; }
+[data-grade="D"] { --grade-color: #fb923c; }
+[data-grade="E"] { --grade-color: #94a3b8; }
+
+.day-grade {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  margin-left: var(--sp-2);
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--grade-color, var(--border-strong)) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--grade-color, var(--surface-2)) 16%, transparent);
+  box-shadow: 0 0 10px -3px var(--grade-color, transparent);
+  font-family: var(--sys-mono, monospace);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--grade-color, var(--text));
+}
+
+/* La letra en la esquina de cada día del calendario de Histórico. */
+.heat { position: relative; }
+.heat__grade {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-family: var(--sys-mono, monospace);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--grade-color, var(--text-muted));
+  text-shadow: 0 0 4px rgb(0 0 0 / .6);
+  pointer-events: none;
+}
+#yearGrid .heat__grade { display: none; }
+
+/* Registro del Sistema: cifras, fuentes y la lista con aspecto de terminal. */
+.syslog__totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+.syslog__total {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  text-align: center;
+}
+.syslog__total-value { font-family: var(--sys-mono, monospace); font-size: var(--fs-md); font-weight: 800; }
+.syslog__total-label { font-size: var(--fs-xs); color: var(--text-muted); }
+[data-sign="pos"].syslog__total-value, .syslog__source-value[data-sign="pos"] { color: var(--success); }
+[data-sign="neg"].syslog__total-value, .syslog__source-value[data-sign="neg"] { color: var(--danger); }
+
+.syslog__sub {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.syslog__sources { display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-4); padding: 0; list-style: none; }
+.syslog__source[data-empty="true"] { opacity: .45; }
+.syslog__source-head { display: flex; align-items: baseline; gap: var(--sp-2); margin-bottom: 3px; }
+.syslog__source-name { flex: 1; min-width: 0; font-size: var(--fs-sm); }
+.syslog__source-value { flex: none; font-family: var(--sys-mono, monospace); font-size: var(--fs-xs); font-weight: 700; }
+.syslog__source-track { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.syslog__source-fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+  transition: width 600ms var(--ease);
+}
+.syslog__source-fill[data-sign="neg"] { background: var(--danger); }
+
+.syslog__filter { margin-bottom: var(--sp-3); }
+/* En el ordenador, a todo el ancho del Sistema: en media columna las
+   líneas se partían en tres renglones. */
+@media (min-width: 1024px) {
+  .progress-grid .syslog { grid-column: 1 / -1; }
+}
+.syslog__list {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid rgb(70 220 255 / .25);
+  border-radius: var(--radius-sm);
+  background: rgb(6 14 26 / .85);
+  list-style: none;
+  font-family: var(--sys-mono, monospace);
+  font-size: 12px;
+  color: #cfe3ff;
+}
+.syslog__list:empty { display: none; }
+.syslog__day {
+  margin: var(--sp-3) 0 var(--sp-1);
+  padding-bottom: 2px;
+  border-bottom: 1px dashed rgb(70 220 255 / .2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgb(70 220 255 / .75);
+}
+.syslog__day:first-child { margin-top: var(--sp-1); }
+.syslog__line {
+  display: grid;
+  grid-template-columns: 3.1em 3.6em 4.8em minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.syslog__time { color: rgb(207 227 255 / .45); }
+.syslog__xp { font-weight: 800; text-align: right; color: rgb(207 227 255 / .5); }
+.syslog__line[data-sign="pos"] .syslog__xp { color: #3ddc97; }
+.syslog__line[data-sign="neg"] .syslog__xp { color: #ff5c7a; }
+.syslog__tag {
+  overflow: hidden;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: rgb(70 220 255 / .65);
+  white-space: nowrap;
+}
+.syslog__line[data-kind="level"] .syslog__tag,
+.syslog__line[data-kind="rank"] .syslog__tag { color: #fbbf24; }
+.syslog__line[data-kind="level"] .syslog__text,
+.syslog__line[data-kind="rank"] .syslog__text { color: #fde68a; font-weight: 700; }
+.syslog__line[data-kind="achievement"] .syslog__tag,
+.syslog__line[data-kind="goal"] .syslog__tag { color: #c4b5fd; }
+.syslog__line[data-kind="penalty"] .syslog__tag { color: #ff9fb1; }
+.syslog__text { overflow-wrap: anywhere; }
+@media (max-width: 420px) {
+  .syslog__line { grid-template-columns: 2.9em 3.3em minmax(0, 1fr); }
+  .syslog__tag { display: none; }
+}
+
+/* Ajustes → EXP de cada hábito (2.9.1). */
+[data-show-xp="off"] .habit-card__xp { display: none; }
 [data-controls="mini"] .habit-card__xp { padding: 0 5px; font-size: 10px; }
 /* Barra y ficha en la misma fila: la barra se estira, la ficha a su derecha. */
 .habit-card__barrow { display: flex; align-items: center; gap: var(--sp-2); }
