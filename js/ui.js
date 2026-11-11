@@ -19,6 +19,7 @@ HT.ui = (function () {
   let lastFocused = null;
   let missingIds = [];      // ids que no estaban en el HTML al arrancar
   let timerHabitId = null;  // hábito con el temporizador en marcha (2.8.0)
+  let dayLocked = false;    // el día que se mira es pasado y está cerrado (2.10.0)
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -108,7 +109,7 @@ HT.ui = (function () {
       'attrList', 'statQuests', 'statTrophies',
       'ascents', 'ascentsCount', 'ascentsList', 'ascentsNote',
       'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint', 'levelUpTitle', 'levelUpList',
-      'setSysSound', 'dayGrade',
+      'setSysSound', 'dayGrade', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
       'sysLogCard', 'sysLogCount', 'sysLogTotals', 'sysLogSources', 'sysLogList', 'sysLogEmpty', 'btnSysLogMore',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList', 'achCard', 'achCount',
@@ -763,7 +764,66 @@ HT.ui = (function () {
   // traer a la vez una subida de nivel, y se enseñan una detrás de otra.
   const sysQueue = [];
 
+  /* ── Texto que se escribe solo (2.10.1) ───────────────────
+     Las ventanas del Sistema escriben su título y su frase letra a letra,
+     con un cursor ▌ al final, y la cifra grande aparece al terminar el
+     título. Cada letra está desde el principio, invisible: así la ventana
+     no cambia de tamaño mientras escribe. Con Sonido del Sistema, un "tic"
+     suave por letra. Tocar mientras escribe lo completa; tocar otra vez,
+     cierra. ──────────────────────────────────────────────────────────── */
+
+  const TYPE_SPEED = 35;        // ms por letra: "normal"
+  let twTimers = [];
+  let twFinish = null;          // completa la ventana de golpe si se toca
+
+  /**
+   * Escribe `text` en `node` empezando a los `delay` ms. Devuelve cuánto
+   * tarda. Los temporizadores van a `timers` para poder cortarlos.
+   */
+  function typeText(node, text, delay, timers, sound) {
+    node.textContent = '';
+    node.setAttribute('aria-label', text);
+    const letras = Array.from(text).map(function (c) {
+      const s = el('span', { class: 'tw-ch', 'aria-hidden': 'true' });
+      s.textContent = c;
+      node.appendChild(s);
+      return s;
+    });
+    letras.forEach(function (s, i) {
+      timers.push(setTimeout(function () {
+        if (i) letras[i - 1].classList.remove('tw-caret');
+        s.classList.add('is-on', 'tw-caret');
+        if (sound && s.textContent.trim()) sysTick();
+      }, delay + i * TYPE_SPEED));
+    });
+    const dura = letras.length * TYPE_SPEED;
+    if (letras.length) {
+      timers.push(setTimeout(function () {
+        letras[letras.length - 1].classList.remove('tw-caret');
+      }, delay + dura + 1100));
+    }
+    return dura;
+  }
+
+  /** Enseña de golpe lo que quede por escribir en `root`. */
+  function revealAll(root) {
+    U.$$('.tw-ch', root).forEach(function (s) { s.classList.add('is-on'); s.classList.remove('tw-caret'); });
+  }
+
+  function clearTyping() {
+    twTimers.forEach(clearTimeout);
+    twTimers = [];
+    twFinish = null;
+  }
+
+  /** Un toque en la ventana: si aún escribe, la completa; si no, la cierra. */
+  function tapSysWindow() {
+    if (twFinish) { twFinish(); return; }
+    hideLevelUp();
+  }
+
   function hideLevelUp() {
+    clearTyping();
     clearTimeout(levelUpTimer);
     levelUpTimer = null;
     els.levelUp.hidden = true;
@@ -810,11 +870,34 @@ HT.ui = (function () {
     });
     els.levelUpList.hidden = !(w.list && w.list.length);
 
+    // Título, etiqueta y frase se escriben uno tras otro; la cifra grande y
+    // la lista aparecen al terminar el título. La ventana dura lo que tarda
+    // en escribirse más lo de siempre, para que no le quite tiempo de lectura.
+    clearTyping();
+    const sonido = S.getSettings().sysSound;
+    const panel = els.levelUp;
+    const t0 = 260;                                   // tras el fundido de entrada
+    const dTitulo = typeText(els.levelUpTitle, w.title, t0, twTimers, sonido);
+    let fin = t0 + dTitulo;
+    panel.classList.add('tw-waiting');
+    twTimers.push(setTimeout(function () { panel.classList.remove('tw-waiting'); }, fin));
+    if (w.chip) fin += typeText(els.levelUpRank, w.chip, fin + 120, twTimers, sonido) + 120;
+    fin += typeText(els.levelUpHint, w.hint, fin + 120, twTimers, sonido) + 120;
+    twTimers.push(setTimeout(function () { twFinish = null; }, fin));
+    twFinish = function () {
+      const quedan = twTimers;
+      twTimers = [];
+      twFinish = null;
+      quedan.forEach(clearTimeout);
+      revealAll(panel);
+      panel.classList.remove('tw-waiting');
+    };
+
     clearTimeout(levelUpTimer);
     els.levelUp.hidden = false;
     void els.levelUp.offsetWidth;
     els.levelUp.classList.add('is-open');
-    levelUpTimer = setTimeout(hideLevelUp, w.duration);
+    levelUpTimer = setTimeout(hideLevelUp, w.duration + fin);
 
     sysSound(w.kind);
     if (w.confetti !== false) celebrate(w.confetti);
@@ -854,6 +937,29 @@ HT.ui = (function () {
         osc.stop(t0 + 1);
       });
     } catch (e) { /* sin audio: no pasa nada */ }
+  }
+
+  /** El "tic" de cada letra al escribirse (2.10.1): muy corto y bajito. */
+  function sysTick() {
+    if (!S.getSettings().sysSound) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = audioCtx || new Ctx();
+      if (audioCtx.state === 'suspended') return;     // sin un toque previo, nada
+      const t0 = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 1900 + Math.random() * 300;   // que no suene a metralleta
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.025, t0 + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.03);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.04);
+    } catch (e) { /* sin audio */ }
   }
 
   /**
@@ -1250,6 +1356,7 @@ HT.ui = (function () {
     if (amountInput && document.activeElement !== amountInput) {
       amountInput.value = (Number(value) || 0) || '';
     }
+    if (amountInput) amountInput.readOnly = dayLocked;
 
     const xpNode = $('.habit-card__xp', li);
     if (xpNode) {
@@ -2096,6 +2203,43 @@ HT.ui = (function () {
     ], { duration: 1150, easing: 'cubic-bezier(.45, 0, .3, 1)' });
     anim.onfinish = fin;
     setTimeout(fin, 1500);                    // por si la pestaña se esconde a mitad
+  }
+
+  /**
+   * Día pasado en Hoy (2.10.0). `past`: el día es anterior a hoy; `locked`:
+   * está cerrado (no se ha desbloqueado). Cerrado, todo se ve pero los
+   * campos son de solo lectura y los controles se apagan; app.js frena los
+   * toques y lo explica. Hay que llamarlo antes de pintar las tarjetas.
+   */
+  /* mode: 'none' (hoy) · 'grace' (ayer, abierto hasta medianoche, 2.10.2) ·
+     'locked' (cerrado) · 'open' (desbloqueado a mano). */
+  const DAY_LOCK_TEXT = {
+    grace:  { icon: '🕓', title: 'Ayer sigue abierto',
+              hint: 'Puedes apuntar lo que te faltó hasta las 00:00. Después se cierra solo.' },
+    locked: { icon: '🔒', title: 'Día cerrado',
+              hint: 'Solo lectura. Desbloquéalo si necesitas corregir algo.' },
+    open:   { icon: '🔓', title: 'Día desbloqueado',
+              hint: 'Los cambios cuentan. Se vuelve a cerrar al cambiar de día.' }
+  };
+
+  function setDayLock(mode) {
+    const locked = mode === 'locked';
+    dayLocked = locked;
+    els.dayLock.hidden = mode === 'none';
+    if (mode !== 'none') {
+      const t = DAY_LOCK_TEXT[mode];
+      els.dayLock.dataset.state = mode;
+      els.dayLockIcon.textContent = t.icon;
+      els.dayLockTitle.textContent = t.title;
+      els.dayLockHint.textContent = t.hint;
+    }
+    // Ayer no tiene nada que abrir ni cerrar: se cierra solo.
+    els.btnDayLock.hidden = mode === 'grace' || mode === 'none';
+    els.btnDayLock.textContent = locked ? 'Desbloquear' : 'Cerrar';
+    els.views.today.dataset.locked = locked ? 'true' : 'false';
+    els.dayNote.readOnly = dayLocked;
+    els.weightInput.readOnly = dayLocked;
+    U.$$('.habit-card__amount', els.habitList).forEach(function (i) { i.readOnly = dayLocked; });
   }
 
   /* ── Comodín de racha y notas del día ─────────────────────── */
@@ -4867,6 +5011,20 @@ HT.ui = (function () {
   function renderSysLog() {
     const todo = S.getSysLog();
     const hoy = U.todayKey();
+
+    // Antes del 1 de enero de 2027 solo se dice cuándo empieza (2.10.1).
+    const espera = hoy < S.SYSLOG_FROM;
+    els.sysLogCard.dataset.waiting = espera ? 'true' : 'false';
+    if (espera) {
+      els.sysLogCount.textContent = shortDay(S.SYSLOG_FROM, false);
+      els.sysLogEmpty.hidden = false;
+      els.sysLogEmpty.textContent = 'El registro empieza el ' + shortDay(S.SYSLOG_FROM, true) +
+        '. Desde ese día apuntará cada EXP que ganes o pierdas y por qué, además de ' +
+        'las subidas de nivel, los logros y los objetivos.';
+      els.btnSysLogMore.hidden = true;
+      return;
+    }
+    els.sysLogEmpty.textContent = 'Aún no hay nada en el registro.';
     const desde7 = U.addDaysKey(hoy, -6);
     const desde30 = U.addDaysKey(hoy, -29);
     const diaDe = function (e) { return U.toKey(new Date(e.t)); };
@@ -5327,9 +5485,12 @@ HT.ui = (function () {
     if (o.icon) node.appendChild(el('span', { class: 'toast__icon', 'aria-hidden': 'true', text: o.icon }));
     // Con la etiqueta del Sistema delante (2.9.4), como las ventanas grandes.
     const texto = el('span', { class: 'toast__text' });
-    texto.appendChild(el('span', { class: 'toast__tag', 'aria-hidden': 'true', text: 'Sistema' }));
+    const tag = el('span', { class: 'toast__tag', 'aria-hidden': 'true', text: 'Sistema' });
+    texto.appendChild(tag);
     texto.appendChild(document.createTextNode(message));
     node.appendChild(texto);
+    // La etiqueta también se escribe sola (2.10.1), con su "tic" si hay sonido.
+    if (motionOk()) typeText(tag, 'Sistema', 120, [], S.getSettings().sysSound);
 
     let life = 3000;
 
@@ -5470,8 +5631,9 @@ HT.ui = (function () {
     streakMessage: streakMessage,
     renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp, showPerfectDay: showPerfectDay,
+    tapSysWindow: tapSysWindow,
     showDailyMissions: showDailyMissions, showPenalty: showPenalty, showRefund: showRefund,
-    setLogFilter: setLogFilter, moreSysLog: moreSysLog,
+    setLogFilter: setLogFilter, moreSysLog: moreSysLog, setDayLock: setDayLock,
     motionOk: motionOk,
     renderAttributes: renderAttributes, renderHabitView: renderHabitView,
     renderSettings: renderSettings, renderPersist: renderPersist, applyAccent: applyAccent, applyControls: applyControls,

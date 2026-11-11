@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.10.0** · esquema de datos **v19**.
+Versión documentada: **2.10.2** · esquema de datos **v19**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -674,8 +674,9 @@ apuntan, sin EXP, las subidas de nivel, los rangos nuevos, los logros y los
 objetivos cumplidos. El Sistema enseña la EXP neta de hoy, 7 y 30 días, el
 reparto por origen a 30 días y la lista completa.
 
-Las cifras del registro y las de la EXP total cuadran desde que empieza el
-registro: la primera línea dice cuánta había. Con dos ventanas a la vez, las
+El registro **empieza el 1 de enero de 2027** (2.10.1); hasta entonces no se
+apunta nada. Las cifras del registro y las de la EXP total cuadran desde ese
+día: la primera línea dice cuánta había. Con dos ventanas a la vez, las
 líneas de cada una se juntan (son un objeto, no una lista).
 
 ---

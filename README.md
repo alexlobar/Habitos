@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.10.0** · esquema de datos **v19**.
+Versión documentada: **2.10.2** · esquema de datos **v19**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -67,7 +67,10 @@ elegirlas.
 ficha pequeña con lo que da el hábito ese día (`+25`). Cuanto más difícil, más
 viva: violeta con *Difícil* (40) y ámbar con *Muy difícil* (50). En verde
 cuando ya está ganada. En los hábitos a evitar dice el próximo hito y cuánto
-falta (`+100 en 12 d`), porque no pagan por día. Siempre hay uno por delante:
+falta (`+100 en 12 d`), porque no pagan por día. No cuenta los bonos de día
+bueno o perfecto, que son del día y no del hábito. En el ordenador, al pasar
+el ratón por encima, explica la dificultad o el hito. Va junto a la barra y no
+junto al nombre para no cortar nombres largos en el móvil. Siempre hay uno por delante:
 desde la 2.9.0, pasados los 100 días sin caer, +50 cada 30 días más
 (PROGRESION.md, apartado 3). Se puede ocultar en *Ajustes → EXP de cada
 hábito* (2.9.1, `settings.showXp`, encendido de entrada); solo cambia lo que
@@ -149,13 +152,35 @@ en el ordenador. Es el histórico de **toda la EXP que entra y sale y por qué**
 - Filtro *Todo / EXP / Hitos* y *Ver más* (60 líneas de entrada).
 
 Guarda las 1.500 líneas más recientes (unos 150 KB, más de un año de uso
-normal). **Empieza el día que actualizas**: lo anterior no se guardaba y no se
-puede reconstruir con su motivo, así que la primera línea dice cuánta EXP
-llevabas. Con los hábitos a evitar ocultos, sus líneas salen como «Hábito
-privado». No cuenta los bonos de día
-bueno o perfecto, que son del día y no del hábito. En el ordenador, al pasar
-el ratón por encima, explica la dificultad o el hito. Va junto a la barra y no junto al
-nombre para no cortar nombres largos en el móvil.
+normal). **Empieza el 1 de enero de 2027** (2.10.1, `S.SYSLOG_FROM`): hasta
+entonces la tarjeta solo dice cuándo empieza, no se apunta nada y lo que
+hubiera apuntado la 2.10.0 se descarta. El primer día de 2027 que se abra la
+app, antes de cobrar nada, se escribe la primera línea con la EXP acumulada
+hasta ese momento. Con los hábitos a evitar ocultos, sus líneas salen como
+«Hábito privado».
+
+**Días pasados cerrados** (2.10.1). **Ayer sigue abierto todo el día de hoy**
+(2.10.2), para apuntar por la mañana lo de anoche: arriba sale «🕓 Ayer sigue
+abierto» y se cierra solo a medianoche. A partir de anteayer, un día se abre
+**en solo lectura**, como una semana ya planificada: arriba sale «🔒 Día cerrado», los
+controles se apagan un poco, la nota y el peso no se pueden escribir, y tocar
+un hábito, el ánimo o *Anotar el día* avisa con un botón *Desbloquear*. El
+botón del aviso de arriba lo abre («🔓 Día desbloqueado»: los cambios cuentan)
+y lo vuelve a cerrar; cambiar de día lo cierra solo. Ir a un día en blanco
+desde la ventana de penalización lo abre ya desbloqueado, porque se va a
+rellenar. El aviso «Ayer quedó a medias» sigue abriendo la nota de ayer
+directamente. El día de hoy nunca se cierra.
+
+**Texto que se escribe solo** (2.10.1). En las ventanas del Sistema, el título,
+la etiqueta y la frase de abajo se escriben letra a letra (35 ms por letra)
+con un cursor ▌ al final, y la cifra grande y la lista aparecen al terminar el
+título. Las letras están desde el principio, invisibles, así que la ventana
+no cambia de tamaño. Tocar mientras escribe lo completa; tocar otra vez la
+cierra. La ventana dura lo de siempre más lo que tarda en escribirse. La
+etiqueta `[SISTEMA]` de los avisos también se escribe. Con *Sonido del Sistema*,
+un «tic» suave por letra (no suena hasta que hayas tocado la pantalla una vez
+desde que abriste la app). El lector de pantalla lee el texto entero de una
+vez. Va con *Efectos* y respeta *reducir movimiento*.
 
 **Plan.** Tres partes:
 
@@ -708,8 +733,10 @@ migración. Sube el número para que una ventana abierta con la 2.7.x, que no
 conoce los objetivos, deje de guardar en vez de borrarlos al sanear. Un objetivo
 cuyo hábito ya no existe se descarta al sanear.
 
-La v19 (2.10.0) añade `sysLog`. Al llegar desde una anterior se crea con una
-sola línea, «Empieza el registro · N EXP acumulada hasta hoy». También añade
+La v19 (2.10.0) añade `sysLog`, que empieza vacío. Desde la 2.10.1 no se
+apunta nada hasta el 1 de enero de 2027: ese día `ensureLogStart()` escribe la
+primera línea, «Empieza el registro · N EXP acumulada hasta hoy», y el saneado
+descarta cualquier línea anterior a esa fecha. También añade
 dos ajustes que no necesitan migración: `settings.showXp` (2.9.1) y
 `settings.sysSound` (2.9.4).
 

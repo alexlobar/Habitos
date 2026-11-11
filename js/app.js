@@ -73,6 +73,7 @@
   }
 
   function renderAll() {
+    applyDayLock();                       // antes de las tarjetas: las pinta cerradas o no
     UI.renderHeader(currentDate, today);
     UI.renderHabitList(currentDate);
     UI.renderDayExtras(currentDate);
@@ -716,7 +717,8 @@
 
     // Con efectos, ventanas del Sistema (2.9.4): roja al penalizar y otra al
     // anularla. Sin efectos, los avisos de siempre.
-    const irAlDia = function () { goToDate(nuevos[nuevos.length - 1]); UI.setView('today'); };
+    // Para rellenarlo hay que poder tocarlo: se abre ya desbloqueado.
+    const irAlDia = function () { goToDate(nuevos[nuevos.length - 1], true); UI.setView('today'); };
     if (UI.motionOk()) {
       if (nuevos.length) UI.showPenalty(restado, nuevos, irAlDia);
       if (devuelto) UI.showRefund(devuelto);
@@ -756,11 +758,60 @@
     UI.showDailyMissions(today);
   }
 
+  /* ── Días pasados cerrados (2.10.0) ───────────────────────
+     En Hoy, un día anterior se abre para mirarlo, no para cambiarlo, como
+     una semana ya planificada. Se puede desbloquear para corregir algo, y
+     vuelve a cerrarse en cuanto cambias de día. Las ventanas que piden
+     rellenar un día (la penalización) lo abren ya desbloqueado. ───────── */
+
+  let unlockedDay = null;
+
+  /* Ayer sigue abierto todo hoy (2.10.2): mucha gente apunta por la mañana
+     lo de anoche. Se cierra solo a medianoche, al pasar a anteayer. */
+  function isGraceDay() {
+    return currentDate === U.addDaysKey(today, -1);
+  }
+
+  function isDayLocked() {
+    return currentDate < today && !isGraceDay() && unlockedDay !== currentDate;
+  }
+
+  function applyDayLock() {
+    UI.setDayLock(currentDate >= today ? 'none'
+                : isGraceDay() ? 'grace'
+                : isDayLocked() ? 'locked' : 'open');
+  }
+
+  /** Si el día está cerrado, lo dice y devuelve true: quien llama no sigue. */
+  function blockedByLock() {
+    if (!isDayLocked()) return false;
+    UI.toast('Día cerrado: solo lectura.', {
+      icon: '🔒',
+      action: { label: 'Desbloquear', onClick: unlockDay }
+    });
+    return true;
+  }
+
+  function unlockDay() {
+    if (currentDate >= today || isGraceDay()) return;
+    unlockedDay = currentDate;
+    dirty.all = true;
+    scheduleFlush();
+  }
+
+  function lockDay() {
+    unlockedDay = null;
+    dirty.all = true;
+    scheduleFlush();
+  }
+
   /* ── Navegación entre días ────────────────────────────────── */
 
-  function goToDate(key) {
+  function goToDate(key, unlock) {
     if (key > today) return;      // no se registra en el futuro
     currentDate = key;
+    // Cambiar de día vuelve a cerrar el que se hubiera abierto.
+    unlockedDay = unlock === true && key < today ? key : null;
     UI.toggleDayPicker(false);
     dirty.all = true;
     scheduleFlush();
@@ -799,6 +850,7 @@
     const action = btn.dataset.action;
 
     if (action === 'detail') { openHabit(habit.id); return; }
+    if (blockedByLock()) return;
     if (action === 'timer') { onTimerButton(habit); return; }
 
     // Una franja de un hábito a evitar apunta un fallo, no un logro: va por
@@ -890,6 +942,8 @@
     if (!btn) return;
 
     stopHold();
+    // El aviso lo da el clic que llega después (onHabitListClick).
+    if (isDayLocked()) return;
 
     // El paso inmediato: mantener pulsado es un atajo, no un requisito.
     if (!applyStep(btn)) return;
@@ -916,6 +970,7 @@
 
   /** Valor escrito a mano: sustituye el total del día, no lo suma. */
   function applyAmount(input) {
+    if (isDayLocked()) return;            // campo de solo lectura: no debería llegar
     const card = input.closest('.habit-card');
     const habit = card && S.getHabit(card.dataset.id);
     if (!habit) return;
@@ -1599,6 +1654,7 @@
 
     weekAnchor = key;
     viewPeriod = U.startOfMonth(U.fromKey(key));
+    S.ensureLogStart();          // el 1 de enero de 2027 empieza el registro
     dirty.all = true;
     dirty.economy = true;        // ayer acaba de cerrarse, y quizá una semana
     scheduleFlush();
@@ -1735,7 +1791,8 @@
     });
 
     // El aviso de nivel se quita al tocarlo o con Escape; no hay que esperar.
-    els.levelUp.addEventListener('click', UI.hideLevelUp);
+    // Un toque completa lo que se esté escribiendo; otro, la cierra (2.10.1).
+    els.levelUp.addEventListener('click', UI.tapSysWindow);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !els.levelUp.hidden) UI.hideLevelUp();
     });
@@ -1816,7 +1873,15 @@
     });
 
     // Extras del día
-    els.btnFreeze.addEventListener('click', function () { UI.openDayModal(currentDate); });
+    els.btnFreeze.addEventListener('click', function () {
+      if (blockedByLock()) return;
+      UI.openDayModal(currentDate);
+    });
+
+    // Día pasado cerrado o abierto (2.10.0).
+    els.btnDayLock.addEventListener('click', function () {
+      if (isDayLocked()) unlockDay(); else lockDay();
+    });
 
     els.dayReasons.addEventListener('change', UI.syncDayNote);
     els.dayForm.addEventListener('submit', onDaySubmit);
@@ -1831,6 +1896,7 @@
     els.moodPicker.addEventListener('click', function (e) {
       const btn = e.target.closest('[data-mood]');
       if (!btn) return;
+      if (blockedByLock()) return;
       const v = Number(btn.dataset.mood);
       S.setMood(currentDate, S.getMood(currentDate) === v ? null : v);
     });
@@ -2563,6 +2629,9 @@
     loadTimer();
     if (timer) tickTimer();
 
+    // El registro del Sistema arranca el 1 de enero de 2027 (2.10.1): el
+    // primer día que toque, antes de cobrar nada, se apunta la EXP de partida.
+    S.ensureLogStart();
     syncProgressState();
     syncEconomy();
     scheduleMidnight();

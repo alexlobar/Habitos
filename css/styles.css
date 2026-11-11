@@ -4319,6 +4319,56 @@ body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bo
 .levelup[data-kind="refund"] .levelup__title { color: #3ddc97; text-shadow: 0 0 24px rgb(61 220 151 / .7); }
 .levelup[data-kind="refund"] .levelup__panel { box-shadow: 0 0 80px -20px #3ddc97, inset 0 1px 0 0 rgb(61 220 151 / .35); }
 
+/* ── 2.10.1 · Texto que se escribe solo ─────────────────────── */
+/* Cada letra ocupa su sitio desde el principio, invisible: la ventana no
+   cambia de tamaño mientras escribe. El cursor va por fuera del flujo. */
+.tw-ch { position: relative; visibility: hidden; }
+.tw-ch.is-on { visibility: visible; }
+.tw-caret::after {
+  content: "";
+  position: absolute;
+  left: calc(100% + 2px);
+  top: .12em;
+  bottom: .12em;
+  width: .45em;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  animation: caret-blink 900ms steps(1) infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
+/* La cifra grande y la lista esperan a que termine el título. */
+.levelup .levelup__level,
+.levelup .levelup__list { transition: opacity 260ms var(--ease), transform 260ms var(--ease); }
+.levelup.tw-waiting .levelup__level,
+.levelup.tw-waiting .levelup__list { opacity: 0; transform: translateY(6px) scale(.97); }
+
+/* ── 2.10.0 · Días pasados cerrados ─────────────────────────── */
+.day-lock {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border: 1px solid rgb(70 220 255 / .35);
+  border-left: 3px solid #46dcff;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, rgb(70 220 255 / .08), transparent 70%), var(--card-bg);
+}
+.day-lock[data-state="open"] { border-color: rgb(255 180 84 / .45); border-left-color: var(--warning); }
+.day-lock[data-state="grace"] { border-color: rgb(61 220 151 / .4); border-left-color: var(--success); }
+.day-lock__icon { flex: none; font-size: 1.2rem; }
+.day-lock__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.day-lock__text strong { font-size: var(--fs-sm); }
+.day-lock__hint { font-size: var(--fs-xs); color: var(--text-muted); }
+.day-lock .btn { flex: none; min-height: 36px; }
+/* Cerrado: se ve todo, pero los controles se apagan un poco. */
+[data-locked="true"] .habit-card__controls,
+[data-locked="true"] .mood-picker,
+[data-locked="true"] #dayActions,
+[data-locked="true"] #dayNote,
+[data-locked="true"] #weightInput { opacity: .55; }
+[data-locked="true"] .habit-card__controls * { cursor: not-allowed; }
+
 /* ── 2.10.0 · Nota del día y registro del Sistema ───────────── */
 
 /* La cabecera ya no puede ensanchar la página: con rachas de tres cifras
@@ -4430,6 +4480,12 @@ body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bo
 .syslog__source-fill[data-sign="neg"] { background: var(--danger); }
 
 .syslog__filter { margin-bottom: var(--sp-3); }
+/* Antes de que empiece el registro solo queda el texto que lo explica. */
+.syslog[data-waiting="true"] .syslog__totals,
+.syslog[data-waiting="true"] .syslog__sub,
+.syslog[data-waiting="true"] .syslog__sources,
+.syslog[data-waiting="true"] .syslog__filter,
+.syslog[data-waiting="true"] .syslog__list { display: none; }
 /* En el ordenador, a todo el ancho del Sistema: en media columna las
    líneas se partían en tres renglones. */
 @media (min-width: 1024px) {

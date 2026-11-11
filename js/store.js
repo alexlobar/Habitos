@@ -64,6 +64,8 @@ HT.store = (function () {
      los ascensos, logros y objetivos. Unas 1.500 líneas son ~150 KB y
      cubren de sobra un año; las más viejas se van quitando. */
   const MAX_SYSLOG = 1500;
+  // Empieza con el año: antes de esta fecha no se apunta nada (2.10.1).
+  const SYSLOG_FROM = '2027-01-01';
   const SYSLOG_KINDS = ['habit', 'bonus', 'avoid', 'mission', 'penalty', 'refund', 'plan',
                         'level', 'rank', 'achievement', 'goal', 'start', 'reset'];
 
@@ -702,7 +704,9 @@ HT.store = (function () {
     Object.keys(raw)
       .filter(function (id) { return /^l_[\w-]{1,30}$/.test(id); })
       .map(function (id) { return { id: id, e: cleanLogEntry(raw[id]) }; })
-      .filter(function (x) { return x.e; })
+      // Lo apuntado antes de que empiece el registro (la 2.10.0 ya apuntaba)
+      // se descarta: el registro arranca limpio el 1 de enero.
+      .filter(function (x) { return x.e && U.toKey(new Date(x.e.t)) >= SYSLOG_FROM; })
       .sort(function (a, b) { return b.e.t - a.e.t; })
       .slice(0, MAX_SYSLOG)
       .forEach(function (x) { out[x.id] = x.e; });
@@ -1029,17 +1033,27 @@ HT.store = (function () {
     if (incoming < 13) migrateDropPlanner();
     // v16: los hitos de evitar pasan de 50/150/400 a 50/100/200.
     if (incoming < 16) state.game.avoidXpRebase = true;
-    // v19: el registro empieza aquí, con la EXP que ya se tenía. Lo de antes
-    // no se guardaba y no se puede reconstruir con su motivo.
-    if (incoming < 19 && !Object.keys(state.sysLog).length) logStart();
   }
 
-  function logStart() {
-    const id = 'l_' + Date.now().toString(36) + 'start';
-    state.sysLog[id] = {
-      t: Date.now(), d: U.todayKey(), k: 'start', xp: 0,
-      n: 'Empieza el registro · ' + state.game.points + ' EXP acumulada hasta hoy'
+  /** La primera línea del registro: cuánta EXP había al empezar. */
+  function logStart(points) {
+    const t = Math.max(Date.now(), lastLogT + 1);
+    lastLogT = t;
+    state.sysLog['l_' + t.toString(36) + 'start'] = {
+      t: t, d: U.todayKey(), k: 'start', xp: 0,
+      n: 'Empieza el registro · ' + points + ' EXP acumulada hasta hoy'
     };
+  }
+
+  /**
+   * Abre el registro el primer día que toca (el 1 de enero de 2027, o el
+   * primero en que se abra la app desde entonces). Lo llama app.js al
+   * arrancar y al cambiar de día, antes de cobrar nada.
+   */
+  function ensureLogStart() {
+    if (!writable || U.todayKey() < SYSLOG_FROM || Object.keys(state.sysLog).length) return;
+    logStart(state.game.points);
+    save();
   }
 
   function load() {
@@ -2233,6 +2247,12 @@ HT.store = (function () {
   function addLog(entry) {
     // Dos líneas del mismo clic (hábito y bono) caen en el mismo milisegundo:
     // se separan uno para que la lista respete el orden en que pasaron.
+    if (U.todayKey() < SYSLOG_FROM) return;          // aún no ha empezado
+    // Si por lo que sea no se abrió al cambiar de día, se abre aquí, con la
+    // EXP de antes de este cambio.
+    if (!Object.keys(state.sysLog).length) {
+      logStart(state.game.points - (Number(entry && entry.xp) || 0));
+    }
     const t = Math.max(Date.now(), lastLogT + 1);
     lastLogT = t;
     const e = cleanLogEntry(Object.assign({ t: t, d: U.todayKey() }, entry));
@@ -2278,7 +2298,7 @@ HT.store = (function () {
     MAX_FREEZES: MAX_FREEZES,
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
     MAX_MISSIONS: MAX_MISSIONS, MAX_GOALS: MAX_GOALS, MAX_TIMER: MAX_TIMER,
-    addLog: addLog, getSysLog: getSysLog,
+    addLog: addLog, getSysLog: getSysLog, ensureLogStart: ensureLogStart, SYSLOG_FROM: SYSLOG_FROM,
     getGoals: getGoals, getGoal: getGoal, addGoal: addGoal, updateGoal: updateGoal,
     deleteGoal: deleteGoal, restoreGoal: restoreGoal, setGoalDone: setGoalDone,
     setHabitXp: setHabitXp, unlockWeekPlan: unlockWeekPlan, wasWeekUnlocked: wasWeekUnlocked,

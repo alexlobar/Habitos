@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.10.0">
+<html lang="es" data-theme="dark" data-build="2.10.2">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -143,6 +143,17 @@
           <ul class="mission-list" id="missionList"></ul>
           <p class="missions__foot" id="missionFoot">—</p>
         </article>
+
+        <!-- Día pasado (2.10.0): de entrada solo se mira. Se puede abrir
+             para corregir algo y se vuelve a cerrar al cambiar de día. -->
+        <div class="day-lock" id="dayLock" hidden>
+          <span class="day-lock__icon" id="dayLockIcon" aria-hidden="true">🔒</span>
+          <span class="day-lock__text">
+            <strong id="dayLockTitle">Día cerrado</strong>
+            <span class="day-lock__hint" id="dayLockHint">Solo lectura. Desbloquéalo si necesitas corregir algo.</span>
+          </span>
+          <button type="button" class="btn" id="btnDayLock">Desbloquear</button>
+        </div>
 
         <div class="habit-groups" id="habitList"></div>
 
