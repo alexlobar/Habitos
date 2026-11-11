@@ -1779,7 +1779,22 @@
         else UI.setView(btn.dataset.view);
       });
     });
-    els.levelBadge.addEventListener('click', showProgress);
+    // La chapa abre primero la ventana de estado (2.10.3), y desde ella el Sistema.
+    els.levelBadge.addEventListener('click', function () { UI.openStatus(today); });
+    els.btnStatusOpen.addEventListener('click', function () {
+      UI.closeStatus();
+      showProgress();
+      window.scrollTo(0, 0);
+    });
+    els.statusWin.addEventListener('click', function (e) {
+      if (e.target.closest('[data-close]')) UI.closeStatus();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && UI.isStatusOpen()) UI.closeStatus();
+    });
+    els.setBootSplash.addEventListener('click', function () {
+      S.setSettings({ bootSplash: !S.getSettings().bootSplash });
+    });
 
     // La racha se explica sola al tocarla: un número suelto en la cabecera
     // invita a preguntar qué cuenta, y ahí no cabe la respuesta.
@@ -2558,6 +2573,9 @@
    * error listo para copiar.
    */
   function showStartupError(err) {
+    // Que la pantalla de arranque no tape el error.
+    const splash = document.getElementById('bootSplash');
+    if (splash) splash.remove();
     const main = document.getElementById('main') || document.body;
     main.textContent = '';
 
@@ -2667,11 +2685,15 @@
     // El último, porque es el que hay que ver aunque haya salido otro.
     checkBuildMatch();
 
-    // Abriendo desde un atajo del icono se va directo a lo pedido, sin la
-    // ventana de misiones del día por delante.
+    // Abriendo desde un atajo del icono se va directo a lo pedido, sin
+    // pantalla de arranque ni ventana de misiones del día por delante.
     let atajo = false;
     try { atajo = !!new URLSearchParams(location.search).get('go'); } catch (e) { atajo = false; }
-    if (!atajo) setTimeout(maybeDailyMissions, 600);
+
+    // Pantalla de arranque (2.10.3); las misiones del día, cuando se quite.
+    UI.runBootSplash(S.getSettings().bootSplash && !atajo, function () {
+      if (!atajo) setTimeout(maybeDailyMissions, 300);
+    });
 
     openShortcut();
   }

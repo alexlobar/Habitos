@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.10.2** · esquema de datos **v19**.
+Versión documentada: **2.10.3** · esquema de datos **v19**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -158,6 +158,26 @@ hubiera apuntado la 2.10.0 se descarta. El primer día de 2027 que se abra la
 app, antes de cobrar nada, se escribe la primera línea con la EXP acumulada
 hasta ese momento. Con los hábitos a evitar ocultos, sus líneas salen como
 «Hábito privado».
+
+**Arranque, estado e interferencia** (2.10.3):
+
+- *Pantalla de arranque*: al abrir la app, un segundo de «SISTEMA ·
+  Sincronizando con el jugador…» que se escribe solo y se funde; tocarla la
+  quita. Interruptor en *Ajustes → Preferencias* (encendido de entrada,
+  `settings.bootSplash`). Está en el HTML para salir desde el primer
+  fotograma; un script mínimo en el `<head>` la esconde antes de pintar si
+  está apagada, sin *Efectos* o al abrir desde un atajo, y el CSS la retira
+  solo a los 4 s si el JS no llegara a cargar. La ventana de misiones del día
+  espera a que se quite.
+- *Ventana de estado*: la chapa de nivel abre primero una ventana «ESTADO DEL
+  JUGADOR» con el nivel, el rango (en su color), la barra de EXP del nivel,
+  racha ◈, racha de registro, el día de hoy con su nota, los logros y los
+  cinco atributos. *Abrir el Sistema* lleva a la pantalla completa; *Cerrar*,
+  tocar fuera o Escape la cierran.
+- *Interferencia al ascender de rango*: la ventana de subida entra con medio
+  segundo de fallo de señal (tiembla, se corta en franjas y separa rojo y
+  cian) y después escribe su texto. Con *Sonido del Sistema*, unos chasquidos
+  desafinados. Solo en los ascensos de rango, no en cada nivel.
 
 **Días pasados cerrados** (2.10.1). **Ayer sigue abierto todo el día de hoy**
 (2.10.2), para apuntar por la mañana lo de anoche: arriba sale «🕓 Ayer sigue

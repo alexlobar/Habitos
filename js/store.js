@@ -182,7 +182,7 @@ HT.store = (function () {
         hideDone: true, backupDays: 14,
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true, showXp: true,
-        sysSound: false,
+        sysSound: false, bootSplash: true,
         hideWeight: false, hideAvoid: false, hideNotes: false,
         blankPenalty: true,
         weightGoal: null
@@ -789,6 +789,8 @@ HT.store = (function () {
         showXp: s.showXp !== false,
         // Sonido de las ventanas del Sistema (2.9.4): apagado salvo que se encienda.
         sysSound: s.sysSound === true,
+        // Pantalla de arranque del Sistema (2.10.3): encendida salvo que se apague.
+        bootSplash: s.bootSplash !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false,
         showWeight: s.showWeight !== false,
@@ -1965,6 +1967,7 @@ HT.store = (function () {
       showDayBar: next.showDayBar !== false,
       showXp: next.showXp !== false,
       sysSound: next.sysSound === true,
+      bootSplash: next.bootSplash !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false,
       showWeight: next.showWeight !== false,

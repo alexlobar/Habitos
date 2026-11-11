@@ -109,7 +109,9 @@ HT.ui = (function () {
       'attrList', 'statQuests', 'statTrophies',
       'ascents', 'ascentsCount', 'ascentsList', 'ascentsNote',
       'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint', 'levelUpTitle', 'levelUpList',
-      'setSysSound', 'dayGrade', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
+      'setSysSound', 'dayGrade', 'setBootSplash', 'bootSplash', 'bootSplashText',
+      'statusWin', 'statusTitle', 'stLevel', 'stRank', 'stRankLetter', 'stRankName', 'stFill', 'stXp',
+      'stStats', 'stAttrs', 'btnStatusOpen', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
       'sysLogCard', 'sysLogCount', 'sysLogTotals', 'sysLogSources', 'sysLogList', 'sysLogEmpty', 'btnSysLogMore',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList', 'achCard', 'achCount',
@@ -780,7 +782,8 @@ HT.ui = (function () {
    * Escribe `text` en `node` empezando a los `delay` ms. Devuelve cuánto
    * tarda. Los temporizadores van a `timers` para poder cortarlos.
    */
-  function typeText(node, text, delay, timers, sound) {
+  function typeText(node, text, delay, timers, sound, speed) {
+    const paso = speed || TYPE_SPEED;
     node.textContent = '';
     node.setAttribute('aria-label', text);
     const letras = Array.from(text).map(function (c) {
@@ -794,9 +797,9 @@ HT.ui = (function () {
         if (i) letras[i - 1].classList.remove('tw-caret');
         s.classList.add('is-on', 'tw-caret');
         if (sound && s.textContent.trim()) sysTick();
-      }, delay + i * TYPE_SPEED));
+      }, delay + i * paso));
     });
-    const dura = letras.length * TYPE_SPEED;
+    const dura = letras.length * paso;
     if (letras.length) {
       timers.push(setTimeout(function () {
         letras[letras.length - 1].classList.remove('tw-caret');
@@ -876,7 +879,17 @@ HT.ui = (function () {
     clearTyping();
     const sonido = S.getSettings().sysSound;
     const panel = els.levelUp;
-    const t0 = 260;                                   // tras el fundido de entrada
+    // Ascenso de rango (2.10.3): la ventana entra con medio segundo de
+    // interferencia y luego empieza a escribir.
+    const glitch = w.glitch ? 620 : 0;
+    panel.classList.remove('is-glitch');
+    if (glitch) {
+      void panel.offsetWidth;
+      panel.classList.add('is-glitch');
+      twTimers.push(setTimeout(function () { panel.classList.remove('is-glitch'); }, glitch + 120));
+      if (sonido) sysSound('glitch');
+    }
+    const t0 = 260 + glitch;                          // tras el fundido (y la interferencia)
     const dTitulo = typeText(els.levelUpTitle, w.title, t0, twTimers, sonido);
     let fin = t0 + dTitulo;
     panel.classList.add('tw-waiting');
@@ -890,7 +903,7 @@ HT.ui = (function () {
       twFinish = null;
       quedan.forEach(clearTimeout);
       revealAll(panel);
-      panel.classList.remove('tw-waiting');
+      panel.classList.remove('tw-waiting', 'is-glitch');
     };
 
     clearTimeout(levelUpTimer);
@@ -920,17 +933,21 @@ HT.ui = (function () {
       if (audioCtx.state === 'suspended') audioCtx.resume();
       const notas = kind === 'level'   ? [[0, 523], [0.09, 659], [0.18, 784], [0.3, 1047]]
                   : kind === 'penalty' ? [[0, 196], [0.22, 147]]
+                  // Interferencia del ascenso de rango (2.10.3): chasquidos desafinados.
+                  : kind === 'glitch'  ? [[0, 92], [0.07, 1740], [0.13, 61], [0.21, 2310], [0.3, 118], [0.41, 880]]
                   : kind === 'perfect' ? [[0, 784], [0.12, 1175]]
                   : [[0, 880], [0.1, 1320]];
       notas.forEach(function (n) {
         const t0 = audioCtx.currentTime + n[0];
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.type = kind === 'penalty' ? 'triangle' : 'sine';
+        osc.type = kind === 'penalty' ? 'triangle' : kind === 'glitch' ? 'sawtooth' : 'sine';
         osc.frequency.value = n[1];
         gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.9);
+        // La interferencia: golpes cortos y más bajos, que el diente de sierra raspa.
+        const corto = kind === 'glitch';
+        gain.gain.exponentialRampToValueAtTime(corto ? 0.06 : 0.18, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + (corto ? 0.07 : 0.9));
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start(t0);
@@ -1010,6 +1027,97 @@ HT.ui = (function () {
     });
   }
 
+  /* ── Ventana de estado (2.10.3) ───────────────────────────
+     La abre la chapa de nivel: nivel, rango, EXP del nivel, rachas, nota
+     de hoy y los cinco atributos, y un botón al Sistema completo. ──────── */
+
+  function openStatus(todayKey) {
+    const info = St.levelInfo(S.getGame().points);
+    const day = St.dayStats(todayKey);
+    const nota = St.dayGrade(todayKey, day);
+
+    els.stLevel.textContent = String(info.level);
+    els.stRank.dataset.rank = info.rank.id;
+    els.stRankLetter.textContent = info.rank.letter;
+    els.stRankName.textContent = info.rank.name;
+    els.stFill.style.setProperty('--pct', info.pct);
+    els.stXp.textContent = fmtNum.format(info.into) + ' / ' + fmtNum.format(info.needed) + ' EXP · ' +
+      fmtNum.format(info.remaining) + ' para el nivel ' + (info.level + 1);
+
+    const stats = [
+      ['◈', 'Racha', St.dayStreak(todayKey) + ' d'],
+      ['✎', 'Registro', St.activityStreak(todayKey) + ' d'],
+      ['▣', 'Hoy', day.done + '/' + day.total + (nota && day.done ? ' · ' + nota.letter : '')],
+      ['★', 'Logros', S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length]
+    ];
+    els.stStats.textContent = '';
+    stats.forEach(function (s) {
+      const li = el('li', { class: 'status-win__stat' });
+      li.appendChild(el('span', { class: 'status-win__stat-icon', 'aria-hidden': 'true', text: s[0] }));
+      li.appendChild(el('span', { class: 'status-win__stat-label', text: s[1] }));
+      li.appendChild(el('span', { class: 'status-win__stat-value', text: s[2] }));
+      els.stStats.appendChild(li);
+    });
+
+    els.stAttrs.textContent = '';
+    St.attributes(todayKey).forEach(function (a) {
+      const li = el('li', { class: 'status-win__attr', 'aria-label': a.code + ' ' + a.name + ': ' + a.value });
+      li.appendChild(el('span', { class: 'status-win__attr-code', 'aria-hidden': 'true', text: a.code }));
+      const track = el('span', { class: 'status-win__attr-track', 'aria-hidden': 'true' });
+      const fill = el('span', { class: 'status-win__attr-fill' });
+      fill.style.setProperty('--pct', a.value);
+      track.appendChild(fill);
+      li.appendChild(track);
+      li.appendChild(el('span', { class: 'status-win__attr-value', 'aria-hidden': 'true', text: String(a.value) }));
+      els.stAttrs.appendChild(li);
+    });
+
+    lastFocused = document.activeElement;
+    els.statusWin.hidden = false;
+    void els.statusWin.offsetWidth;
+    els.statusWin.classList.add('is-open');
+    if (motionOk()) typeText(els.statusTitle, 'Estado del jugador', 200, [], S.getSettings().sysSound);
+    else els.statusTitle.textContent = 'Estado del jugador';
+    els.btnStatusOpen.focus();
+  }
+
+  function closeStatus() {
+    if (els.statusWin.hidden) return;
+    els.statusWin.classList.remove('is-open');
+    els.statusWin.hidden = true;
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  function isStatusOpen() { return !els.statusWin.hidden; }
+
+  /* ── Pantalla de arranque (2.10.3) ────────────────────────
+     Está en el HTML para salir desde el primer fotograma. Si toca, escribe
+     "Sincronizando con el jugador…" deprisa, espera un instante y se funde;
+     si no, desaparece al momento. Tocarla la quita. `done` se llama al
+     terminar (o enseguida, si no sale). ──────────────────────────────── */
+
+  function runBootSplash(enabled, done) {
+    const splash = els.bootSplash;
+    const acabar = function () {
+      if (!splash.isConnected) { if (done) done(); done = null; return; }
+      splash.classList.add('is-leaving');
+      setTimeout(function () { splash.remove(); }, 280);
+      if (done) { const d = done; done = null; d(); }
+    };
+    if (!enabled || !motionOk()) { splash.remove(); if (done) done(); return; }
+
+    const timers = [];
+    const dura = typeText(els.bootSplashText, 'Sincronizando con el jugador…', 120, timers, false, 20);
+    const t = setTimeout(acabar, 120 + dura + 380);
+    splash.addEventListener('click', function () { clearTimeout(t); timers.forEach(clearTimeout); acabar(); }, { once: true });
+  }
+
+  /** Quita la pantalla de arranque si sigue ahí (p. ej. si el arranque falla). */
+  function dropBootSplash() {
+    if (els.bootSplash && els.bootSplash.isConnected) els.bootSplash.remove();
+  }
+
   /** Penalización anulada: el día se ha rellenado y la EXP vuelve. */
   function showRefund(xp) {
     openSysWindow({
@@ -1058,7 +1166,8 @@ HT.ui = (function () {
       chipColor: color,
       hint: nuevoRango ? 'Has ascendido de rango' : 'Rango ' + (rank ? rank.letter : '') + ' · ' + rankName,
       duration: nuevoRango ? 4200 : 3200,
-      confetti: color ? [color, lighten(color, .45), '#ffffff', color] : null
+      confetti: color ? [color, lighten(color, .45), '#ffffff', color] : null,
+      glitch: nuevoRango
     });
   }
 
@@ -4451,6 +4560,7 @@ HT.ui = (function () {
     renderBackupStatus(s);
     els.setEffects.setAttribute('aria-checked', s.effects ? 'true' : 'false');
     els.setSysSound.setAttribute('aria-checked', s.sysSound ? 'true' : 'false');
+    els.setBootSplash.setAttribute('aria-checked', s.bootSplash ? 'true' : 'false');
     els.setBlankPenalty.setAttribute('aria-checked', s.blankPenalty ? 'true' : 'false');
     renderArchived();
     renderBuildInfo();
@@ -5632,6 +5742,8 @@ HT.ui = (function () {
     renderLevelPanel: renderLevelPanel,
     showLevelUp: showLevelUp, hideLevelUp: hideLevelUp, showPerfectDay: showPerfectDay,
     tapSysWindow: tapSysWindow,
+    openStatus: openStatus, closeStatus: closeStatus, isStatusOpen: isStatusOpen,
+    runBootSplash: runBootSplash, dropBootSplash: dropBootSplash,
     showDailyMissions: showDailyMissions, showPenalty: showPenalty, showRefund: showRefund,
     setLogFilter: setLogFilter, moreSysLog: moreSysLog, setDayLock: setDayLock,
     motionOk: motionOk,

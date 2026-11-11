@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.10.2">
+<html lang="es" data-theme="dark" data-build="2.10.3">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -19,8 +19,30 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="css/styles.css">
+  <!-- Pantalla de arranque (2.10.3): se decide aquí, antes de pintar nada,
+       para que con ella apagada no parpadee mientras carga el JS. Solo lee;
+       si algo falla, sale como siempre y app.js la quita. -->
+  <script>
+    try {
+      var hs = JSON.parse(localStorage.getItem('habitTracker.v1') || 'null');
+      var ss = hs && hs.settings;
+      if ((ss && (ss.bootSplash === false || ss.effects === false)) || /[?&]go=/.test(location.search)) {
+        document.documentElement.classList.add('no-splash');
+      }
+    } catch (e) { /* sin acceso al almacén: sale y app.js decide */ }
+  </script>
 </head>
 <body>
+  <!-- Pantalla de arranque del Sistema (2.10.3). Está en el HTML para que
+       salga desde el primer fotograma, antes del JS; app.js la quita al
+       momento si está apagada en Ajustes. Si el JS no llegara a cargar, el
+       CSS la retira sola a los 4 s. -->
+  <div class="boot-splash" id="bootSplash" aria-hidden="true">
+    <div class="boot-splash__box">
+      <p class="levelup__tag">Sistema</p>
+      <p class="boot-splash__text" id="bootSplashText">Sincronizando con el jugador…</p>
+    </div>
+  </div>
   <a class="skip-link" href="#main">Saltar al contenido</a>
 
   <div class="app-shell">
@@ -965,6 +987,17 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
+          <!-- Pantalla de arranque (2.10.3). -->
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="bootSplashLabel">Pantalla de arranque</span>
+              <span class="field-row__hint">Un segundo de «SISTEMA · Sincronizando con el jugador…» al abrir la app.</span>
+            </span>
+            <button type="button" class="switch" id="setBootSplash"
+                    role="switch" aria-checked="true" aria-labelledby="bootSplashLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
           <div class="field-row">
             <span class="field-row__text">
               <span id="blankPenaltyLabel">Restar EXP por días en blanco</span>
@@ -1601,6 +1634,40 @@
       </button>
       <button type="button" class="btn btn--primary timer-bar__finish" id="btnTimerFinish">Terminar</button>
       <button type="button" class="icon-btn timer-bar__btn" id="btnTimerCancel" aria-label="Descartar el temporizador">✕</button>
+    </div>
+  </div>
+
+  <!-- Ventana de estado (2.10.3): la abre la chapa de nivel. Un resumen del
+       jugador al estilo del Sistema, y desde ella al Sistema completo. -->
+  <div class="status-win" id="statusWin" hidden>
+    <div class="status-win__backdrop" data-close></div>
+    <div class="status-win__panel" role="dialog" aria-modal="true" aria-labelledby="statusTitle">
+      <span class="levelup__corner levelup__corner--tl" aria-hidden="true"></span>
+      <span class="levelup__corner levelup__corner--br" aria-hidden="true"></span>
+      <p class="levelup__tag">Sistema</p>
+      <p class="levelup__title" id="statusTitle">Estado del jugador</p>
+
+      <div class="status-win__head">
+        <div class="status-win__level">
+          <span class="status-win__label">Nivel</span>
+          <span class="status-win__num" id="stLevel">1</span>
+        </div>
+        <div class="status-win__rank" id="stRank" data-rank="e">
+          <span class="status-win__letter" id="stRankLetter">E</span>
+          <span class="status-win__rankname" id="stRankName">Novato</span>
+        </div>
+      </div>
+
+      <div class="status-win__bar" aria-hidden="true"><span class="status-win__fill" id="stFill"></span></div>
+      <p class="status-win__xp" id="stXp">—</p>
+
+      <ul class="status-win__stats" id="stStats"></ul>
+      <ul class="status-win__attrs" id="stAttrs" aria-label="Atributos"></ul>
+
+      <div class="status-win__actions">
+        <button type="button" class="btn btn--ghost" data-close>Cerrar</button>
+        <button type="button" class="btn btn--primary" id="btnStatusOpen">Abrir el Sistema</button>
+      </div>
     </div>
   </div>
 
