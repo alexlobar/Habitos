@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.10.4">
+<html lang="es" data-theme="dark" data-build="2.10.7">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -53,6 +53,8 @@
   </div>
   <!-- Fondo vivo (2.10.4): rejilla y barrido detrás de toda la app. -->
   <div class="sys-bg" aria-hidden="true"></div>
+  <!-- Línea de escaneo al cambiar de pantalla (2.10.5). -->
+  <div class="sys-scan" id="sysScan" aria-hidden="true"></div>
   <a class="skip-link" href="#main">Saltar al contenido</a>
 
   <div class="app-shell">
@@ -714,6 +716,34 @@
             <li class="stat"><p class="stat__value" id="statTrophies">—</p><p class="stat__label">Logros</p></li>
           </ul>
 
+          <!-- Penalización por perder la racha (2.10.6): automática y a mano. -->
+          <details class="card fold streakpen" id="streakPenCard" data-fold="streakpen">
+            <summary class="fold__head">
+              <h2 class="fold__title">Penalización por racha</h2>
+              <span class="fold__count" id="streakPenCount">−25</span>
+            </summary>
+            <div class="fold__body">
+              <p class="card__text">
+                Perder la racha ◈ cuesta <strong>25 EXP</strong>, pero nunca te baja de nivel.
+                Si arreglas ese día después (lo marcas o lo salvas con un comodín), se devuelven.
+              </p>
+              <div class="field-row">
+                <span class="field-row__text">
+                  <span id="streakPenLabel">Restar sola al perder la racha</span>
+                  <span class="field-row__hint">Cada día cerrado en que se rompe una racha de 3 días o más. No suma a un día que ya restó por quedar en blanco.</span>
+                </span>
+                <button type="button" class="switch" id="setStreakPenalty"
+                        role="switch" aria-checked="true" aria-labelledby="streakPenLabel">
+                  <span class="switch__thumb"></span>
+                </button>
+              </div>
+              <p class="streakpen__info" id="streakPenInfo">—</p>
+              <div class="btn-row">
+                <button type="button" class="btn btn--danger" id="btnStreakPenalty">Aplicar −25 EXP</button>
+              </div>
+            </div>
+          </details>
+
           <!-- Objetivos a largo plazo (2.8.0). Abierto de entrada: es lo que
                se viene a mirar. Si lo pliegas, se recuerda. -->
           <details class="card fold goals" id="goalsCard" data-fold="goals" open>
@@ -847,10 +877,16 @@
 
         <article class="card habit-hero">
           <span class="habit-hero__icon" id="habitIcon" aria-hidden="true">✨</span>
-          <div>
-            <h1 class="view__title" id="habitTitle">—</h1>
+          <div class="habit-hero__main">
+            <div class="habit-hero__title-row">
+              <h1 class="view__title" id="habitTitle">—</h1>
+              <!-- Rango del hábito (2.10.6): su constancia de 30 días, S–E. -->
+              <span class="attr-grade habit-grade" id="habitGrade" hidden>—</span>
+            </div>
             <p class="habit-hero__meta" id="habitMeta">—</p>
           </div>
+          <!-- Sello del análisis, la primera vez al día que se abre (2.10.6). -->
+          <p class="habit-analysis" id="habitAnalysis" aria-live="polite" hidden></p>
         </article>
 
         <div class="pause-banner" id="pauseBanner" hidden>
@@ -934,8 +970,9 @@
           <h1 class="view__title" id="titleSettings">Ajustes</h1>
         </div>
 
-        <article class="card">
-          <header class="card__head"><h2 class="card__title">Preferencias</h2></header>
+        <details class="card fold" data-fold="set-prefs">
+          <summary class="fold__head"><h2 class="fold__title">Preferencias</h2></summary>
+          <div class="fold__body">
           <div class="field-row">
             <span class="field-row__text">
               <label for="setAccent">Color predeterminado</label>
@@ -996,12 +1033,14 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
-        </article>
+        </div>
+        </details>
 
         <!-- Estilo del Sistema (2.10.4): todo lo que da aire de "Sistema" a la
              app, cada cosa con su interruptor para ir quitándolas. -->
-        <article class="card">
-          <header class="card__head"><h2 class="card__title">Estilo del Sistema</h2></header>
+        <details class="card fold" data-fold="set-system">
+          <summary class="fold__head"><h2 class="fold__title">Estilo del Sistema</h2></summary>
+          <div class="fold__body">
           <div class="field-row">
             <span class="field-row__text">
               <span id="sysThemeLabel">Modo Sistema total</span>
@@ -1019,6 +1058,16 @@
             </span>
             <button type="button" class="switch" id="setSysBg"
                     role="switch" aria-checked="true" aria-labelledby="sysBgLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="sysScanLabel">Transición entre pantallas</span>
+              <span class="field-row__hint">Una línea de escaneo cian pasa por la pantalla al cambiar de sección, como si el Sistema la cargase.</span>
+            </span>
+            <button type="button" class="switch" id="setSysScan"
+                    role="switch" aria-checked="true" aria-labelledby="sysScanLabel">
               <span class="switch__thumb"></span>
             </button>
           </div>
@@ -1065,10 +1114,12 @@
               <option value="8">8 segundos</option>
             </select>
           </div>
-        </article>
+        </div>
+        </details>
 
-        <article class="card">
-          <header class="card__head"><h2 class="card__title">La pantalla Hoy</h2></header>
+        <details class="card fold" data-fold="set-today">
+          <summary class="fold__head"><h2 class="fold__title">La pantalla Hoy</h2></summary>
+          <div class="fold__body">
           <p class="card__text">Qué se ve mientras marcas los hábitos del día.</p>
 
           <div class="field-row">
@@ -1133,12 +1184,14 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
-        </article>
+        </div>
+        </details>
 
         <!-- Para enseñar la app sin enseñar lo más personal. Solo cambia lo
              que se ve: los datos se siguen guardando y contando igual. -->
-        <article class="card">
-          <header class="card__head"><h2 class="card__title">Privacidad</h2></header>
+        <details class="card fold" data-fold="set-privacy">
+          <summary class="fold__head"><h2 class="fold__title">Privacidad</h2></summary>
+          <div class="fold__body">
           <p class="card__text">
             Oculta lo más personal en toda la app, por si se la enseñas a alguien.
             No borra nada: sigue guardado y contando para rachas, porcentajes y EXP.
@@ -1174,22 +1227,26 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
-        </article>
+        </div>
+        </details>
 
-        <article class="card" id="archivedCard">
-          <header class="card__head">
-            <h2 class="card__title">Todos tus hábitos</h2>
-            <span class="card__count" id="allHabitsCount">—</span>
-          </header>
+        <details class="card fold" id="archivedCard" data-fold="set-habits">
+          <summary class="fold__head">
+            <h2 class="fold__title">Todos tus hábitos</h2>
+            <span class="fold__count" id="allHabitsCount">—</span>
+          </summary>
+          <div class="fold__body">
           <p class="card__text">
             Toca cualquiera para ver su ficha. Los archivados no salen en Hoy,
             pero conservan todo su histórico.
           </p>
           <ul class="archive-list" id="archiveList"></ul>
-        </article>
+          </div>
+        </details>
 
-        <article class="card">
-          <header class="card__head"><h2 class="card__title">Tus datos</h2></header>
+        <details class="card fold" data-fold="set-data">
+          <summary class="fold__head"><h2 class="fold__title">Tus datos</h2></summary>
+          <div class="fold__body">
           <p class="card__text">
             Todo se guarda en este navegador. Guarda una copia fuera —en Drive, en
             WhatsApp o en el correo— para no perderla.
@@ -1233,7 +1290,8 @@
             <button type="button" class="btn" id="btnResetProgress">Reiniciar progresión</button>
             <button type="button" class="btn btn--danger" id="btnReset">Borrar todo</button>
           </div>
-        </article>
+        </div>
+        </details>
 
         <article class="card">
           <!-- La versión que guarda la caché offline, su fecha y lo que ocupa
@@ -1703,6 +1761,8 @@
       <span class="levelup__corner levelup__corner--br" aria-hidden="true"></span>
       <p class="levelup__tag">Sistema</p>
       <p class="levelup__title" id="statusTitle">Estado del jugador</p>
+      <!-- Días con el Sistema (2.10.7). -->
+      <p class="status-win__days" id="stDays">—</p>
 
       <div class="status-win__head">
         <div class="status-win__level">
@@ -1723,6 +1783,8 @@
 
       <div class="status-win__actions">
         <button type="button" class="btn btn--ghost" data-close>Cerrar</button>
+        <!-- Tarjeta de jugador (2.10.5): una imagen para guardar o mandar. -->
+        <button type="button" class="btn" id="btnStatusShare">Compartir</button>
         <button type="button" class="btn btn--primary" id="btnStatusOpen">Abrir el Sistema</button>
       </div>
     </div>
@@ -1755,6 +1817,8 @@
       <p class="levelup__tag">Sistema</p>
       <p class="levelup__title" id="levelUpTitle">Subida de nivel</p>
       <p class="levelup__level" id="levelUpLevel">1</p>
+      <!-- Barra del atributo que sube de rango (2.10.5). -->
+      <div class="levelup__bar" id="levelUpBar" hidden><span class="levelup__bar-fill" id="levelUpBarFill"></span></div>
       <p class="levelup__rank" id="levelUpRank" hidden>Nuevo rango</p>
       <!-- Lista de la ventana de misiones diarias (2.9.4). -->
       <ul class="levelup__list" id="levelUpList" hidden></ul>

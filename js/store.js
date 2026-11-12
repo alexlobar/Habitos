@@ -69,7 +69,10 @@ HT.store = (function () {
   // Empieza con el año: antes de esta fecha no se apunta nada (2.10.1).
   const SYSLOG_FROM = '2027-01-01';
   const SYSLOG_KINDS = ['habit', 'bonus', 'avoid', 'mission', 'penalty', 'refund', 'plan',
-                        'level', 'rank', 'achievement', 'goal', 'start', 'reset'];
+                        'level', 'rank', 'achievement', 'goal', 'start', 'reset', 'attr'];
+  // Atributos y letras posibles (2.10.5): para guardar la mejor alcanzada.
+  const ATTR_CODES = ['STR', 'VIT', 'AGI', 'INT', 'SEN'];
+  const GRADES = 'EDCBAS';
 
   let state = null;
   let listeners = [];
@@ -185,7 +188,8 @@ HT.store = (function () {
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true, showXp: true,
         sysSound: false, bootSplash: true, splashSecs: 4,
-        sysTheme: true, sysBg: true, rankAccent: true,
+        sysTheme: true, sysBg: true, rankAccent: true, sysScan: true,
+        streakPenalty: true,
         hideWeight: false, hideAvoid: false, hideNotes: false,
         blankPenalty: true,
         weightGoal: null
@@ -210,7 +214,8 @@ HT.store = (function () {
         points: 0, achievements: [], bestStreak: 0, habitsCreated: 0,
         avoidXpPaid: 0, lastExport: null, weekSummarySeen: null, levelLog: [], levelLogFrom: 0,
         freezes: 1, freezeWeek: U.toKey(U.startOfWeek(U.fromKey(today), 1)),
-        missionPaid: {}, penalties: {}, penaltyFrom: today
+        missionPaid: {}, penalties: {}, penaltyFrom: today, attrBest: {},
+        streakPenalties: {}, streakPenaltyFrom: today
       }
     };
   }
@@ -700,6 +705,16 @@ HT.store = (function () {
     return out;
   }
 
+  /** { STR: 'C', … }: solo códigos y letras conocidos. */
+  function cleanAttrBest(raw) {
+    const out = {};
+    if (!isObj(raw)) return out;
+    ATTR_CODES.forEach(function (c) {
+      if (typeof raw[c] === 'string' && raw[c].length === 1 && GRADES.indexOf(raw[c]) >= 0) out[c] = raw[c];
+    });
+    return out;
+  }
+
   /** Las MAX_SYSLOG líneas más recientes. */
   function cleanSysLog(raw) {
     if (!isObj(raw)) return {};
@@ -800,6 +815,10 @@ HT.store = (function () {
         sysTheme: s.sysTheme !== false,
         sysBg: s.sysBg !== false,
         rankAccent: s.rankAccent !== false,
+        // Escaneo al cambiar de pantalla (2.10.5): encendido salvo que se apague.
+        sysScan: s.sysScan !== false,
+        // Restar EXP al perder la racha ◈ (2.10.6): activado salvo que se apague.
+        streakPenalty: s.streakPenalty !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false,
         showWeight: s.showWeight !== false,
@@ -887,7 +906,15 @@ HT.store = (function () {
         penalties: cleanLedger(g.penalties),
         // Desde qué día cuenta la penalización. Quien actualiza empieza hoy:
         // no se cobran días en blanco anteriores a que existiera.
-        penaltyFrom: U.isValidKey(g.penaltyFrom) ? g.penaltyFrom : today
+        penaltyFrom: U.isValidKey(g.penaltyFrom) ? g.penaltyFrom : today,
+        // La mejor letra alcanzada por cada atributo (2.10.5). Solo sube: así
+        // un atributo que baila entre 59 y 60 no anuncia la B cada dos días.
+        attrBest: cleanAttrBest(g.attrBest),
+        // Penalización por perder la racha ◈ (2.10.6): lo restado de verdad
+        // por cada día en que se rompió, para devolverlo si el día se arregla,
+        // y desde cuándo cuenta (no se cobran rachas rotas de antes).
+        streakPenalties: cleanLedger(g.streakPenalties),
+        streakPenaltyFrom: U.isValidKey(g.streakPenaltyFrom) ? g.streakPenaltyFrom : today
       }
     };
   }
@@ -1960,6 +1987,10 @@ HT.store = (function () {
     if (next.blankPenalty !== false && state.settings.blankPenalty === false) {
       state.game.penaltyFrom = U.todayKey();
     }
+    // Lo mismo con la de perder la racha (2.10.6).
+    if (next.streakPenalty !== false && state.settings.streakPenalty === false) {
+      state.game.streakPenaltyFrom = U.todayKey();
+    }
 
     state.settings = {
       weekStart: 1,
@@ -1981,6 +2012,8 @@ HT.store = (function () {
       sysTheme: next.sysTheme !== false,
       sysBg: next.sysBg !== false,
       rankAccent: next.rankAccent !== false,
+      sysScan: next.sysScan !== false,
+      streakPenalty: next.streakPenalty !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false,
       showWeight: next.showWeight !== false,
@@ -2110,6 +2143,8 @@ HT.store = (function () {
     state.game.missionPaid = {};
     state.game.penalties = {};
     state.game.penaltyFrom = U.todayKey();
+    state.game.streakPenalties = {};
+    state.game.streakPenaltyFrom = U.todayKey();
     save(true);
     emit('state:replace');
     return state.game;
@@ -2282,11 +2317,33 @@ HT.store = (function () {
     emit('game:log');
   }
 
+  /** Guarda la mejor letra de los atributos (2.10.5). No avisa: lo llama app.js. */
+  function setAttrBest(map) {
+    state.game.attrBest = cleanAttrBest(map);
+    save();
+  }
+
   /** Todas las líneas, de la más reciente a la más antigua. */
   function getSysLog() {
     return Object.keys(state.sysLog)
       .map(function (id) { return Object.assign({ id: id }, state.sysLog[id]); })
       .sort(function (a, b) { return b.t - a.t; });
+  }
+
+  /* ── Penalización por perder la racha (2.10.6) ────────────── */
+
+  function getStreakPenalties() { return state.game.streakPenalties; }
+
+  function setStreakPenalty(dateKey, n) {
+    if (!U.isValidKey(dateKey)) return;
+    state.game.streakPenalties[dateKey] = Math.max(0, Math.floor(Number(n) || 0));
+    save();
+  }
+
+  function clearStreakPenalty(dateKey) {
+    if (!(dateKey in state.game.streakPenalties)) return;
+    delete state.game.streakPenalties[dateKey];
+    save();
   }
 
   /* ── Mantenimiento ────────────────────────────────────────── */
@@ -2314,7 +2371,7 @@ HT.store = (function () {
     MAX_FREEZES: MAX_FREEZES,
     load: load, save: save, flush: flush, subscribe: subscribe, storageUse: storageUse,
     MAX_MISSIONS: MAX_MISSIONS, MAX_GOALS: MAX_GOALS, MAX_TIMER: MAX_TIMER,
-    addLog: addLog, getSysLog: getSysLog, ensureLogStart: ensureLogStart, SYSLOG_FROM: SYSLOG_FROM,
+    addLog: addLog, getSysLog: getSysLog, setAttrBest: setAttrBest, ensureLogStart: ensureLogStart, SYSLOG_FROM: SYSLOG_FROM,
     getGoals: getGoals, getGoal: getGoal, addGoal: addGoal, updateGoal: updateGoal,
     deleteGoal: deleteGoal, restoreGoal: restoreGoal, setGoalDone: setGoalDone,
     setHabitXp: setHabitXp, unlockWeekPlan: unlockWeekPlan, wasWeekUnlocked: wasWeekUnlocked,
@@ -2323,6 +2380,8 @@ HT.store = (function () {
     getMissions: getMissions, getMissionWeeks: getMissionWeeks, acceptMissions: acceptMissions,
     getMissionPaid: getMissionPaid, setMissionPaid: setMissionPaid,
     getPenalties: getPenalties, setPenalty: setPenalty, clearPenalty: clearPenalty,
+    getStreakPenalties: getStreakPenalties, setStreakPenalty: setStreakPenalty,
+    clearStreakPenalty: clearStreakPenalty,
     getState: getState, getSettings: getSettings, getGame: getGame, getLastError: getLastError,
     getHabits: getHabits, getArchivedHabits: getArchivedHabits, getHabit: getHabit,
     getHabitsForDate: getHabitsForDate, getLog: getLog, getHabitLogs: getHabitLogs,

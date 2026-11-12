@@ -33,6 +33,8 @@ HT.stats = (function () {
     mission: 50,        // cada misión cumplida
     missionsAll: 50,    // extra por cumplir las tres de la semana
     blankDay: 25,       // lo que resta un día que acaba sin ningún registro
+    streakLoss: 25,     // lo que resta perder la racha ◈ (2.10.6), a mano o sola
+    streakLossFrom: 3,  // solo se cobra si la racha perdida era de 3 días o más
 
     /* Los bonus ya no son cantidades fijas: son un porcentaje de lo que has
        ganado ese día. Con dos escalones, para que fallar un hábito no tire
@@ -697,6 +699,41 @@ HT.stats = (function () {
   /** Días seguidos cumpliendo el listón de hábitos. */
   function dayStreak(todayKey) {
     return streakOf(streakValue, todayKey);
+  }
+
+  /**
+   * ¿Se rompió la racha ◈ el día `dateKey` (ya pasado)? Devuelve los días de
+   * racha que se perdieron, o 0 si ese día no la cortó: o no fue un fallo, o
+   * no había racha que perder (2.10.6). Igual que la racha, los días sin
+   * nada que hacer o salvados con comodín no cuentan ni a favor ni en contra.
+   */
+  function streakBrokenOn(dateKey) {
+    if (streakValue(dateKey) !== 'miss') return 0;
+    const desde = firstHabitDay();
+    if (!desde) return 0;
+    let key = U.addDaysKey(dateKey, -1);
+    let count = 0;
+    for (let i = 0; i < MAX_LOOKBACK && key >= desde; i++) {
+      const v = streakValue(key);
+      if (v === 'miss') break;
+      if (v === 'done') count++;
+      key = U.addDaysKey(key, -1);
+    }
+    return count;
+  }
+
+  /**
+   * Días con el Sistema (2.10.7): desde el primer hábito que tuviste (el más
+   * antiguo, archivados incluidos) hasta hoy, los dos contados. 0 sin hábitos.
+   */
+  function daysWithSystem(todayKey) {
+    const today = todayKey || U.todayKey();
+    let first = null;
+    S.getHabits(true).forEach(function (h) {
+      if (!first || h.createdAt < first) first = h.createdAt;
+    });
+    if (!first || first > today) return first ? 1 : 0;
+    return U.daysBetween(first, today) + 1;
   }
 
   /** Días seguidos registrando algo, aunque fuera un mal día. */
@@ -1856,6 +1893,14 @@ HT.stats = (function () {
     { letter: 'E', from: 0 }
   ];
 
+  /** Rango de letra de un atributo (2.10.4): S desde 90, A desde 75, B desde
+      60, C desde 40, D desde 20 y E por debajo. */
+  function attrGrade(v) {
+    return v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 ? 'C' : v >= 20 ? 'D' : 'E';
+  }
+  /** Orden de las letras, de menos a más (para saber si una sube). */
+  const GRADE_ORDER = 'EDCBAS';
+
   /** { letter, pct } del día, o null si ese día no tocaba nada. */
   function dayGrade(dateKey, day) {
     const d = day || dayStats(dateKey);
@@ -2123,7 +2168,8 @@ HT.stats = (function () {
     habitEarnedXp: habitEarnedXp, nextAvoidMilestone: nextAvoidMilestone,
     moodSummary: moodSummary,
     timeUnitFactor: timeUnitFactor, hasTimer: hasTimer, timerGoalMinutes: timerGoalMinutes,
-    DAY_GRADES: DAY_GRADES, dayGrade: dayGrade,
+    DAY_GRADES: DAY_GRADES, dayGrade: dayGrade, attrGrade: attrGrade, GRADE_ORDER: GRADE_ORDER,
+    streakBrokenOn: streakBrokenOn, daysWithSystem: daysWithSystem,
     goalKind: goalKind, goalUnit: goalUnit, goalProgress: goalProgress,
     forecastMax: forecastMax, idealDailyXp: idealDailyXp,
 

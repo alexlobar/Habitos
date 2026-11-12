@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.10.4** · esquema de datos **v19**.
+Versión documentada: **2.10.7** · esquema de datos **v19**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -219,6 +219,72 @@ quedó en blanco), cuántos hábitos cumpliste y la racha ◈.
 su valor: S desde 90, A desde 75, B desde 60, C desde 40, D desde 20 y E por
 debajo, con los colores de la nota del día. Sale en la ventana de estado, en
 la pantalla de arranque y en *Estado del jugador* del Sistema.
+
+**Atributos que suben de rango** (2.10.5). Cuando un atributo alcanza una
+letra que nunca había tenido (por ejemplo, STR de C a B), sale la ventana
+«RANGO DE ATRIBUTO · STR · B» con su barra llenándose, y queda en el registro
+del Sistema (desde 2027). Se guarda la mejor letra de cada uno
+(`game.attrBest`): si baja y vuelve a subir, no se repite. Al actualizar se
+apuntan las letras de ese momento sin anunciar nada.
+
+**Transición entre pantallas** (2.10.5). Al cambiar de sección, una línea de
+escaneo cian baja por la pantalla en medio segundo. Interruptor en *Estilo del
+Sistema* (encendido, `settings.sysScan`); va con *Efectos* y no sale con
+*reducir movimiento*.
+
+**Tarjeta de jugador** (2.10.5). El botón *Compartir* de la ventana de estado
+crea una imagen de 1080×1350 con tu estado al estilo del Sistema: nivel, rango
+en su color, EXP, rachas, el día de hoy, logros, los cinco atributos con su
+letra y la fecha. En el móvil abre el menú de compartir (como *Guardar
+copia*); en el ordenador se descarga como `jugador-AAAA-MM-DD.png`.
+
+**Análisis del hábito** (2.10.6). La ficha de cada hábito lleva su **rango**
+junto al nombre: la letra (S–E, la escala de los atributos) de su constancia en
+los últimos 30 días; en los de evitar, de los días limpios. La primera vez que
+abres una ficha cada día, la línea de escaneo la recorre y sale un momento el
+sello «ANÁLISIS COMPLETADO · RANGO B». Va con el interruptor de *Transición
+entre pantallas*; la lista de fichas ya analizadas hoy es del dispositivo
+(`habitTracker.analyzed`).
+
+**Novedades del Sistema** (2.10.6). La primera vez que abres una versión nueva
+sale «ACTUALIZACIÓN DEL SISTEMA · v2.10.6» con lo que trae, antes del resultado
+del día y las misiones. Las novedades están en `CHANGELOG` (`ui.js`); la última
+versión vista, en `habitTracker.seenVersion`.
+
+**Ajustes plegables** (2.10.6). Preferencias, Estilo del Sistema, La pantalla
+Hoy, Privacidad, Todos tus hábitos y Tus datos se pliegan y despliegan como
+los del Sistema, y cada uno recuerda cómo lo dejaste. La versión queda a la
+vista abajo.
+
+**Penalización por perder la racha** (2.10.6). Tarjeta plegable en el Sistema.
+Perder la racha ◈ cuesta **25 EXP** y nunca baja de nivel:
+
+- *Automática* (interruptor en la propia tarjeta, encendido): cada día ya
+  cerrado en que se rompe una racha de 3 días o más resta 25. Si después
+  arreglas ese día (lo marcas, o lo salvas con un comodín), se devuelven:
+  «Racha recuperada». Un día que ya restó por quedar en blanco no resta otra
+  vez. Mira como mucho 31 días atrás y no cobra rachas rotas de antes de
+  activarla.
+- *Manual*: el botón **Aplicar −25 EXP**, con su ventana de confirmación, para
+  penalizarte cuando tú decidas.
+
+La tarjeta dice tu racha actual y cuántas has perdido este mes.
+
+**Detalles del Sistema** (2.10.7):
+
+- *La racha que brilla*: el ◈ de la cabecera brilla más según la racha: halo
+  cian a los 7 días, más intenso con un toque violeta a los 30 y **dorado**
+  (latiendo despacio) a los 100. Si hoy está en peligro, manda el rojo.
+- *Días perfectos dorados*: en el calendario de Histórico (mes y año), los
+  días con nota S llevan borde dorado brillante.
+- *Subidas en el calendario*: un ▲ cian en la esquina del día en que subiste de
+  nivel, dorado si abriste rango; al pasar por encima dice a qué nivel. Sale
+  del registro de ascensos.
+- *Destello al cumplir*: al marcar un hábito, un barrido cian cruza su tarjeta.
+  Va con *Efectos*.
+- *Días con el Sistema*: «Día 312 con el Sistema», contando desde tu hábito más
+  antiguo, en la pantalla de arranque, en la ventana de estado y en la tarjeta
+  de jugador.
 
 **Días pasados cerrados** (2.10.1). **Ayer sigue abierto todo el día de hoy**
 (2.10.2), para apuntar por la mañana lo de anoche: arriba sale «🕓 Ayer sigue

@@ -113,7 +113,10 @@ HT.ui = (function () {
       'statusWin', 'statusTitle', 'stLevel', 'stRank', 'stRankLetter', 'stRankName', 'stFill', 'stXp',
       'stStats', 'stAttrs', 'btnStatusOpen',
       'setSysTheme', 'setSysBg', 'setRankAccent', 'setSplashSecs', 'accentHint', 'bootSplashStatus',
-      'sysConfirm', 'sysConfirmTitle', 'sysConfirmText', 'btnSysConfirmNo', 'btnSysConfirmYes', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
+      'sysConfirm', 'sysConfirmTitle', 'sysConfirmText', 'btnSysConfirmNo', 'btnSysConfirmYes',
+      'levelUpBar', 'levelUpBarFill', 'setSysScan', 'sysScan', 'btnStatusShare',
+      'streakPenCard', 'streakPenCount', 'setStreakPenalty', 'streakPenInfo', 'btnStreakPenalty',
+      'habitGrade', 'habitAnalysis', 'stDays', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
       'sysLogCard', 'sysLogCount', 'sysLogTotals', 'sysLogSources', 'sysLogList', 'sysLogEmpty', 'btnSysLogMore',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList', 'achCard', 'achCount',
@@ -239,7 +242,22 @@ HT.ui = (function () {
 
   /* ── Navegación entre vistas ──────────────────────────────── */
 
+  // La app arranca en Hoy sin pasar por setView(): se parte de ahí.
+  let viewActual = 'today';
+
+  /** Línea de escaneo cian al cambiar de pantalla (2.10.5). */
+  function scanView() {
+    if (!S.getSettings().sysScan || !motionOk()) return;
+    const n = els.sysScan;
+    n.classList.remove('is-on');
+    void n.offsetWidth;                     // reinicia la animación
+    n.classList.add('is-on');
+  }
+
   function setView(name) {
+    // Solo al cambiar de verdad de pantalla, no al repintar la misma.
+    if (viewActual !== name) scanView();
+    viewActual = name;
     Object.keys(els.views).forEach(function (key) {
       const view = els.views[key];
       const active = key === name;
@@ -435,6 +453,8 @@ HT.ui = (function () {
     els.streakNum.hidden = dias === 0;
     els.streakNum.textContent = dias;
     els.streakChip.dataset.state = riesgo ? 'risk' : dias ? 'on' : 'off';
+    // Brilla según lo larga que sea (2.10.7): 7, 30 y 100 días (dorado).
+    els.streakChip.dataset.tier = dias >= 100 ? '100' : dias >= 30 ? '30' : dias >= 7 ? '7' : '';
     els.streakChip.setAttribute('aria-label', dias
       ? dias + (dias === 1 ? ' día seguido' : ' días seguidos') + ' cumpliendo' +
         (riesgo ? '. Hoy todavía no' : '')
@@ -882,6 +902,12 @@ HT.ui = (function () {
     });
     els.levelUpList.hidden = !(w.list && w.list.length);
 
+    // Barra (atributo que sube, 2.10.5): empieza vacía y se llena al
+    // terminar de escribir el título.
+    const conBarra = typeof w.bar === 'number';
+    els.levelUpBar.hidden = !conBarra;
+    els.levelUpBarFill.style.setProperty('--pct', 0);
+
     // Título, etiqueta y frase se escriben uno tras otro; la cifra grande y
     // la lista aparecen al terminar el título. La ventana dura lo que tarda
     // en escribirse más lo de siempre, para que no le quite tiempo de lectura.
@@ -902,7 +928,10 @@ HT.ui = (function () {
     const dTitulo = typeText(els.levelUpTitle, w.title, t0, twTimers, sonido);
     let fin = t0 + dTitulo;
     panel.classList.add('tw-waiting');
-    twTimers.push(setTimeout(function () { panel.classList.remove('tw-waiting'); }, fin));
+    twTimers.push(setTimeout(function () {
+      panel.classList.remove('tw-waiting');
+      if (conBarra) els.levelUpBarFill.style.setProperty('--pct', w.bar);
+    }, fin));
     if (w.chip) fin += typeText(els.levelUpRank, w.chip, fin + 120, twTimers, sonido) + 120;
     fin += typeText(els.levelUpHint, w.hint, fin + 120, twTimers, sonido) + 120;
     twTimers.push(setTimeout(function () { twFinish = null; }, fin));
@@ -913,6 +942,7 @@ HT.ui = (function () {
       quedan.forEach(clearTimeout);
       revealAll(panel);
       panel.classList.remove('tw-waiting', 'is-glitch');
+      if (conBarra) els.levelUpBarFill.style.setProperty('--pct', w.bar);
     };
 
     clearTimeout(levelUpTimer);
@@ -1039,7 +1069,7 @@ HT.ui = (function () {
   /** Rango de letra de un atributo (2.10.4): S desde 90, A desde 75, B desde
       60, C desde 40, D desde 20 y E por debajo. Los colores, los de la nota. */
   function attrGrade(v) {
-    return v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 ? 'C' : v >= 20 ? 'D' : 'E';
+    return St.attrGrade(v);
   }
 
   /** Una fila de atributo: código, rango de letra, barra y valor. */
@@ -1057,6 +1087,11 @@ HT.ui = (function () {
     return li;
   }
 
+  /** "Día 312 con el Sistema" (2.10.7). */
+  function daysLabel(n) {
+    return n ? 'Día ' + fmtNum.format(n) + ' con el Sistema' : 'Primer día con el Sistema';
+  }
+
   /* ── Ventana de estado (2.10.3) ───────────────────────────
      La abre la chapa de nivel: nivel, rango, EXP del nivel, rachas, nota
      de hoy y los cinco atributos, y un botón al Sistema completo. ──────── */
@@ -1067,6 +1102,7 @@ HT.ui = (function () {
     const nota = St.dayGrade(todayKey, day);
 
     els.stLevel.textContent = String(info.level);
+    els.stDays.textContent = daysLabel(St.daysWithSystem(todayKey));
     els.stRank.dataset.rank = info.rank.id;
     els.stRankLetter.textContent = info.rank.letter;
     els.stRankName.textContent = info.rank.name;
@@ -1128,6 +1164,8 @@ HT.ui = (function () {
     const info = St.levelInfo(S.getGame().points);
     const day = St.dayStats(todayKey);
     box.textContent = '';
+
+    box.appendChild(el('p', { class: 'boot-status__days', text: daysLabel(St.daysWithSystem(todayKey)) }));
 
     const head = el('div', { class: 'boot-status__head' });
     head.appendChild(el('span', { class: 'boot-status__level', text: 'Nv. ' + info.level }));
@@ -1253,6 +1291,387 @@ HT.ui = (function () {
       confetti: false
     });
     return true;
+  }
+
+  /* ── Tarjeta de jugador (2.10.5) ──────────────────────────
+     Una imagen 1080×1350 (formato vertical de redes) con tu estado al
+     estilo del Sistema, dibujada en un canvas. En el móvil se comparte con
+     el mismo menú que «Guardar copia»; en el ordenador se descarga. Se hace
+     todo en el mismo toque (toDataURL es síncrono): el navegador solo deja
+     abrir el menú de compartir justo después de tocar. ────────────────── */
+
+  const GRADE_COLORS = { S: '#fbbf24', A: '#3ddc97', B: '#46dcff', C: '#a78bfa', D: '#fb923c', E: '#94a3b8' };
+  const CARD_MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace';
+  const CARD_SANS = 'Inter, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+
+  function drawStatusCard(todayKey) {
+    const W = 1080, H = 1350;
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const c = cv.getContext('2d');
+    const info = St.levelInfo(S.getGame().points);
+    const day = St.dayStats(todayKey);
+    const nota = St.dayGrade(todayKey, day);
+    const rc = rankColor(info.rank.id) || '#46dcff';
+    const cyan = '#46dcff';
+    const espaciar = function (px) { if ('letterSpacing' in c) c.letterSpacing = px + 'px'; };
+
+    // Fondo: azul noche, halo y rejilla.
+    const fondo = c.createLinearGradient(0, 0, 0, H);
+    fondo.addColorStop(0, '#081426');
+    fondo.addColorStop(1, '#03070f');
+    c.fillStyle = fondo;
+    c.fillRect(0, 0, W, H);
+    const halo = c.createRadialGradient(W / 2, 120, 40, W / 2, 120, 760);
+    halo.addColorStop(0, 'rgba(70,220,255,.20)');
+    halo.addColorStop(1, 'rgba(70,220,255,0)');
+    c.fillStyle = halo;
+    c.fillRect(0, 0, W, H);
+    c.strokeStyle = 'rgba(70,220,255,.06)';
+    c.lineWidth = 1;
+    for (let x = 0; x <= W; x += 48) { c.beginPath(); c.moveTo(x + .5, 0); c.lineTo(x + .5, H); c.stroke(); }
+    for (let y = 0; y <= H; y += 48) { c.beginPath(); c.moveTo(0, y + .5); c.lineTo(W, y + .5); c.stroke(); }
+
+    // Panel con filo cian y esquinas marcadas.
+    const px = 70, py = 70, pw = W - 140, ph = H - 140;
+    c.fillStyle = 'rgba(8,18,34,.88)';
+    c.fillRect(px, py, pw, ph);
+    c.shadowColor = cyan;
+    c.shadowBlur = 30;
+    c.strokeStyle = 'rgba(70,220,255,.65)';
+    c.lineWidth = 2;
+    c.strokeRect(px, py, pw, ph);
+    c.shadowBlur = 0;
+    c.lineWidth = 6;
+    c.strokeStyle = cyan;
+    c.beginPath(); c.moveTo(px, py + 50); c.lineTo(px, py); c.lineTo(px + 50, py); c.stroke();
+    c.strokeStyle = '#a78bfa';
+    c.beginPath(); c.moveTo(px + pw, py + ph - 50); c.lineTo(px + pw, py + ph); c.lineTo(px + pw - 50, py + ph); c.stroke();
+
+    c.textAlign = 'center';
+    c.textBaseline = 'alphabetic';
+
+    // Cabecera.
+    c.fillStyle = 'rgba(70,220,255,.6)';
+    c.font = '600 24px ' + CARD_MONO;
+    espaciar(10);
+    c.fillText('SISTEMA', W / 2, 150);
+    c.fillStyle = cyan;
+    c.shadowColor = cyan;
+    c.shadowBlur = 24;
+    c.font = '700 44px ' + CARD_MONO;
+    espaciar(9);
+    c.fillText('ESTADO DEL JUGADOR', W / 2, 220);
+    c.shadowBlur = 0;
+    espaciar(0);
+    // Días con el Sistema (2.10.7).
+    c.fillStyle = 'rgba(230,241,255,.6)';
+    c.font = '500 24px ' + CARD_MONO;
+    c.fillText(daysLabel(St.daysWithSystem(todayKey)).toUpperCase(), W / 2, 262);
+
+    // Nivel y rango.
+    c.fillStyle = 'rgba(70,220,255,.7)';
+    c.font = '600 24px ' + CARD_MONO;
+    espaciar(8);
+    c.fillText('NIVEL', 370, 300);
+    espaciar(0);
+    c.fillStyle = '#e6f1ff';
+    c.shadowColor = cyan;
+    c.shadowBlur = 30;
+    c.font = '700 150px ' + CARD_MONO;
+    c.fillText(String(info.level), 370, 440);
+    c.shadowBlur = 0;
+
+    c.fillStyle = rc + '33';
+    c.fillRect(620, 300, 150, 130);
+    c.strokeStyle = rc;
+    c.lineWidth = 3;
+    c.shadowColor = rc;
+    c.shadowBlur = 20;
+    c.strokeRect(620, 300, 150, 130);
+    c.shadowBlur = 0;
+    c.fillStyle = rc;
+    c.font = '800 ' + (info.rank.letter.length > 2 ? 52 : 80) + 'px ' + CARD_MONO;
+    c.fillText(info.rank.letter, 695, 395);
+    c.fillStyle = 'rgba(230,241,255,.8)';
+    c.font = '500 30px ' + CARD_SANS;
+    c.fillText(info.rank.name, 695, 475);
+
+    // Barra de EXP del nivel.
+    const bx = 150, by = 520, bw = W - 300, bh = 22;
+    c.fillStyle = 'rgba(255,255,255,.08)';
+    c.fillRect(bx, by, bw, bh);
+    const exp = c.createLinearGradient(bx, 0, bx + bw, 0);
+    exp.addColorStop(0, cyan);
+    exp.addColorStop(1, rc);
+    c.fillStyle = exp;
+    c.shadowColor = cyan;
+    c.shadowBlur = 16;
+    c.fillRect(bx, by, Math.max(4, bw * info.pct / 100), bh);
+    c.shadowBlur = 0;
+    c.fillStyle = 'rgba(230,241,255,.75)';
+    c.font = '500 26px ' + CARD_MONO;
+    c.fillText(fmtNum.format(info.into) + ' / ' + fmtNum.format(info.needed) + ' EXP  ·  ' +
+               fmtNum.format(info.xp) + ' EXP en total', W / 2, 590);
+
+    // Cuatro cifras.
+    const cifras = [
+      ['RACHA', '◈ ' + St.dayStreak(todayKey) + ' d'],
+      ['REGISTRO', '✎ ' + St.activityStreak(todayKey) + ' d'],
+      ['HOY', day.done + '/' + day.total + (nota && day.done ? ' · ' + nota.letter : '')],
+      ['LOGROS', S.getGame().achievements.length + '/' + St.ACHIEVEMENTS.length]
+    ];
+    cifras.forEach(function (s, i) {
+      const x = 150 + (i % 2) * 400, y = 640 + Math.floor(i / 2) * 120;
+      c.fillStyle = 'rgba(70,220,255,.06)';
+      c.fillRect(x, y, 380, 100);
+      c.strokeStyle = 'rgba(70,220,255,.25)';
+      c.lineWidth = 2;
+      c.strokeRect(x, y, 380, 100);
+      c.textAlign = 'left';
+      c.fillStyle = 'rgba(70,220,255,.7)';
+      c.font = '600 20px ' + CARD_MONO;
+      espaciar(5);
+      c.fillText(s[0], x + 24, y + 38);
+      espaciar(0);
+      c.fillStyle = '#e6f1ff';
+      c.font = '700 36px ' + CARD_MONO;
+      c.fillText(s[1], x + 24, y + 80);
+    });
+
+    // Atributos con su letra.
+    St.attributes(todayKey).forEach(function (a, i) {
+      const y = 920 + i * 62;
+      const g = St.attrGrade(a.value);
+      const gc = GRADE_COLORS[g];
+      c.textAlign = 'left';
+      c.fillStyle = cyan;
+      c.font = '700 30px ' + CARD_MONO;
+      c.fillText(a.code, 150, y + 30);
+      c.strokeStyle = gc;
+      c.lineWidth = 2;
+      c.strokeRect(250, y, 44, 38);
+      c.fillStyle = gc;
+      c.font = '800 26px ' + CARD_MONO;
+      c.textAlign = 'center';
+      c.fillText(g, 272, y + 29);
+      c.fillStyle = 'rgba(255,255,255,.08)';
+      c.fillRect(320, y + 12, 500, 14);
+      const ag = c.createLinearGradient(320, 0, 820, 0);
+      ag.addColorStop(0, cyan);
+      ag.addColorStop(1, '#a78bfa');
+      c.fillStyle = ag;
+      c.fillRect(320, y + 12, Math.max(3, 500 * a.value / 100), 14);
+      c.textAlign = 'right';
+      c.fillStyle = '#e6f1ff';
+      c.font = '700 30px ' + CARD_MONO;
+      c.fillText(String(a.value), 930, y + 30);
+    });
+
+    // Pie.
+    c.textAlign = 'center';
+    c.fillStyle = 'rgba(230,241,255,.55)';
+    c.font = '500 24px ' + CARD_MONO;
+    espaciar(3);
+    c.fillText(U.formatShort(U.fromKey(todayKey)) + ' ' + todayKey.slice(0, 4) + '  ·  HÁBITOS', W / 2, 1245);
+    espaciar(0);
+    return cv;
+  }
+
+  /** De data URL a Blob sin esperar a nada (toBlob es asíncrono). */
+  function dataUrlToBlob(url) {
+    const partes = url.split(',');
+    const bin = atob(partes[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: 'image/png' });
+  }
+
+  function shareStatusCard(todayKey) {
+    let blob;
+    try { blob = dataUrlToBlob(drawStatusCard(todayKey).toDataURL('image/png')); }
+    catch (e) { toast('No se pudo crear la tarjeta.', { type: 'error', icon: '⚠️' }); return; }
+    const nombre = 'jugador-' + todayKey + '.png';
+
+    const descargar = function () {
+      const url = URL.createObjectURL(blob);
+      const a = el('a', { href: url, download: nombre });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+      toast('Tarjeta guardada: ' + nombre + ', en tu carpeta de descargas.', { type: 'success', icon: '🪪' });
+    };
+
+    const tactil = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (tactil && navigator.share && navigator.canShare && typeof File === 'function') {
+      const file = new File([blob], nombre, { type: 'image/png' });
+      let vale = false;
+      try { vale = navigator.canShare({ files: [file] }); } catch (e) { vale = false; }
+      if (vale) {
+        navigator.share({ files: [file] }).catch(function (err) {
+          if (err && err.name === 'AbortError') return;      // cerró el menú
+          descargar();
+        });
+        return;
+      }
+    }
+    descargar();
+  }
+
+  /* ── Análisis del hábito (2.10.6) ─────────────────────────
+     Al abrir la ficha de un hábito por primera vez en el día, la línea de
+     escaneo la recorre y sale el sello «ANÁLISIS COMPLETADO · RANGO B».
+     La letra se queda junto al nombre. Va con el interruptor de la
+     transición entre pantallas. La lista de los ya analizados hoy es de
+     este dispositivo y va aparte de tus datos. ─────────────────────── */
+
+  const ANALYSIS_KEY = 'habitTracker.analyzed';
+
+  function habitGradeOf(habit, todayKey) {
+    const rate = St.habitRate(habit, todayKey, 30);
+    if (!rate.total) return null;
+    return { letter: St.attrGrade(rate.pct), pct: rate.pct };
+  }
+
+  function analyzeHabit(habit, todayKey) {
+    const sello = els.habitAnalysis;
+    sello.hidden = true;
+    sello.classList.remove('is-in', 'is-out');
+    const nota = habitGradeOf(habit, todayKey);
+    if (!nota || !S.getSettings().sysScan || !motionOk()) return;
+
+    let hechos = {};
+    try { hechos = JSON.parse(localStorage.getItem(ANALYSIS_KEY)) || {}; } catch (e) { hechos = {}; }
+    if (hechos.d !== todayKey) hechos = { d: todayKey, ids: [] };
+    if (hechos.ids.indexOf(habit.id) >= 0) return;
+    hechos.ids.push(habit.id);
+    try { localStorage.setItem(ANALYSIS_KEY, JSON.stringify(hechos)); } catch (e) { /* da igual */ }
+
+    // La línea de escaneo la lanza el cambio de pantalla; el sello sale
+    // cuando ha pasado.
+    scanView();
+    sello.dataset.grade = nota.letter;
+    const texto = 'Análisis completado · Rango ' + nota.letter;
+    setTimeout(function () {
+      sello.hidden = false;
+      void sello.offsetWidth;
+      sello.classList.add('is-in');
+      typeText(sello, texto, 0, [], S.getSettings().sysSound, 25);
+    }, 420);
+    setTimeout(function () { sello.classList.add('is-out'); }, 420 + 2600);
+    setTimeout(function () { sello.hidden = true; sello.classList.remove('is-in', 'is-out'); }, 420 + 3000);
+  }
+
+  /* ── Novedades del Sistema (2.10.6) ───────────────────────
+     La primera vez que se abre una versión nueva, una ventana con lo que
+     trae. La última vista se apunta en este dispositivo. ─────────────── */
+
+  const SEEN_VERSION_KEY = 'habitTracker.seenVersion';
+
+  // Lo nuevo de cada versión, para la ventana. Solo hace falta la actual.
+  const CHANGELOG = {
+    '2.10.7': [
+      ['◈', 'La racha de la cabecera brilla a los 7, 30 y 100 días'],
+      ['★', 'Días perfectos (S) con borde dorado en el calendario'],
+      ['▲', 'El calendario marca los días en que subiste de nivel o de rango'],
+      ['⚡', 'Destello cian al cumplir un hábito'],
+      ['✦', 'Días con el Sistema en el arranque, el estado y la tarjeta']
+    ],
+    '2.10.6': [
+      ['◈', 'Penalización por perder la racha: en el Sistema, sola o con un botón'],
+      ['▣', 'Análisis del hábito: su rango al abrir la ficha'],
+      ['☰', 'Ajustes plegables, apartado por apartado'],
+      ['✦', 'Esta ventana: las novedades de cada versión']
+    ]
+  };
+
+  /** Enseña las novedades si esta versión aún no se había abierto aquí. */
+  function showUpdateNotes() {
+    let vista = null;
+    try { vista = localStorage.getItem(SEEN_VERSION_KEY); } catch (e) { return false; }
+    if (vista === U.version) return false;
+    try { localStorage.setItem(SEEN_VERSION_KEY, U.version); } catch (e) { /* da igual */ }
+    const notas = CHANGELOG[U.version];
+    if (!notas) return false;
+    if (!motionOk()) {
+      toast('Actualizado a la versión ' + U.version + '.', { icon: '✦' });
+      return true;
+    }
+    openSysWindow({
+      kind: 'update',
+      title: 'Actualización del Sistema',
+      big: 'v' + U.version,
+      chip: notas.length === 1 ? '1 novedad' : notas.length + ' novedades',
+      hint: 'Toca para cerrar.',
+      list: notas.map(function (n) { return { icon: n[0], text: n[1], xp: '' }; }),
+      duration: 8000,
+      confetti: false
+    });
+    return true;
+  }
+
+  /* ── Penalización por racha (2.10.6) ──────────────────────── */
+
+  function renderStreakPenalty(todayKey) {
+    const s = S.getSettings();
+    els.setStreakPenalty.setAttribute('aria-checked', s.streakPenalty ? 'true' : 'false');
+    const libro = S.getStreakPenalties();
+    const mes = todayKey.slice(0, 7);
+    let veces = 0, total = 0;
+    Object.keys(libro).forEach(function (k) {
+      if (k.slice(0, 7) === mes) { veces++; total += libro[k]; }
+    });
+    const racha = St.dayStreak(todayKey);
+    els.streakPenInfo.textContent = 'Racha ◈ actual: ' + racha + (racha === 1 ? ' día' : ' días') +
+      ' · Este mes: ' + (veces ? veces + (veces === 1 ? ' racha perdida, −' : ' rachas perdidas, −') + total + ' EXP'
+                               : 'ninguna racha perdida');
+    els.streakPenCount.textContent = veces ? '−' + total : '−' + St.XP.streakLoss;
+  }
+
+  /**
+   * Ventana de la penalización por racha (2.10.6). `manual`: la ha aplicado
+   * el botón. Sin efectos, un aviso.
+   */
+  function showStreakPenalty(xp, lost, dateKey, manual) {
+    const titulo = manual ? 'Penalización aplicada' : 'Racha perdida';
+    if (!motionOk()) {
+      toast(titulo + (xp ? ': −' + xp + ' EXP.' : ' (sin EXP que quitar en este nivel).'), { icon: '◈' });
+      return;
+    }
+    openSysWindow({
+      kind: 'penalty',
+      title: titulo,
+      big: xp ? '−' + fmtNum.format(xp) + ' EXP' : 'Sin EXP que quitar',
+      chip: manual ? 'Racha ◈ perdida' : 'Racha ◈ de ' + lost + ' días · ' + U.formatShort(U.fromKey(dateKey)),
+      hint: manual ? 'La has aplicado tú. Nunca te baja de nivel.'
+                   : 'Si arreglas ese día, se devuelve. Nunca te baja de nivel.',
+      duration: 4600,
+      confetti: false
+    });
+  }
+
+  /**
+   * Un atributo sube de rango (2.10.5): ventana del Sistema con la letra en
+   * su color y la barra llenándose. Sin efectos, un aviso.
+   */
+  function showAttrRank(attr, from, to) {
+    if (!motionOk()) {
+      toast(attr.code + ' · ' + attr.name + ' sube al rango ' + to, { type: 'achievement', icon: '⬆' });
+      return;
+    }
+    openSysWindow({
+      kind: 'attr',
+      grade: to,
+      title: 'Rango de atributo',
+      big: attr.code + ' · ' + to,
+      chip: attr.name + ': ' + from + ' → ' + to,
+      hint: 'Valor ' + attr.value + ' de 100. ' + attr.detail,
+      bar: attr.value,
+      duration: 3800,
+      confetti: null
+    });
   }
 
   /** Penalización anulada: el día se ha rellenado y la EXP vuelve. */
@@ -2395,6 +2814,14 @@ HT.ui = (function () {
     target.classList.remove('is-popping');
     void target.offsetWidth;
     target.classList.add('is-popping');
+    // Destello al cumplir (2.10.7): un barrido cian cruza la tarjeta, como si
+    // el Sistema la registrase.
+    if (motionOk()) {
+      card.classList.remove('is-registered');
+      void card.offsetWidth;
+      card.classList.add('is-registered');
+      setTimeout(function () { card.classList.remove('is-registered'); }, 700);
+    }
   }
 
   /**
@@ -3381,6 +3808,7 @@ HT.ui = (function () {
     renderAttributes(dateKey);
     renderRewards();
     renderGoals();
+    renderStreakPenalty(dateKey);
     renderSysLog();
     renderStreakPair(dateKey);
     renderAscents();
@@ -3469,17 +3897,49 @@ HT.ui = (function () {
     else els.chartReadout.textContent = 'Sin registros en este periodo.';
   }
 
+  /**
+   * Días en que se subió de nivel (2.10.7): { fecha → { level, rank } }, con
+   * el nivel más alto de ese día y si alguno abrió rango. Sale del registro de
+   * ascensos y se rehace solo si ha cambiado.
+   */
+  let levelDaysCache = { n: -1, map: {} };
+
+  function levelDays() {
+    const log = S.getLevelLog();
+    if (log.length === levelDaysCache.n) return levelDaysCache.map;
+    const map = {};
+    log.forEach(function (e) {
+      const r = St.rankForLevel(e.level);
+      const prev = map[e.date];
+      map[e.date] = {
+        level: prev ? Math.max(prev.level, e.level) : e.level,
+        rank: (prev && prev.rank) || (r && r.from === e.level ? r : null)
+      };
+    });
+    levelDaysCache = { n: log.length, map: map };
+    return map;
+  }
+
   /** Una celda de día del calendario general. `dayStats` es caro: se calcula una vez. */
   function dayCell(key, today) {
     if (!key) return heatCell(null);
 
     const day = St.dayStats(key);
     const nota = key > today || (key === today && !day.done) ? null : St.dayGrade(key, day);
-    return heatCell(key, St.heatLevel(day),
-                    dayCellLabel(key, day) + (nota ? ' · nota ' + nota.letter : ''), {
+    const subida = levelDays()[key];
+    const cell = heatCell(key, St.heatLevel(day),
+                    dayCellLabel(key, day) + (nota ? ' · nota ' + nota.letter : '') +
+                    (subida ? ' · subiste al nivel ' + subida.level +
+                              (subida.rank ? ' (rango ' + subida.rank.letter + ')' : '') : ''), {
       isToday: key === today, frozen: day.frozen, future: key > today,
       grade: nota ? nota.letter : null
     });
+    // ▲ en el día en que subiste de nivel; dorado si abriste rango (2.10.7).
+    if (subida && cell.tagName === 'BUTTON') {
+      cell.dataset.levelup = subida.rank ? 'rank' : 'level';
+      cell.appendChild(el('span', { class: 'heat__lvl', 'aria-hidden': 'true', text: '▲' }));
+    }
+    return cell;
   }
 
   function renderMonth(monthDate, weekStart) {
@@ -4354,6 +4814,17 @@ HT.ui = (function () {
 
     renderHabitHeadline(habit, todayKey);
 
+    // Su rango (2.10.6): la constancia de los últimos 30 días, con la escala
+    // de los atributos. En los de evitar, los días limpios.
+    const nota = habitGradeOf(habit, todayKey);
+    els.habitGrade.hidden = !nota;
+    if (nota) {
+      els.habitGrade.textContent = nota.letter;
+      els.habitGrade.dataset.grade = nota.letter;
+      els.habitGrade.title = 'Rango del hábito: ' + nota.letter + ' (' + nota.pct + '% en 30 días)';
+      els.habitGrade.setAttribute('aria-label', els.habitGrade.title);
+    }
+
     renderPauseBanner(habit, todayKey);
 
     // Solo la etiqueta: el botón lleva un SVG dentro y textContent lo borraría.
@@ -4701,6 +5172,7 @@ HT.ui = (function () {
     els.setSplashSecs.value = String(s.splashSecs);
     els.setSysTheme.setAttribute('aria-checked', s.sysTheme ? 'true' : 'false');
     els.setSysBg.setAttribute('aria-checked', s.sysBg ? 'true' : 'false');
+    els.setSysScan.setAttribute('aria-checked', s.sysScan ? 'true' : 'false');
     els.setRankAccent.setAttribute('aria-checked', s.rankAccent ? 'true' : 'false');
     els.accentHint.textContent = s.rankAccent
       ? 'Ahora manda el color de tu rango (Estilo del Sistema). Este se usa al apagarlo.'
@@ -5267,6 +5739,7 @@ HT.ui = (function () {
     rank:        { tag: 'Rango',    group: null },
     achievement: { tag: 'Logro',    group: null },
     goal:        { tag: 'Objetivo', group: null },
+    attr:        { tag: 'Atributo', group: null },
     start:       { tag: 'Sistema',  group: null },
     reset:       { tag: 'Sistema',  group: null }
   };
@@ -5934,7 +6407,9 @@ HT.ui = (function () {
     openStatus: openStatus, closeStatus: closeStatus, isStatusOpen: isStatusOpen,
     runBootSplash: runBootSplash, dropBootSplash: dropBootSplash,
     sysConfirm: sysConfirm, answerConfirm: answerConfirm, isConfirmOpen: isConfirmOpen,
-    showDayResult: showDayResult, syncAccent: syncAccent,
+    showDayResult: showDayResult, syncAccent: syncAccent, showAttrRank: showAttrRank,
+    scanView: scanView, shareStatusCard: shareStatusCard, showStreakPenalty: showStreakPenalty,
+    analyzeHabit: analyzeHabit, showUpdateNotes: showUpdateNotes,
     showDailyMissions: showDailyMissions, showPenalty: showPenalty, showRefund: showRefund,
     setLogFilter: setLogFilter, moreSysLog: moreSysLog, setDayLock: setDayLock,
     motionOk: motionOk,

@@ -327,6 +327,7 @@
 
     syncAvoidXp();
     syncGoals();
+    syncAttrRanks();
 
     St.earnedAchievements(today).forEach(function (id) {
       if (S.unlockAchievement(id)) {
@@ -334,6 +335,37 @@
         S.addLog({ k: 'achievement', xp: 0, n: 'Logro: ' + ach.icon + ' ' + ach.name });
         UI.toast('Logro desbloqueado: ' + ach.name, { type: 'achievement', icon: ach.icon });
       }
+    });
+  }
+
+  /* ── Atributos que suben de rango (2.10.5) ────────────────
+     Se guarda la mejor letra de cada atributo. Cuando uno la supera, ventana
+     del Sistema y línea en el registro. Si baja, no pasa nada: solo se
+     anuncia lo que nunca se había alcanzado. La primera vez (al actualizar)
+     se apuntan las letras de entonces sin anunciar nada. ─────────────── */
+
+  function syncAttrRanks() {
+    const mejor = S.getGame().attrBest;
+    const primeraVez = !Object.keys(mejor).length;
+    const nuevo = Object.assign({}, mejor);
+    const subidas = [];
+
+    St.attributes(today).forEach(function (a) {
+      const letra = St.attrGrade(a.value);
+      const antes = mejor[a.code];
+      if (!antes || St.GRADE_ORDER.indexOf(letra) > St.GRADE_ORDER.indexOf(antes)) {
+        nuevo[a.code] = letra;
+        if (antes && !primeraVez) subidas.push({ attr: a, from: antes, to: letra });
+      }
+    });
+
+    if (!subidas.length && !primeraVez &&
+        Object.keys(nuevo).length === Object.keys(mejor).length) return;
+    S.setAttrBest(nuevo);
+
+    subidas.forEach(function (s) {
+      S.addLog({ k: 'attr', xp: 0, n: 'Atributo ' + s.attr.code + ' (' + s.attr.name + ') sube al rango ' + s.to });
+      UI.showAttrRank(s.attr, s.from, s.to);
     });
   }
 
@@ -653,6 +685,9 @@
   function syncEconomy() {
     syncMissionXp();
     syncBlankDays();
+    // Después de los días en blanco: un día que ya restó por eso no resta
+    // otra vez por la racha.
+    syncStreakPenalty();
   }
 
   function syncMissionXp() {
@@ -674,6 +709,73 @@
       } else {
         UI.toast('Una misión ha dejado de cumplirse: −' + (pagado - r.xp) + ' EXP', { icon: '🎯' });
       }
+    });
+  }
+
+  /* ── Penalización por perder la racha ◈ (2.10.6) ──────────
+     Automática (si está activada): cada día ya cerrado en que se rompió una
+     racha de 3 días o más resta 25 EXP, sin bajar nunca del inicio del nivel.
+     Funciona como los días en blanco: se apunta lo restado y, si el día se
+     arregla (lo marcas después o lo salvas con un comodín), se devuelve.
+     Un día que ya restó por quedar en blanco no resta otra vez por la racha.
+     Manual: el botón del Sistema resta 25 cuando tú decidas, con confirmación. */
+
+  // Hasta dónde mira atrás: con la app sin abrir un mes, se revisa ese mes.
+  const STREAK_SCAN_DAYS = 31;
+
+  /** Lo que se puede quitar sin bajar del inicio del nivel. */
+  function restarSinBajar(cuanto) {
+    const pts = S.getGame().points;
+    const suelo = St.xpForLevel(St.levelFromXp(pts));
+    return Math.max(0, Math.min(cuanto, pts - suelo));
+  }
+
+  function syncStreakPenalty() {
+    // Devoluciones: el día ya no rompe la racha.
+    const libro = S.getStreakPenalties();
+    Object.keys(libro).forEach(function (k) {
+      if (St.streakBrokenOn(k) >= St.XP.streakLossFrom) return;
+      const n = libro[k];
+      S.clearStreakPenalty(k);
+      if (n) {
+        grantXp(n, { k: 'refund', d: k, n: 'Racha recuperada: día ' + U.formatShort(U.fromKey(k)) + ' arreglado' });
+        UI.toast('Racha recuperada: +' + n + ' EXP devueltos.', { type: 'success', icon: '◈' });
+      }
+    });
+
+    if (!S.getSettings().streakPenalty) return;
+    const limite = U.addDaysKey(today, -STREAK_SCAN_DAYS);
+    const desde = S.getGame().streakPenaltyFrom > limite ? S.getGame().streakPenaltyFrom : limite;
+
+    // Hoy no: hasta medianoche la racha sigue viva.
+    for (let k = desde; k < today; k = U.addDaysKey(k, 1)) {
+      if (k in S.getStreakPenalties() || k in S.getPenalties()) continue;
+      const perdida = St.streakBrokenOn(k);
+      if (perdida < St.XP.streakLossFrom) continue;
+
+      const n = restarSinBajar(St.XP.streakLoss);
+      S.setStreakPenalty(k, n);
+      const texto = 'Racha ◈ de ' + perdida + ' días perdida el ' + U.formatShort(U.fromKey(k));
+      if (n) grantXp(-n, { k: 'penalty', d: k, n: texto });
+      else S.addLog({ k: 'penalty', xp: 0, d: k, n: texto + ' (sin EXP que quitar en este nivel)' });
+      UI.showStreakPenalty(n, perdida, k, false);
+    }
+  }
+
+  /** El botón del Sistema: −25 EXP a mano, tras confirmarlo. */
+  function manualStreakPenalty() {
+    const n = restarSinBajar(St.XP.streakLoss);
+    if (!n) {
+      UI.toast('No queda EXP que quitar sin bajar de nivel.', { icon: '◈' });
+      return;
+    }
+    UI.sysConfirm({ title: 'Penalización por racha', yes: '−' + n + ' EXP',
+      text: 'Se restarán ' + n + ' EXP por haber perdido la racha. Nunca te baja de nivel. ' +
+            'No se puede deshacer.' }, function () {
+      const m = restarSinBajar(St.XP.streakLoss);
+      if (!m) return;
+      grantXp(-m, { k: 'penalty', n: 'Penalización manual por perder la racha' });
+      UI.showStreakPenalty(m, 0, today, true);
     });
   }
 
@@ -1023,6 +1125,9 @@
     UI.setView('habit');
     renderHabitIfOpen();
     window.scrollTo(0, 0);
+    // Análisis del hábito (2.10.6): la primera vez que se abre hoy.
+    const h = S.getHabit(id);
+    if (h) UI.analyzeHabit(h, today);
   }
 
   function closeHabit() {
@@ -1801,6 +1906,7 @@
     });
     // La chapa abre primero la ventana de estado (2.10.3), y desde ella el Sistema.
     els.levelBadge.addEventListener('click', function () { UI.openStatus(today); });
+    els.btnStatusShare.addEventListener('click', function () { UI.shareStatusCard(today); });
     els.btnStatusOpen.addEventListener('click', function () {
       UI.closeStatus();
       showProgress();
@@ -2451,6 +2557,10 @@
     // Estilo del Sistema (2.10.4)
     toggle(els.setSysTheme, 'sysTheme');
     toggle(els.setSysBg, 'sysBg');
+    toggle(els.setSysScan, 'sysScan');
+    // Penalización por racha (2.10.6), en el Sistema.
+    toggle(els.setStreakPenalty, 'streakPenalty');
+    els.btnStreakPenalty.addEventListener('click', manualStreakPenalty);
     toggle(els.setRankAccent, 'rankAccent');
     els.setSplashSecs.addEventListener('change', function () {
       S.setSettings({ splashSecs: Number(els.setSplashSecs.value) });
@@ -2728,7 +2838,13 @@
 
     // Pantalla de arranque (2.10.3); las misiones del día, cuando se quite.
     UI.runBootSplash(S.getSettings().bootSplash && !atajo, function () {
-      if (!atajo) setTimeout(maybeDailyMissions, 300);
+      if (atajo) return;
+      setTimeout(function () {
+        // Primero las novedades de la versión (2.10.6), después el resultado
+        // de ayer y las misiones de hoy: las ventanas esperan su turno.
+        UI.showUpdateNotes();
+        maybeDailyMissions();
+      }, 300);
     });
 
     openShortcut();

@@ -5,7 +5,7 @@ logros y las rachas. El `README.md` lo resume; esto es el detalle, pensado para
 consultarlo cuando haya que tocar la curva, añadir una recompensa o entender por
 qué una racha se ha roto.
 
-Versión documentada: **2.10.4** · esquema de datos **v19**.
+Versión documentada: **2.10.7** · esquema de datos **v19**.
 
 Todas las cuentas viven en `js/stats.js`. Ninguna vista las repite: piden el
 dato y pintan lo que reciben.
@@ -644,6 +644,23 @@ sale como *Misión privada*.
 
 Con las tres cada semana (+200), a 6-7 hábitos al día, el rango X se adelanta
 de 1 año y 6,5 meses a **1 año y 4,5 meses**.
+
+### Perder la racha (2.10.6)
+
+Romper la racha ◈ (un día cerrado que no llega al mínimo, tras una racha de
+**3 días o más**) resta **25 EXP** (`XP.streakLoss`, `St.streakBrokenOn()`):
+
+- Nunca baja de nivel: si no quedan 25 por encima del inicio del nivel, quita
+  lo que haya o nada.
+- **Se devuelve** si el día se arregla después: `game.streakPenalties` guarda lo
+  restado por día y `syncStreakPenalty()` lo devuelve al dejar de romperse.
+- No se suma a un día que ya restó por quedar en blanco: ese día cuesta 25, no 50.
+- Cuenta desde `game.streakPenaltyFrom` (el día en que se estrenó o se volvió a
+  encender) y mira como mucho 31 días atrás.
+- Se apaga en la tarjeta *Penalización por racha* del Sistema, donde también
+  está el botón para aplicar −25 a mano (con confirmación; ese no se devuelve).
+
+*Reiniciar progresión* vacía este libro como el de los días en blanco.
 
 ### Días en blanco (2.6.0)
 

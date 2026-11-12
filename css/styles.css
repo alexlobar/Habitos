@@ -4319,6 +4319,165 @@ body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bo
 .levelup[data-kind="refund"] .levelup__title { color: #3ddc97; text-shadow: 0 0 24px rgb(61 220 151 / .7); }
 .levelup[data-kind="refund"] .levelup__panel { box-shadow: 0 0 80px -20px #3ddc97, inset 0 1px 0 0 rgb(61 220 151 / .35); }
 
+/* ── 2.10.7 · Racha que brilla, calendario y destello ───────── */
+
+/* El ◈ de la cabecera brilla más cuanto más larga es la racha. Con la
+   racha en peligro manda el rojo de siempre. */
+.streak-mark[data-state="on"][data-tier="7"] .streak-mark__icon {
+  text-shadow: 0 0 8px rgb(70 220 255 / .8), 0 0 18px rgb(70 220 255 / .45);
+}
+.streak-mark[data-state="on"][data-tier="30"] { --mark: #7ae7ff; }
+.streak-mark[data-state="on"][data-tier="30"] .streak-mark__icon {
+  text-shadow: 0 0 6px #46dcff, 0 0 16px rgb(70 220 255 / .9), 0 0 30px rgb(167 139 250 / .55);
+}
+.streak-mark[data-state="on"][data-tier="100"] { --mark: #fbbf24; }
+.streak-mark[data-state="on"][data-tier="100"] .streak-mark__icon {
+  text-shadow: 0 0 6px #fbbf24, 0 0 16px rgb(251 191 36 / .9), 0 0 30px rgb(251 191 36 / .5);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .streak-mark[data-state="on"][data-tier="100"] .streak-mark__icon { animation: gold-glow 3.2s ease-in-out infinite; }
+}
+@keyframes gold-glow { 50% { text-shadow: 0 0 10px #fbbf24, 0 0 26px rgb(251 191 36 / 1), 0 0 44px rgb(251 191 36 / .6); } }
+
+/* Días perfectos (S) con borde dorado en el calendario de Histórico. */
+#heatmap .heat[data-grade="S"],
+#yearGrid .heat[data-grade="S"] {
+  box-shadow: inset 0 0 0 2px #fbbf24, 0 0 10px -2px rgb(251 191 36 / .8);
+}
+#heatmap .heat[data-grade="S"][data-frozen="true"] { box-shadow: inset 0 0 0 2px #fbbf24, 0 0 10px -2px rgb(251 191 36 / .8); }
+
+/* ▲ del día en que subiste de nivel; dorado si abriste rango. */
+.heat__lvl {
+  position: absolute;
+  left: 2px;
+  top: 1px;
+  font-size: 8px;
+  line-height: 1;
+  color: #46dcff;
+  text-shadow: 0 0 4px rgb(70 220 255 / .9);
+  pointer-events: none;
+}
+.heat[data-levelup="rank"] .heat__lvl { color: #fbbf24; text-shadow: 0 0 5px rgb(251 191 36 / .9); font-size: 9px; }
+#yearGrid .heat__lvl { font-size: 6px; left: 1px; top: 0; }
+
+/* Destello al cumplir: un barrido cian cruza la tarjeta de izquierda a derecha. */
+.habit-card.is-registered::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, rgb(70 220 255 / .0) 30%,
+              rgb(70 220 255 / .35) 48%, rgb(255 255 255 / .25) 50%, rgb(70 220 255 / .35) 52%,
+              rgb(70 220 255 / 0) 70%, transparent 100%);
+  transform: translateX(-100%);
+  animation: card-register 620ms cubic-bezier(.3, .6, .2, 1) forwards;
+}
+@keyframes card-register { to { transform: translateX(100%); } }
+
+/* Días con el Sistema, en la ventana de estado y en el arranque. */
+.status-win__days,
+.boot-status__days {
+  margin: var(--sp-1) 0 0;
+  font-family: var(--sys-mono, monospace);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgb(230 241 255 / .6);
+}
+.boot-status__days { margin: 0 0 var(--sp-2); text-align: center; }
+
+/* ── 2.10.6 · Análisis del hábito, penalización por racha ───── */
+
+/* Rango del hábito junto a su nombre, y el sello del análisis. */
+.habit-hero { position: relative; }
+.habit-hero__main { min-width: 0; }
+.habit-hero__title-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.habit-grade { font-size: 13px; min-width: 1.9em; height: 1.75em; }
+.habit-analysis {
+  position: absolute;
+  right: var(--sp-3);
+  bottom: var(--sp-2);
+  margin: 0;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--grade-color, #46dcff) 65%, transparent);
+  border-radius: 6px;
+  background: rgb(8 18 34 / .9);
+  box-shadow: 0 0 16px -4px var(--grade-color, #46dcff);
+  font-family: var(--sys-mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--grade-color, #46dcff);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 240ms var(--ease), transform 240ms var(--ease);
+  pointer-events: none;
+}
+.habit-analysis.is-in { opacity: 1; transform: none; }
+.habit-analysis.is-out { opacity: 0; }
+
+/* Penalización por racha, en el Sistema. */
+.streakpen__info { margin: var(--sp-3) 0; font-size: var(--fs-xs); color: var(--text-muted); }
+.streakpen .btn--danger { border-color: #ff5c7a; background: rgb(255 92 122 / .14); color: #ff9fb1; }
+
+/* Novedades: la cifra de la versión, más contenida, y frases que se parten
+   en vez de salirse de la ventana. La rejilla no crece con el texto. */
+.levelup[data-kind="update"] .levelup__level { font-size: 2.2rem; }
+.levelup__list { grid-template-columns: minmax(0, 1fr); }
+.levelup[data-kind="update"] .levelup__list { max-width: 340px; }
+.levelup[data-kind="update"] .levelup__item { align-items: flex-start; }
+.levelup[data-kind="update"] .levelup__item-text { white-space: normal; overflow: visible; line-height: 1.4; }
+
+/* ── 2.10.5 · Escaneo, atributo que sube y tarjeta ─────────── */
+
+/* Línea de escaneo al cambiar de pantalla: baja de arriba abajo en 0,45 s
+   con una estela, por encima de todo pero sin tapar los toques. */
+.sys-scan {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 80;
+  height: 3px;
+  background: #46dcff;
+  box-shadow: 0 0 14px 3px rgb(70 220 255 / .7), 0 -60px 70px -20px rgb(70 220 255 / .18);
+  opacity: 0;
+  pointer-events: none;
+}
+.sys-scan.is-on { animation: sys-scan-down 460ms cubic-bezier(.4, 0, .2, 1); }
+@keyframes sys-scan-down {
+  0%   { transform: translateY(0); opacity: 0; }
+  12%  { opacity: 1; }
+  85%  { opacity: .9; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .sys-scan { display: none; } }
+
+/* Barra del atributo que sube de rango, en el color de su letra. */
+.levelup__bar {
+  width: min(260px, 80%);
+  height: 8px;
+  margin: var(--sp-2) auto var(--sp-1);
+  border-radius: 999px;
+  background: rgb(255 255 255 / .1);
+  overflow: hidden;
+}
+.levelup__bar-fill {
+  display: block;
+  width: calc(var(--pct, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #46dcff, var(--grade-color, #a78bfa));
+  box-shadow: 0 0 10px var(--grade-color, #46dcff);
+  transition: width 900ms cubic-bezier(.2, .8, .2, 1);
+}
+
+/* Ventana de estado: tres botones; en el móvil se reparten en dos filas. */
+.status-win__actions { flex-wrap: wrap; }
+.status-win__actions #btnStatusShare { color: #e6f1ff; border-color: rgb(70 220 255 / .45); background: rgb(70 220 255 / .08); }
+
 /* ── 2.10.4 · Estilo del Sistema ───────────────────────────── */
 
 /* Modo Sistema total: la paleta azul noche del Sistema en toda la app,
