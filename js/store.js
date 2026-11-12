@@ -36,6 +36,8 @@ HT.store = (function () {
      'half' y 'quarter' se calculan sobre los que tocaban ESE día: dos de
      nueve un miércoles y dos de tres un domingo no son el mismo esfuerzo. */
   const STREAK_GOALS = ['1', '2', '3', 'half', 'quarter'];
+  // Segundos de la pantalla de arranque (2.10.4).
+  const SPLASH_SECS = [2, 4, 6, 8];
   const MAX_FAILS = 99;      // tope de fallos apuntables en un día
 
   /* Misiones semanales (2.6.0). Los tipos y lo que mide cada uno están en
@@ -182,7 +184,8 @@ HT.store = (function () {
         hideDone: true, backupDays: 14,
         streakGoal: '2',
         showDayBar: true, showNotes: true, showFreeze: true, showWeight: true, showXp: true,
-        sysSound: false, bootSplash: true,
+        sysSound: false, bootSplash: true, splashSecs: 4,
+        sysTheme: true, sysBg: true, rankAccent: true,
         hideWeight: false, hideAvoid: false, hideNotes: false,
         blankPenalty: true,
         weightGoal: null
@@ -791,6 +794,12 @@ HT.store = (function () {
         sysSound: s.sysSound === true,
         // Pantalla de arranque del Sistema (2.10.3): encendida salvo que se apague.
         bootSplash: s.bootSplash !== false,
+        // Estilo del Sistema (2.10.4): segundos de la pantalla de arranque y
+        // tres interruptores, todos encendidos salvo que se apaguen.
+        splashSecs: SPLASH_SECS.indexOf(Number(s.splashSecs)) >= 0 ? Number(s.splashSecs) : 4,
+        sysTheme: s.sysTheme !== false,
+        sysBg: s.sysBg !== false,
+        rankAccent: s.rankAccent !== false,
         showNotes: s.showNotes !== false,
         showFreeze: s.showFreeze !== false,
         showWeight: s.showWeight !== false,
@@ -1968,6 +1977,10 @@ HT.store = (function () {
       showXp: next.showXp !== false,
       sysSound: next.sysSound === true,
       bootSplash: next.bootSplash !== false,
+      splashSecs: SPLASH_SECS.indexOf(Number(next.splashSecs)) >= 0 ? Number(next.splashSecs) : 4,
+      sysTheme: next.sysTheme !== false,
+      sysBg: next.sysBg !== false,
+      rankAccent: next.rankAccent !== false,
       showNotes: next.showNotes !== false,
       showFreeze: next.showFreeze !== false,
       showWeight: next.showWeight !== false,

@@ -3,7 +3,7 @@
 Seguimiento de hábitos en HTML, CSS y JavaScript vanilla. Sin dependencias, sin
 build, sin servidor: los datos viven en el `localStorage` del navegador.
 
-Versión documentada: **2.10.3** · esquema de datos **v19**.
+Versión documentada: **2.10.4** · esquema de datos **v19**.
 
 El sistema de experiencia, niveles, rangos, logros y rachas tiene su propio
 documento con el detalle completo: [`PROGRESION.md`](PROGRESION.md).
@@ -178,6 +178,47 @@ hasta ese momento. Con los hábitos a evitar ocultos, sus líneas salen como
   segundo de fallo de señal (tiembla, se corta en franjas y separa rojo y
   cian) y después escribe su texto. Con *Sonido del Sistema*, unos chasquidos
   desafinados. Solo en los ascensos de rango, no en cada nivel.
+
+**Estilo del Sistema** (2.10.4). Una tarjeta propia en Ajustes reúne todo lo
+que da aire de Sistema a la app, cada cosa con su interruptor:
+
+- *Modo Sistema total* (encendido): la paleta azul noche del Sistema en todas
+  las pantallas, también con el tema claro; tarjetas con filo cian y títulos
+  de terminal en mayúsculas. Solo cambia los tokens de color y unos títulos.
+- *Fondo vivo* (encendido): una rejilla cian tenue detrás de toda la app con
+  un barrido lento de luz (el barrido va con *Efectos* y se para con *reducir
+  movimiento*).
+- *Color del rango* (encendido): el color principal de la app es el de tu
+  rango (E celeste, D verde, C amarillo, B naranja, A rojo, S rosa… X blanco)
+  y cambia solo al ascender. Con colores muy claros, el texto de los botones
+  pasa a oscuro para que se lea. Apagado, manda el *Color predeterminado*.
+- *Sonido del Sistema* y *Pantalla de arranque*, que antes estaban en
+  Preferencias, y la **duración de la pantalla de arranque**: 2, 4 (de
+  entrada), 6 u 8 segundos.
+
+La **pantalla de arranque** muestra ahora, al terminar de escribir
+«Sincronizando con el jugador…», un resumen de tu estado: nivel, rango, EXP
+del nivel y total, rachas, el día de hoy, logros y los cinco atributos.
+Tocarla la quita. Un script mínimo en el `<head>` aplica el modo Sistema y el
+fondo antes de pintar, para que no se vea un instante el tema normal.
+
+**Confirmaciones del Sistema** (2.10.4). Las preguntas de «¿seguro?» ya no son
+la ventana gris del navegador: eliminar un hábito o un objetivo, reiniciar la
+progresión, importar una copia, borrar todo, desbloquear una semana, aceptar
+misiones, terminar o cancelar una ausencia y descartar el temporizador abren
+una ventana del Sistema con su explicación, en rojo si no se puede deshacer y
+en cian si no es peligrosa. *Cancelar* está enfocado de entrada; Escape o
+tocar fuera cancelan.
+
+**Resultado del día** (2.10.4). La primera vez que abres la app cada día, antes
+de las misiones diarias, una ventana con cómo fue ayer: su nota («Rango C», en
+el color de la nota), la EXP que dio (hábitos y bono, menos la penalización si
+quedó en blanco), cuántos hábitos cumpliste y la racha ◈.
+
+**Atributos con rango de letra** (2.10.4). Cada atributo lleva su letra según
+su valor: S desde 90, A desde 75, B desde 60, C desde 40, D desde 20 y E por
+debajo, con los colores de la nota del día. Sale en la ventana de estado, en
+la pantalla de arranque y en *Estado del jugador* del Sistema.
 
 **Días pasados cerrados** (2.10.1). **Ayer sigue abierto todo el día de hoy**
 (2.10.2), para apuntar por la mañana lo de anoche: arriba sale «🕓 Ayer sigue
@@ -758,7 +799,9 @@ apunta nada hasta el 1 de enero de 2027: ese día `ensureLogStart()` escribe la
 primera línea, «Empieza el registro · N EXP acumulada hasta hoy», y el saneado
 descarta cualquier línea anterior a esa fecha. También añade
 dos ajustes que no necesitan migración: `settings.showXp` (2.9.1) y
-`settings.sysSound` (2.9.4).
+`settings.sysSound` (2.9.4). Sin migración tampoco los de la 2.10.3–2.10.4:
+`bootSplash` y `sysTheme`, `sysBg`, `rankAccent` (encendidos salvo que se
+apaguen) y `splashSecs` (2, 4, 6 u 8; 4 de entrada).
 
 ### Varias ventanas a la vez (2.3.4)
 

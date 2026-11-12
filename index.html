@@ -3,7 +3,7 @@
      permite detectar que el navegador está sirviendo un index.html de una
      versión y unos .js de otra: esa mezcla dejaba la app pintada pero sin
      un solo botón que respondiera. -->
-<html lang="es" data-theme="dark" data-build="2.10.3">
+<html lang="es" data-theme="dark" data-build="2.10.4">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -29,6 +29,12 @@
       if ((ss && (ss.bootSplash === false || ss.effects === false)) || /[?&]go=/.test(location.search)) {
         document.documentElement.classList.add('no-splash');
       }
+      // Estilo del Sistema (2.10.4), también antes de pintar: sin esto la app
+      // se vería un instante con el tema normal al abrirse.
+      var rd = document.documentElement.dataset;
+      rd.sysTheme = ss && ss.sysTheme === false ? 'off' : 'on';
+      rd.sysBg = ss && ss.sysBg === false ? 'off' : 'on';
+      rd.fx = ss && ss.effects === false ? 'off' : 'on';
     } catch (e) { /* sin acceso al almacén: sale y app.js decide */ }
   </script>
 </head>
@@ -41,8 +47,12 @@
     <div class="boot-splash__box">
       <p class="levelup__tag">Sistema</p>
       <p class="boot-splash__text" id="bootSplashText">Sincronizando con el jugador…</p>
+      <!-- Tu estado (2.10.4): lo rellena ui.js y aparece al terminar de escribir. -->
+      <div class="boot-splash__status" id="bootSplashStatus" hidden></div>
     </div>
   </div>
+  <!-- Fondo vivo (2.10.4): rejilla y barrido detrás de toda la app. -->
+  <div class="sys-bg" aria-hidden="true"></div>
   <a class="skip-link" href="#main">Saltar al contenido</a>
 
   <div class="app-shell">
@@ -929,7 +939,7 @@
           <div class="field-row">
             <span class="field-row__text">
               <label for="setAccent">Color predeterminado</label>
-              <span class="field-row__hint">Personaliza el color principal de la aplicación.</span>
+              <span class="field-row__hint" id="accentHint">Personaliza el color principal de la aplicación.</span>
             </span>
             <span class="field-row__controls">
               <button type="button" class="btn btn--ghost" id="btnResetAccent">Restablecer</button>
@@ -976,28 +986,6 @@
               <span class="switch__thumb"></span>
             </button>
           </div>
-          <!-- Sonido de las ventanas del Sistema (2.9.4). -->
-          <div class="field-row">
-            <span class="field-row__text">
-              <span id="sysSoundLabel">Sonido del Sistema</span>
-              <span class="field-row__hint">Un aviso corto al abrirse cada ventana del Sistema: nivel, día perfecto, misiones, penalización.</span>
-            </span>
-            <button type="button" class="switch" id="setSysSound"
-                    role="switch" aria-checked="false" aria-labelledby="sysSoundLabel">
-              <span class="switch__thumb"></span>
-            </button>
-          </div>
-          <!-- Pantalla de arranque (2.10.3). -->
-          <div class="field-row">
-            <span class="field-row__text">
-              <span id="bootSplashLabel">Pantalla de arranque</span>
-              <span class="field-row__hint">Un segundo de «SISTEMA · Sincronizando con el jugador…» al abrir la app.</span>
-            </span>
-            <button type="button" class="switch" id="setBootSplash"
-                    role="switch" aria-checked="true" aria-labelledby="bootSplashLabel">
-              <span class="switch__thumb"></span>
-            </button>
-          </div>
           <div class="field-row">
             <span class="field-row__text">
               <span id="blankPenaltyLabel">Restar EXP por días en blanco</span>
@@ -1007,6 +995,75 @@
                     role="switch" aria-checked="true" aria-labelledby="blankPenaltyLabel">
               <span class="switch__thumb"></span>
             </button>
+          </div>
+        </article>
+
+        <!-- Estilo del Sistema (2.10.4): todo lo que da aire de "Sistema" a la
+             app, cada cosa con su interruptor para ir quitándolas. -->
+        <article class="card">
+          <header class="card__head"><h2 class="card__title">Estilo del Sistema</h2></header>
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="sysThemeLabel">Modo Sistema total</span>
+              <span class="field-row__hint">El aspecto del Sistema (azul noche, filos cian, títulos de terminal) en todas las pantallas, no solo en Sistema.</span>
+            </span>
+            <button type="button" class="switch" id="setSysTheme"
+                    role="switch" aria-checked="true" aria-labelledby="sysThemeLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="sysBgLabel">Fondo vivo</span>
+              <span class="field-row__hint">Una rejilla cian tenue con un barrido lento de luz detrás de las pantallas.</span>
+            </span>
+            <button type="button" class="switch" id="setSysBg"
+                    role="switch" aria-checked="true" aria-labelledby="sysBgLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="rankAccentLabel">Color del rango</span>
+              <span class="field-row__hint">El color principal de la app sigue a tu rango (E celeste, D verde, C amarillo…). Apagado, manda el de Preferencias.</span>
+            </span>
+            <button type="button" class="switch" id="setRankAccent"
+                    role="switch" aria-checked="true" aria-labelledby="rankAccentLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <!-- Sonido de las ventanas del Sistema (2.9.4). -->
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="sysSoundLabel">Sonido del Sistema</span>
+              <span class="field-row__hint">Un aviso corto al abrirse cada ventana del Sistema y un «tic» por letra al escribirse.</span>
+            </span>
+            <button type="button" class="switch" id="setSysSound"
+                    role="switch" aria-checked="false" aria-labelledby="sysSoundLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <!-- Pantalla de arranque (2.10.3), con tu estado desde la 2.10.4. -->
+          <div class="field-row">
+            <span class="field-row__text">
+              <span id="bootSplashLabel">Pantalla de arranque</span>
+              <span class="field-row__hint">Al abrir la app: «Sincronizando con el jugador…» y tu estado (nivel, rango, rachas, atributos). Tocarla la quita.</span>
+            </span>
+            <button type="button" class="switch" id="setBootSplash"
+                    role="switch" aria-checked="true" aria-labelledby="bootSplashLabel">
+              <span class="switch__thumb"></span>
+            </button>
+          </div>
+          <div class="field-row">
+            <span class="field-row__text">
+              <label for="setSplashSecs">Duración de la pantalla de arranque</label>
+            </span>
+            <select id="setSplashSecs" class="input input--select field-row__controls">
+              <option value="2">2 segundos</option>
+              <option value="4">4 segundos</option>
+              <option value="6">6 segundos</option>
+              <option value="8">8 segundos</option>
+            </select>
           </div>
         </article>
 
@@ -1667,6 +1724,24 @@
       <div class="status-win__actions">
         <button type="button" class="btn btn--ghost" data-close>Cerrar</button>
         <button type="button" class="btn btn--primary" id="btnStatusOpen">Abrir el Sistema</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmación al estilo del Sistema (2.10.4): sustituye a la ventana
+       gris del navegador al borrar, reiniciar, importar… -->
+  <div class="sys-confirm" id="sysConfirm" hidden>
+    <div class="status-win__backdrop" data-confirm="no"></div>
+    <div class="sys-confirm__panel" role="alertdialog" aria-modal="true"
+         aria-labelledby="sysConfirmTitle" aria-describedby="sysConfirmText">
+      <span class="levelup__corner levelup__corner--tl" aria-hidden="true"></span>
+      <span class="levelup__corner levelup__corner--br" aria-hidden="true"></span>
+      <p class="levelup__tag">Sistema</p>
+      <p class="sys-confirm__title" id="sysConfirmTitle">⚠ Confirmar acción</p>
+      <p class="sys-confirm__text" id="sysConfirmText">—</p>
+      <div class="status-win__actions">
+        <button type="button" class="btn btn--ghost" id="btnSysConfirmNo" data-confirm="no">Cancelar</button>
+        <button type="button" class="btn" id="btnSysConfirmYes" data-confirm="yes">Confirmar</button>
       </div>
     </div>
   </div>

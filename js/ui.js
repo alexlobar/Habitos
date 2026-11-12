@@ -111,7 +111,9 @@ HT.ui = (function () {
       'levelUp', 'levelUpLevel', 'levelUpRank', 'levelUpHint', 'levelUpTitle', 'levelUpList',
       'setSysSound', 'dayGrade', 'setBootSplash', 'bootSplash', 'bootSplashText',
       'statusWin', 'statusTitle', 'stLevel', 'stRank', 'stRankLetter', 'stRankName', 'stFill', 'stXp',
-      'stStats', 'stAttrs', 'btnStatusOpen', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
+      'stStats', 'stAttrs', 'btnStatusOpen',
+      'setSysTheme', 'setSysBg', 'setRankAccent', 'setSplashSecs', 'accentHint', 'bootSplashStatus',
+      'sysConfirm', 'sysConfirmTitle', 'sysConfirmText', 'btnSysConfirmNo', 'btnSysConfirmYes', 'dayLock', 'dayLockIcon', 'dayLockTitle', 'dayLockHint', 'btnDayLock',
       'sysLogCard', 'sysLogCount', 'sysLogTotals', 'sysLogSources', 'sysLogList', 'sysLogEmpty', 'btnSysLogMore',
       'heatmap', 'yearScroll', 'yearGrid', 'monthLabel', 'streakList', 'achievementGrid',
       'avoidCard', 'avoidList', 'achCard', 'achCount',
@@ -400,6 +402,8 @@ HT.ui = (function () {
     els.levelBadge.dataset.rank = info.rank.id;
     countTo(els.pointsValue, info.xp);
     paintRing(info);
+    // Con el color del rango, al ascender cambia el de toda la app (2.10.4).
+    if (S.getSettings().rankAccent) syncAccent(false);
     els.levelBadge.setAttribute(
       'aria-label',
       'Nivel ' + info.level + ', rango ' + info.rank.name + ', ' + info.xp +
@@ -738,6 +742,9 @@ HT.ui = (function () {
 
       const head = el('div', { class: 'attr__head', 'aria-hidden': 'true' });
       head.appendChild(el('span', { class: 'attr__code', text: attr.code }));
+      // Su rango de letra (2.10.4), como en la ventana de estado.
+      const g = attrGrade(attr.value);
+      head.appendChild(el('span', { class: 'attr-grade', 'data-grade': g, text: g }));
       head.appendChild(el('span', { class: 'attr__name', text: attr.name }));
       head.appendChild(el('span', { class: 'attr__value', text: String(attr.value) }));
       item.appendChild(head);
@@ -854,6 +861,8 @@ HT.ui = (function () {
     if (!els.levelUp.hidden) { sysQueue.push(w); return; }
 
     els.levelUp.dataset.kind = w.kind;
+    // La nota del resultado del día tiñe la cifra grande (2.10.4).
+    if (w.grade) els.levelUp.dataset.grade = w.grade; else delete els.levelUp.dataset.grade;
     els.levelUpTitle.textContent = w.title;
     els.levelUpLevel.textContent = w.big;
     els.levelUpRank.textContent = w.chip || '';
@@ -1027,6 +1036,27 @@ HT.ui = (function () {
     });
   }
 
+  /** Rango de letra de un atributo (2.10.4): S desde 90, A desde 75, B desde
+      60, C desde 40, D desde 20 y E por debajo. Los colores, los de la nota. */
+  function attrGrade(v) {
+    return v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 ? 'C' : v >= 20 ? 'D' : 'E';
+  }
+
+  /** Una fila de atributo: código, rango de letra, barra y valor. */
+  function attrRow(a, cls) {
+    const g = attrGrade(a.value);
+    const li = el('li', { class: cls, 'aria-label': a.code + ' ' + a.name + ': ' + a.value + ', rango ' + g });
+    li.appendChild(el('span', { class: 'status-win__attr-code', 'aria-hidden': 'true', text: a.code }));
+    li.appendChild(el('span', { class: 'attr-grade', 'data-grade': g, 'aria-hidden': 'true', text: g }));
+    const track = el('span', { class: 'status-win__attr-track', 'aria-hidden': 'true' });
+    const fill = el('span', { class: 'status-win__attr-fill' });
+    fill.style.setProperty('--pct', a.value);
+    track.appendChild(fill);
+    li.appendChild(track);
+    li.appendChild(el('span', { class: 'status-win__attr-value', 'aria-hidden': 'true', text: String(a.value) }));
+    return li;
+  }
+
   /* ── Ventana de estado (2.10.3) ───────────────────────────
      La abre la chapa de nivel: nivel, rango, EXP del nivel, rachas, nota
      de hoy y los cinco atributos, y un botón al Sistema completo. ──────── */
@@ -1061,15 +1091,7 @@ HT.ui = (function () {
 
     els.stAttrs.textContent = '';
     St.attributes(todayKey).forEach(function (a) {
-      const li = el('li', { class: 'status-win__attr', 'aria-label': a.code + ' ' + a.name + ': ' + a.value });
-      li.appendChild(el('span', { class: 'status-win__attr-code', 'aria-hidden': 'true', text: a.code }));
-      const track = el('span', { class: 'status-win__attr-track', 'aria-hidden': 'true' });
-      const fill = el('span', { class: 'status-win__attr-fill' });
-      fill.style.setProperty('--pct', a.value);
-      track.appendChild(fill);
-      li.appendChild(track);
-      li.appendChild(el('span', { class: 'status-win__attr-value', 'aria-hidden': 'true', text: String(a.value) }));
-      els.stAttrs.appendChild(li);
+      els.stAttrs.appendChild(attrRow(a, 'status-win__attr'));
     });
 
     lastFocused = document.activeElement;
@@ -1097,6 +1119,42 @@ HT.ui = (function () {
      si no, desaparece al momento. Tocarla la quita. `done` se llama al
      terminar (o enseguida, si no sale). ──────────────────────────────── */
 
+  /**
+   * El resumen del jugador para la pantalla de arranque (2.10.4): lo mismo
+   * que la ventana de estado, en pequeño. `todayKey` es hoy.
+   */
+  function fillBootStatus(todayKey) {
+    const box = els.bootSplashStatus;
+    const info = St.levelInfo(S.getGame().points);
+    const day = St.dayStats(todayKey);
+    box.textContent = '';
+
+    const head = el('div', { class: 'boot-status__head' });
+    head.appendChild(el('span', { class: 'boot-status__level', text: 'Nv. ' + info.level }));
+    const rango = el('span', { class: 'boot-status__rank', 'data-rank': info.rank.id });
+    rango.appendChild(el('strong', { text: info.rank.letter }));
+    rango.appendChild(document.createTextNode(' ' + info.rank.name));
+    head.appendChild(rango);
+    box.appendChild(head);
+
+    const bar = el('div', { class: 'status-win__bar' });
+    const fill = el('span', { class: 'status-win__fill' });
+    fill.style.setProperty('--pct', info.pct);
+    bar.appendChild(fill);
+    box.appendChild(bar);
+    box.appendChild(el('p', { class: 'boot-status__xp',
+      text: fmtNum.format(info.into) + ' / ' + fmtNum.format(info.needed) + ' EXP · ' + fmtNum.format(info.xp) + ' en total' }));
+
+    const stats = el('p', { class: 'boot-status__stats' });
+    stats.textContent = '◈ ' + St.dayStreak(todayKey) + ' d · ✎ ' + St.activityStreak(todayKey) + ' d · Hoy ' +
+                        day.done + '/' + day.total + ' · Logros ' + S.getGame().achievements.length;
+    box.appendChild(stats);
+
+    const attrs = el('ul', { class: 'status-win__attrs boot-status__attrs' });
+    St.attributes(todayKey).forEach(function (a) { attrs.appendChild(attrRow(a, 'status-win__attr')); });
+    box.appendChild(attrs);
+  }
+
   function runBootSplash(enabled, done) {
     const splash = els.bootSplash;
     const acabar = function () {
@@ -1107,15 +1165,94 @@ HT.ui = (function () {
     };
     if (!enabled || !motionOk()) { splash.remove(); if (done) done(); return; }
 
+    // Con el estado del jugador ya no se va sola a los 4 s del CSS: manda
+    // la duración elegida en Ajustes.
+    splash.classList.add('is-js');
+    fillBootStatus(U.todayKey());
+
     const timers = [];
     const dura = typeText(els.bootSplashText, 'Sincronizando con el jugador…', 120, timers, false, 20);
-    const t = setTimeout(acabar, 120 + dura + 380);
+    // El estado aparece al terminar de escribir.
+    timers.push(setTimeout(function () {
+      els.bootSplashStatus.hidden = false;
+      void els.bootSplashStatus.offsetWidth;
+      els.bootSplashStatus.classList.add('is-in');
+    }, 120 + dura + 120));
+
+    const total = Math.max(120 + dura + 900, S.getSettings().splashSecs * 1000);
+    const t = setTimeout(acabar, total);
     splash.addEventListener('click', function () { clearTimeout(t); timers.forEach(clearTimeout); acabar(); }, { once: true });
   }
 
   /** Quita la pantalla de arranque si sigue ahí (p. ej. si el arranque falla). */
   function dropBootSplash() {
     if (els.bootSplash && els.bootSplash.isConnected) els.bootSplash.remove();
+  }
+
+  /* ── Confirmación al estilo del Sistema (2.10.4) ──────────
+     Sustituye a window.confirm, que en el móvil es una ventana gris del
+     navegador. sysConfirm({ title, text, yes, danger }, siConfirma).
+     Cancelar está enfocado de entrada: lo peligroso no se confirma por
+     pulsar Intro sin mirar. ─────────────────────────────────────────── */
+
+  let confirmYes = null;
+  let confirmFocus = null;
+
+  function sysConfirm(o, onYes) {
+    confirmYes = onYes;
+    confirmFocus = document.activeElement;
+    els.sysConfirm.dataset.danger = o.danger === false ? 'false' : 'true';
+    els.sysConfirmText.textContent = o.text;
+    els.btnSysConfirmYes.textContent = o.yes || 'Confirmar';
+    const titulo = '⚠ ' + (o.title || 'Confirmar acción');
+    els.sysConfirm.hidden = false;
+    void els.sysConfirm.offsetWidth;
+    els.sysConfirm.classList.add('is-open');
+    if (motionOk()) typeText(els.sysConfirmTitle, titulo, 120, [], S.getSettings().sysSound);
+    else els.sysConfirmTitle.textContent = titulo;
+    els.btnSysConfirmNo.focus();
+  }
+
+  /** Cierra la confirmación; `yes` dice si se confirmó. */
+  function answerConfirm(yes) {
+    if (els.sysConfirm.hidden) return;
+    const cb = confirmYes;
+    confirmYes = null;
+    els.sysConfirm.classList.remove('is-open');
+    els.sysConfirm.hidden = true;
+    if (confirmFocus && confirmFocus.focus) confirmFocus.focus();
+    confirmFocus = null;
+    if (yes && cb) cb();
+  }
+
+  function isConfirmOpen() { return !els.sysConfirm.hidden; }
+
+  /**
+   * Resultado del día anterior (2.10.4): la primera vez que se abre la app
+   * cada día, antes de las misiones. Nota, EXP del día (hábitos y bono, menos
+   * lo que se restara si quedó en blanco) y cómo fue. Nada si no tocaba nada.
+   */
+  function showDayResult(dateKey, todayKey) {
+    const day = St.dayStats(dateKey);
+    const nota = St.dayGrade(dateKey, day);
+    if (!nota) return false;
+    const multa = S.getPenalties()[dateKey] || 0;
+    const xp = St.earnedOn(dateKey) + St.dayBonus(dateKey) - multa;
+    const racha = St.dayStreak(todayKey);
+    openSysWindow({
+      kind: 'result',
+      grade: nota.letter,
+      title: 'Resultado del día',
+      big: 'Rango ' + nota.letter,
+      chip: (xp >= 0 ? '+' : '−') + fmtNum.format(Math.abs(xp)) + ' EXP',
+      hint: (dateKey === U.addDaysKey(todayKey, -1) ? 'Ayer' : U.formatShort(U.fromKey(dateKey))) + ': ' +
+            day.done + ' de ' + day.total + ' misiones (' + nota.pct + '%)' +
+            (racha ? ' · racha ◈ ' + racha : ' · racha rota') +
+            (multa ? ' · penalización −' + multa : ''),
+      duration: 3600,
+      confetti: false
+    });
+    return true;
   }
 
   /** Penalización anulada: el día se ha rellenado y la EXP vuelve. */
@@ -4561,6 +4698,14 @@ HT.ui = (function () {
     els.setEffects.setAttribute('aria-checked', s.effects ? 'true' : 'false');
     els.setSysSound.setAttribute('aria-checked', s.sysSound ? 'true' : 'false');
     els.setBootSplash.setAttribute('aria-checked', s.bootSplash ? 'true' : 'false');
+    els.setSplashSecs.value = String(s.splashSecs);
+    els.setSysTheme.setAttribute('aria-checked', s.sysTheme ? 'true' : 'false');
+    els.setSysBg.setAttribute('aria-checked', s.sysBg ? 'true' : 'false');
+    els.setRankAccent.setAttribute('aria-checked', s.rankAccent ? 'true' : 'false');
+    els.accentHint.textContent = s.rankAccent
+      ? 'Ahora manda el color de tu rango (Estilo del Sistema). Este se usa al apagarlo.'
+      : 'Personaliza el color principal de la aplicación.';
+    applySysStyle(s);
     els.setBlankPenalty.setAttribute('aria-checked', s.blankPenalty ? 'true' : 'false');
     renderArchived();
     renderBuildInfo();
@@ -4860,10 +5005,54 @@ HT.ui = (function () {
     document.documentElement.dataset.freeze = s.showFreeze ? 'on' : 'off';
   }
 
+  /* ── Estilo del Sistema (2.10.4) ──────────────────────────
+     Modo Sistema total y fondo vivo son atributos en <html> que el CSS
+     lee; el color del rango cambia el acento de toda la app. ─────────── */
+
+  let accentApplied = null;
+
+  /** El acento que toca: el del rango si está activado, si no el elegido. */
+  function effectiveAccent() {
+    const s = S.getSettings();
+    if (!s.rankAccent) return s.accent;
+    return rankColor(St.levelInfo(S.getGame().points).rank.id) || s.accent;
+  }
+
+  /** Aplica el acento si ha cambiado (o siempre, con `force`: cambio de tema). */
+  function syncAccent(force) {
+    const hex = effectiveAccent();
+    if (!force && hex === accentApplied) return;
+    applyAccent(hex);
+  }
+
+  function applySysStyle(s) {
+    const root = document.documentElement.dataset;
+    // El modo Sistema cambia si el acento se calcula para fondo claro u
+    // oscuro: si cambia, el acento se rehace aunque el color sea el mismo.
+    const cambiaModo = root.sysTheme !== (s.sysTheme ? 'on' : 'off');
+    root.sysTheme = s.sysTheme ? 'on' : 'off';
+    root.sysBg = s.sysBg ? 'on' : 'off';
+    // El barrido del fondo solo se mueve con Efectos.
+    root.fx = s.effects ? 'on' : 'off';
+    // Con el modo Sistema la app es oscura siempre: la barra del móvil también.
+    const meta = $('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', s.sysTheme ? '#070d18' : s.theme === 'light' ? '#f5f6fa' : '#0b0d12');
+    syncAccent(cambiaModo);
+  }
+
   /** El color elegido en Ajustes deriva el acento y los 4 niveles del heatmap. */
   function applyAccent(hex) {
     const root = document.documentElement.style;
-    const claro = document.documentElement.dataset.theme === 'light';
+    // Con el modo Sistema total la app es oscura aunque el tema sea claro.
+    const claro = document.documentElement.dataset.theme === 'light' &&
+                  document.documentElement.dataset.sysTheme !== 'on';
+    accentApplied = hex;
+
+    // Texto sobre el acento (botones): blanco, salvo con acentos muy claros
+    // como el celeste del rango E o el blanco del X, donde no se leería.
+    const c = channels(hex);
+    const luz = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    root.setProperty('--on-accent', luz > 0.62 ? '#0b1220' : '#ffffff');
 
     root.setProperty('--accent', hex);
     root.setProperty('--accent-hover', claro ? darken(hex, 0.14) : lighten(hex, 0.16));
@@ -5744,6 +5933,8 @@ HT.ui = (function () {
     tapSysWindow: tapSysWindow,
     openStatus: openStatus, closeStatus: closeStatus, isStatusOpen: isStatusOpen,
     runBootSplash: runBootSplash, dropBootSplash: dropBootSplash,
+    sysConfirm: sysConfirm, answerConfirm: answerConfirm, isConfirmOpen: isConfirmOpen,
+    showDayResult: showDayResult, syncAccent: syncAccent,
     showDailyMissions: showDailyMissions, showPenalty: showPenalty, showRefund: showRefund,
     setLogFilter: setLogFilter, moreSysLog: moreSysLog, setDayLock: setDayLock,
     motionOk: motionOk,

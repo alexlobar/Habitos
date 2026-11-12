@@ -4319,6 +4319,206 @@ body.has-timer .toast-stack { bottom: calc(var(--nav-h) + env(safe-area-inset-bo
 .levelup[data-kind="refund"] .levelup__title { color: #3ddc97; text-shadow: 0 0 24px rgb(61 220 151 / .7); }
 .levelup[data-kind="refund"] .levelup__panel { box-shadow: 0 0 80px -20px #3ddc97, inset 0 1px 0 0 rgb(61 220 151 / .35); }
 
+/* ── 2.10.4 · Estilo del Sistema ───────────────────────────── */
+
+/* Modo Sistema total: la paleta azul noche del Sistema en toda la app,
+   también con el tema claro (como la pantalla del Sistema). Solo cambian
+   los tokens y unos pocos títulos; los componentes no saben nada. */
+:root[data-sys-theme="on"] {
+  --bg:            #070d18;
+  --bg-elevated:   #0c1628;
+  --surface:       #0f1a2d;
+  --card-bg:       #0d1729;
+  --surface-2:     #13213a;
+  --surface-3:     #1b2c4a;
+  --border:        #1d3657;
+  --border-strong: #2b5282;
+  --text:          #e6f1ff;
+  --text-muted:    #a9badb;
+  --text-faint:    #93a6c9;
+  --success:       #3ddc97;
+  --warning:       #ffb454;
+  --danger:        #ff5c7a;
+  --danger-soft:   rgba(255, 92, 122, .14);
+  --streak:        #ff8a3d;
+  --frost:         #7dd3fc;
+  --heat-0:        #12203a;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .5);
+  --shadow-3: 0 24px 60px rgba(0, 0, 0, .65);
+  color-scheme: dark;
+}
+:root[data-sys-theme="on"] body {
+  background-image:
+    radial-gradient(900px 500px at 12% -8%, rgb(70 220 255 / .10), transparent 60%),
+    radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%);
+}
+/* Tarjetas con filo cian y brillo tenue, como los paneles del Sistema. */
+:root[data-sys-theme="on"] .view:not(#view-progress) .card {
+  border-color: #23507f;
+  background:
+    linear-gradient(180deg, rgb(70 220 255 / .06), rgb(70 220 255 / .01) 45%),
+    color-mix(in srgb, #0c1628 88%, transparent);
+  box-shadow: inset 0 1px 0 0 rgb(70 220 255 / .16), 0 0 26px -18px rgb(70 220 255 / .5);
+}
+:root[data-sys-theme="on"] .habit-card {
+  box-shadow: inset 0 1px 0 0 rgb(70 220 255 / .10);
+}
+/* Títulos de terminal. */
+:root[data-sys-theme="on"] .view:not(#view-progress) .view__title {
+  font-family: var(--sys-mono);
+  font-size: var(--fs-lg);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+:root[data-sys-theme="on"] .view:not(#view-progress) .card__title,
+:root[data-sys-theme="on"] .cat-group__name {
+  font-family: var(--sys-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+:root[data-sys-theme="on"] .app-header { border-bottom-color: rgb(70 220 255 / .25); }
+:root[data-sys-theme="on"] .nav { border-color: rgb(70 220 255 / .25); }
+:root[data-sys-theme="on"] .nav__item.is-active { color: #46dcff; }
+
+/* Fondo vivo: rejilla cian y un barrido de luz que baja despacio. Va detrás
+   de toda la app; solo se ve en los huecos entre tarjetas. */
+.sys-bg { display: none; }
+:root[data-sys-bg="on"] .sys-bg {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgb(70 220 255 / .05) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, rgb(70 220 255 / .05) 1px, transparent 1px) 0 0 / 32px 100%;
+  mask-image: radial-gradient(ellipse 120% 90% at 50% 0%, #000 30%, transparent 85%);
+}
+:root[data-sys-bg="on"] .sys-bg::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -30%;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, rgb(70 220 255 / .07) 50%, transparent);
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-sys-bg="on"][data-fx="on"] .sys-bg::after { animation: sys-sweep 9s linear infinite; }
+}
+@keyframes sys-sweep {
+  0%   { transform: translateY(0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(430%); opacity: 0; }
+}
+/* La app, por encima del fondo. */
+:root[data-sys-bg="on"] .app-shell { position: relative; z-index: 1; }
+
+/* Rango de letra de cada atributo (S…E), con los colores de la nota del día. */
+.attr-grade {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.6em;
+  height: 1.45em;
+  padding: 0 3px;
+  border: 1px solid color-mix(in srgb, var(--grade-color, #46dcff) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--grade-color, #46dcff) 14%, transparent);
+  font-family: var(--sys-mono, monospace);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--grade-color, #46dcff);
+}
+/* Con su letra entre el código y la barra. Más específico que la regla de
+   la 2.10.3, que va después en el archivo y si no ganaría. */
+.status-win__attrs .status-win__attr { grid-template-columns: 2.6em 1.8em minmax(0, 1fr) 2.2em; }
+.attr__head .attr-grade { margin-right: 2px; }
+
+/* Resultado del día: la cifra grande, en el color de la nota. */
+.levelup[data-grade] .levelup__level { color: var(--grade-color); text-shadow: 0 0 30px var(--grade-color); }
+
+/* Estado del jugador en la pantalla de arranque. */
+.boot-splash.is-js { animation: none; }
+.boot-splash__box { width: min(360px, calc(100vw - 32px)); }
+.boot-splash__status {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px dashed rgb(70 220 255 / .25);
+  color: #e6f1ff;
+  text-align: left;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 320ms var(--ease), transform 320ms var(--ease);
+}
+.boot-splash__status.is-in { opacity: 1; transform: none; }
+.boot-status__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.boot-status__level { font-family: var(--sys-mono, monospace); font-size: 1.6rem; font-weight: 700; text-shadow: 0 0 18px rgb(70 220 255 / .45); }
+.boot-status__rank { font-size: var(--fs-xs); color: rgb(230 241 255 / .75); }
+.boot-status__rank strong {
+  margin-right: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--rank-color, #46dcff);
+  border-radius: 5px;
+  font-family: var(--sys-mono, monospace);
+  font-size: var(--fs-sm);
+  color: var(--rank-color, #46dcff);
+}
+.boot-status__xp,
+.boot-status__stats {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--sys-mono, monospace);
+  font-size: 11px;
+  color: rgb(230 241 255 / .72);
+}
+.boot-status__attrs { margin: var(--sp-3) 0 0; }
+
+/* Confirmación del Sistema. */
+.sys-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  opacity: 0;
+  transition: opacity 200ms var(--ease);
+}
+.sys-confirm.is-open { opacity: 1; }
+.sys-confirm__panel {
+  position: relative;
+  width: min(380px, 100%);
+  padding: var(--sp-5);
+  border: 1px solid rgb(70 220 255 / .55);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgb(70 220 255 / .10), rgb(70 220 255 / .02) 55%), rgb(8 18 34 / .97);
+  box-shadow: 0 0 70px -20px #46dcff, inset 0 1px 0 0 rgb(70 220 255 / .3);
+  color: #e6f1ff;
+  text-align: center;
+}
+.sys-confirm__panel .levelup__corner--tl { top: 0; left: 0; }
+.sys-confirm__panel .levelup__corner--br { right: 0; bottom: 0; }
+.sys-confirm__title {
+  margin: var(--sp-2) 0 var(--sp-3);
+  font-family: var(--sys-mono, monospace);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #ffb454;
+  text-shadow: 0 0 18px rgb(255 180 84 / .5);
+}
+.sys-confirm__text { margin: 0 0 var(--sp-5); font-size: var(--fs-sm); line-height: 1.5; color: rgb(230 241 255 / .85); }
+.sys-confirm .btn--ghost { color: #e6f1ff; }
+.sys-confirm[data-danger="true"] .sys-confirm__panel { border-color: rgb(255 92 122 / .6); box-shadow: 0 0 70px -20px #ff5c7a, inset 0 1px 0 0 rgb(255 92 122 / .3); }
+.sys-confirm[data-danger="true"] .sys-confirm__title { color: #ff5c7a; text-shadow: 0 0 18px rgb(255 92 122 / .55); }
+.sys-confirm[data-danger="true"] #btnSysConfirmYes { border-color: #ff5c7a; background: #ff5c7a; color: #fff; }
+.sys-confirm[data-danger="false"] #btnSysConfirmYes { border-color: #46dcff; background: #46dcff; color: #06121f; }
+
 /* ── 2.10.3 · Arranque, ventana de estado e interferencia ───── */
 
 /* Pantalla de arranque. Si el JS no llegara a quitarla, se va sola a los 4 s. */

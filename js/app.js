@@ -387,12 +387,14 @@
   function deleteGoal(id) {
     const g = S.getGoal(id);
     if (!g) return;
-    if (!window.confirm('¿Eliminar este objetivo? Tus registros no se tocan.')) return;
-    const snap = S.deleteGoal(id);
-    UI.closeGoalModal();
-    UI.toast('Objetivo eliminado.', {
-      icon: '🗑️',
-      action: { label: 'Deshacer', onClick: function () { S.restoreGoal(snap); syncProgressState(); } }
+    UI.sysConfirm({ title: 'Eliminar objetivo', yes: 'Eliminar',
+                    text: 'Se eliminará este objetivo. Tus registros no se tocan.' }, function () {
+      const snap = S.deleteGoal(id);
+      UI.closeGoalModal();
+      UI.toast('Objetivo eliminado.', {
+        icon: '🗑️',
+        action: { label: 'Deshacer', onClick: function () { S.restoreGoal(snap); syncProgressState(); } }
+      });
     });
   }
 
@@ -574,23 +576,27 @@
       UI.toast('Menos de un minuto: no se apunta nada.', { icon: '⏱️' });
       return;
     }
-    if (ms > TIMER_SUSPECT_MS &&
-        !window.confirm('El temporizador lleva ' + Math.round(minutos / 60 * 10) / 10 +
-                        ' horas en marcha. ¿Apuntar ' + cantidad + ' ' + habit.target.unit + ' en ' +
-                        habit.name + '?')) return;
-
-    clearTimer();
-    withScoring(habit, fecha, function () { S.addQuantity(habit.id, fecha, cantidad); });
-    UI.toast('+' + cantidad + ' ' + habit.target.unit + ' en ' + habit.name +
-             (fecha !== today ? ' (el día que lo empezaste)' : '') + '.', { type: 'success', icon: '⏱️' });
+    const apuntar = function () {
+      clearTimer();
+      withScoring(habit, fecha, function () { S.addQuantity(habit.id, fecha, cantidad); });
+      UI.toast('+' + cantidad + ' ' + habit.target.unit + ' en ' + habit.name +
+               (fecha !== today ? ' (el día que lo empezaste)' : '') + '.', { type: 'success', icon: '⏱️' });
+    };
+    if (ms > TIMER_SUSPECT_MS) {
+      UI.sysConfirm({ title: 'Temporizador olvidado', yes: 'Apuntar', danger: false,
+        text: 'El temporizador lleva ' + Math.round(minutos / 60 * 10) / 10 + ' horas en marcha. ¿Apuntar ' +
+              cantidad + ' ' + habit.target.unit + ' en ' + habit.name + '?' }, apuntar);
+      return;
+    }
+    apuntar();
   }
 
   function cancelTimer() {
     if (!timer) return;
     const min = Math.floor(timerElapsed() / 60000);
-    if (min >= 1 && !window.confirm('¿Descartar ' + (min === 1 ? '1 minuto' : min + ' minutos') +
-                                    ' sin apuntarlos?')) return;
-    clearTimer();
+    if (min < 1) { clearTimer(); return; }
+    UI.sysConfirm({ title: 'Descartar temporizador', yes: 'Descartar',
+      text: 'Se descartarán ' + (min === 1 ? '1 minuto' : min + ' minutos') + ' sin apuntarlos.' }, clearTimer);
   }
 
   /* Pantalla encendida mientras corre: con ella apagada, el móvil congela la
@@ -755,6 +761,9 @@
     try { visto = localStorage.getItem(DAILY_KEY); } catch (e) { return; }
     if (visto === today) return;
     try { localStorage.setItem(DAILY_KEY, today); } catch (e) { /* da igual */ }
+    // Primero cómo fue ayer (2.10.4) y después lo de hoy: las ventanas del
+    // Sistema se ponen en cola y salen una detrás de otra.
+    UI.showDayResult(U.addDaysKey(today, -1), today);
     UI.showDailyMissions(today);
   }
 
@@ -1125,17 +1134,17 @@
   function unlockPlan() {
     const wk = UI.readPlan().weekKey;
     if (S.wasWeekUnlocked(wk)) return;
-    if (!window.confirm('Solo puedes desbloquear esta semana una vez. Los días que ya han pasado ' +
-                        'se quedan como estaban. Al volver a confirmar, quedará bloqueada hasta el domingo.\n\n' +
-                        '¿Desbloquearla?')) return;
-
-    if (!S.unlockWeekPlan(wk)) {
-      UI.toast('Esta semana no se puede desbloquear.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-    UI.resetPlanDraft();
-    UI.renderPlanView();
-    UI.toast('Semana desbloqueada. Cambia lo que necesites y vuelve a confirmar.', { icon: '🔓' });
+    UI.sysConfirm({ title: 'Desbloquear semana', yes: 'Desbloquear', danger: false,
+      text: 'Solo puedes desbloquear esta semana una vez. Los días que ya han pasado se quedan como ' +
+            'estaban. Al volver a confirmar, quedará bloqueada hasta el domingo.' }, function () {
+      if (!S.unlockWeekPlan(wk)) {
+        UI.toast('Esta semana no se puede desbloquear.', { type: 'error', icon: '⚠️' });
+        return;
+      }
+      UI.resetPlanDraft();
+      UI.renderPlanView();
+      UI.toast('Semana desbloqueada. Cambia lo que necesites y vuelve a confirmar.', { icon: '🔓' });
+    });
   }
 
   function acceptMissions() {
@@ -1144,16 +1153,17 @@
       UI.toast('Elige al menos una misión, o pulsa "Sugerir".', { type: 'error', icon: '🎯' });
       return;
     }
-    if (!window.confirm('Una vez aceptadas, las misiones no se cambian hasta el domingo. ¿Aceptarlas?')) return;
-
-    const ok = S.acceptMissions(data.weekKey, data.list);
-    if (!ok) {
-      UI.toast('Esa semana ya tiene misiones.', { type: 'error', icon: '⚠️' });
-      return;
-    }
-    UI.renderPlanView();
-    UI.toast(ok.length === 1 ? 'Misión aceptada.' : ok.length + ' misiones aceptadas. ¡A por ellas!',
-             { type: 'success', icon: '🎯' });
+    UI.sysConfirm({ title: 'Aceptar misiones', yes: 'Aceptar', danger: false,
+      text: 'Una vez aceptadas, las misiones no se cambian hasta el domingo.' }, function () {
+      const ok = S.acceptMissions(data.weekKey, data.list);
+      if (!ok) {
+        UI.toast('Esa semana ya tiene misiones.', { type: 'error', icon: '⚠️' });
+        return;
+      }
+      UI.renderPlanView();
+      UI.toast(ok.length === 1 ? 'Misión aceptada.' : ok.length + ' misiones aceptadas. ¡A por ellas!',
+               { type: 'success', icon: '🎯' });
+    });
   }
 
   function confirmPlan() {
@@ -1216,14 +1226,18 @@
     if (!a) return;
 
     const enCurso = a.from <= today;
-    const pregunta = enCurso
-      ? '¿Terminar la ausencia hoy? Desde hoy tus hábitos vuelven a contar; los días ya pasados siguen sin contar.'
-      : '¿Cancelar esta ausencia? Esos días volverán a contar con normalidad.';
-    if (!window.confirm(pregunta)) return;
-
-    withTodayBonus(function () { return S.cancelAbsence(id); });
-    UI.toast(enCurso ? 'Ausencia terminada: desde hoy todo vuelve a contar.' : 'Ausencia cancelada.',
-             { icon: '↩' });
+    UI.sysConfirm({
+      title: enCurso ? 'Terminar ausencia' : 'Cancelar ausencia',
+      yes: enCurso ? 'Terminar hoy' : 'Cancelar ausencia',
+      danger: false,
+      text: enCurso
+        ? 'Desde hoy tus hábitos vuelven a contar; los días ya pasados siguen sin contar.'
+        : 'Esos días volverán a contar con normalidad.'
+    }, function () {
+      withTodayBonus(function () { return S.cancelAbsence(id); });
+      UI.toast(enCurso ? 'Ausencia terminada: desde hoy todo vuelve a contar.' : 'Ausencia cancelada.',
+               { icon: '↩' });
+    });
   }
 
   /* ── Anotar un día ────────────────────────────────────────
@@ -1349,22 +1363,23 @@
     const habit = S.getHabit(id);
     if (!habit) return;
 
-    if (!window.confirm('¿Eliminar "' + habit.name + '"? Se borrará también todo su histórico.')) return;
+    UI.sysConfirm({ title: 'Eliminar hábito', yes: 'Eliminar',
+      text: 'Se eliminará «' + habit.name + '» y todo su histórico. Tendrás 7 segundos para deshacerlo.' }, function () {
+      const snapshot = S.deleteHabit(id);
+      UI.closeModal();
+      if (habitId === id) closeHabit();
 
-    const snapshot = S.deleteHabit(id);
-    UI.closeModal();
-    if (habitId === id) closeHabit();
-
-    UI.toast('"' + habit.name + '" eliminado.', {
-      icon: '🗑️',
-      action: {
-        label: 'Deshacer',
-        onClick: function () {
-          if (S.restoreHabit(snapshot)) {
-            UI.toast('Hábito restaurado con su histórico.', { type: 'success', icon: '↩' });
+      UI.toast('"' + habit.name + '" eliminado.', {
+        icon: '🗑️',
+        action: {
+          label: 'Deshacer',
+          onClick: function () {
+            if (S.restoreHabit(snapshot)) {
+              UI.toast('Hábito restaurado con su histórico.', { type: 'success', icon: '↩' });
+            }
           }
         }
-      }
+      });
     });
   }
 
@@ -1516,12 +1531,14 @@
 
   /** Reinicia la progresión dejando los hábitos y su histórico intactos. */
   function resetProgressOnly() {
-    if (!window.confirm('Se pondrán a cero la EXP, el nivel, el rango y los logros.\n\n' +
-                        'Tus hábitos y todo su histórico se conservan. ¿Continuar?')) return;
-
-    S.resetProgress();
-    S.addLog({ k: 'reset', xp: 0, n: 'Progresión reiniciada: EXP, nivel y logros a cero' });
-    UI.toast('Progresión reiniciada. Tus hábitos siguen intactos.', { type: 'success', icon: '↺' });
+    UI.sysConfirm({ title: 'Reiniciar progresión', yes: 'Reiniciar',
+      text: 'Se pondrán a cero la EXP, el nivel, el rango y los logros. Tus hábitos y todo su ' +
+            'histórico se conservan.' }, function () {
+      S.resetProgress();
+      S.addLog({ k: 'reset', xp: 0, n: 'Progresión reiniciada: EXP, nivel y logros a cero' });
+      UI.syncAccent(true);
+      UI.toast('Progresión reiniciada. Tus hábitos siguen intactos.', { type: 'success', icon: '↺' });
+    });
   }
 
   function csvCell(value) {
@@ -1611,12 +1628,13 @@
           return;
         }
 
-        if (!window.confirm('Esto reemplazará todos tus datos actuales. ¿Continuar?')) return;
-
-        S.replaceState(parsed);
-        UI.applyAccent(S.getSettings().accent);
-        closeHabit();
-        UI.toast('Datos importados.', { type: 'success', icon: '↑' });
+        UI.sysConfirm({ title: 'Importar copia', yes: 'Reemplazar',
+          text: 'Esto reemplazará todos tus datos actuales por los de la copia.' }, function () {
+          S.replaceState(parsed);
+          UI.syncAccent(true);
+          closeHabit();
+          UI.toast('Datos importados.', { type: 'success', icon: '↑' });
+        });
       };
       reader.onerror = function () {
         UI.toast('No se pudo leer el archivo.', { type: 'error', icon: '⚠️' });
@@ -1631,12 +1649,14 @@
   }
 
   function resetAll() {
-    if (!window.confirm('Se borrarán todos tus hábitos y su histórico. Esta acción no se puede deshacer.\n\n¿Seguro?')) return;
-    S.reset();
-    UI.applyAccent(S.getSettings().accent);
-    currentDate = today;
-    closeHabit();
-    UI.toast('Todo restablecido.');
+    UI.sysConfirm({ title: 'Borrar todo', yes: 'Borrar todo',
+      text: 'Se borrarán todos tus hábitos y su histórico. Esta acción no se puede deshacer.' }, function () {
+      S.reset();
+      UI.syncAccent(true);
+      currentDate = today;
+      closeHabit();
+      UI.toast('Todo restablecido.');
+    });
   }
 
   /* ── Cambio de día ────────────────────────────────────────
@@ -2409,7 +2429,7 @@
       UI.applyTheme(els.setTheme.value);
       S.setSettings({ theme: els.setTheme.value });
       // El acento se aclara sobre oscuro y se oscurece sobre claro.
-      UI.applyAccent(S.getSettings().accent);
+      UI.syncAccent(true);
     });
     els.setFontSize.addEventListener('change', function () {
       UI.applyFontSize(els.setFontSize.value);
@@ -2428,6 +2448,22 @@
     };
     toggle(els.setHideDone, 'hideDone');
     toggle(els.setDayBar, 'showDayBar');
+    // Estilo del Sistema (2.10.4)
+    toggle(els.setSysTheme, 'sysTheme');
+    toggle(els.setSysBg, 'sysBg');
+    toggle(els.setRankAccent, 'rankAccent');
+    els.setSplashSecs.addEventListener('change', function () {
+      S.setSettings({ splashSecs: Number(els.setSplashSecs.value) });
+    });
+    // Confirmación del Sistema: botones, fondo y teclado.
+    els.sysConfirm.addEventListener('click', function (e) {
+      const b = e.target.closest('[data-confirm]');
+      if (b) UI.answerConfirm(b.dataset.confirm === 'yes');
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!UI.isConfirmOpen()) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); UI.answerConfirm(false); }
+    }, true);
     toggle(els.setShowXp, 'showXp');
     toggle(els.setShowFreeze, 'showFreeze');
     toggle(els.setShowNotes, 'showNotes');
@@ -2641,7 +2677,7 @@
     // cada uno. En un arranque normal no hay nada que apuntar.
     const saltados = S.recordLevelUp(nivel, today);
 
-    UI.applyAccent(S.getSettings().accent);
+    UI.syncAccent(true);                  // el del rango o el elegido (2.10.4)
     renderAll();
     bind();
     loadTimer();
